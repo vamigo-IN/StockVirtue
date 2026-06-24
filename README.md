@@ -96,13 +96,16 @@ In production the app **refuses to boot** if the required secrets are missing.
 ```bash
 cd mobile
 flutter pub get
-flutter run --dart-define=API_BASE_URL=http://10.0.2.2:3000/api   # Android emulator
+flutter run                                                        # uses production API by default
+flutter run --dart-define=API_BASE_URL=http://10.0.2.2:3000/api    # against a local backend (Android emulator)
 ```
 
-For a release build, point the app at your deployed API:
+The app points at the live backend (`https://api.stockvirtue.com/api`) out of
+the box; pass `--dart-define=API_BASE_URL=...` to target a local/staging server.
+Release builds need no flag:
 
 ```bash
-flutter build apk --release --dart-define=API_BASE_URL=https://api.yourdomain.com/api
+flutter build apk --release
 ```
 
 `mobile/android/app/google-services.json` is the Firebase **client** config

@@ -1,20 +1,18 @@
-import 'package:flutter/foundation.dart';
-
-/// Returns the backend base URL appropriate for the current platform.
+/// Returns the backend base URL used by the REST client and (via its origin)
+/// the realtime ticks WebSocket.
 ///
-/// The compile-time `API_BASE_URL` override ALWAYS wins — production/staging
-/// release builds MUST pass an HTTPS URL, e.g.:
-///   flutter build appbundle --dart-define=API_BASE_URL=https://api.stockvirtue.com/api
-/// (wire this into your release/CI command). The defaults below are dev-only:
-/// - Web / iOS sim / desktop: `localhost`
-/// - Android emulator: `10.0.2.2` (the emulator's alias for the host machine)
-/// - Physical device on LAN: `--dart-define=API_BASE_URL=http://192.168.x.y:3000/api`
+/// Defaults to PRODUCTION so release builds and ordinary runs talk to the live
+/// server with no flags. The compile-time `API_BASE_URL` override ALWAYS wins —
+/// pass it to point at a local backend during development, e.g.:
+///   • Android emulator        : --dart-define=API_BASE_URL=http://10.0.2.2:3000/api
+///   • iOS sim / web / desktop  : --dart-define=API_BASE_URL=http://localhost:3000/api
+///   • Physical device on LAN   : --dart-define=API_BASE_URL=http://192.168.x.y:3000/api
+///
+/// The `/api` suffix is required — the backend serves every route under it
+/// (except /admin). The ticks service strips `/api` to derive the socket
+/// origin, so an https base automatically yields a secure wss connection.
 String defaultApiBaseUrl() {
   const fromEnv = String.fromEnvironment('API_BASE_URL');
   if (fromEnv.isNotEmpty) return fromEnv;
-  if (kIsWeb) return 'http://localhost:3000/api';
-  if (defaultTargetPlatform == TargetPlatform.android) {
-    return 'http://10.0.2.2:3000/api';
-  }
-  return 'http://localhost:3000/api';
+  return 'https://api.stockvirtue.com/api';
 }
