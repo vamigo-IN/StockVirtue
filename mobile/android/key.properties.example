@@ -1,0 +1,13 @@
+# Copy to android/key.properties and fill in real values to enable release
+# signing. NEVER commit key.properties or the .jks keystore.
+#
+# Generate a release keystore (once), keeping it OUTSIDE the repo:
+#   keytool -genkey -v -keystore C:/keys/stockvirtue-release.jks \
+#     -keyalg RSA -keysize 2048 -validity 10000 -alias stockvirtue
+#
+# Then point storeFile at it (absolute path or relative to android/app).
+
+storePassword=your-store-password
+keyPassword=your-key-password
+keyAlias=stockvirtue
+storeFile=C:/keys/stockvirtue-release.jks

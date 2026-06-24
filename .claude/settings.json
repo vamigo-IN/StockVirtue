@@ -1,0 +1,36 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/Users/t20in/.claude/projects/d--Projects-NiveshX/memory/**)",
+      "Bash(npm --version)",
+      "Bash(docker --version)",
+      "Bash(docker compose *)",
+      "Bash(git init *)",
+      "Bash(git config *)",
+      "Bash(npx --yes @nestjs/cli@latest new backend --package-manager npm --skip-git --skip-install --strict)",
+      "Bash(npm install *)",
+      "Bash(npm run *)",
+      "Bash(docker info *)",
+      "Bash(curl -s -m 5 http://localhost:3000/api)",
+      "Bash(curl -s -m 5 http://localhost:3000/api/smartapi/status)",
+      "Bash(curl -s -m 10 http://localhost:3000/api/market/quote/SBIN)",
+      "Bash(curl -s -m 10 http://localhost:3000/api/market/quote/RELIANCE)",
+      "Bash(curl -s -m 10 \"http://localhost:3000/api/market/search?q=INF\")",
+      "Bash(curl -s -m 15 http://localhost:3000/api/market/quote/SBIN)",
+      "Bash(curl -s -m 15 http://localhost:3000/api/market/quote/RELIANCE)",
+      "Bash(npx prisma *)",
+      "Bash(flutter --version)",
+      "Bash(flutter create *)",
+      "Bash(flutter pub *)",
+      "Bash(flutter analyze *)",
+      "Bash(docker exec *)",
+      "Bash(tail -80 /c/Users/t20in/AppData/Local/Temp/claude/d--Projects-NiveshX/f6761f61-01ad-4ab7-b1bc-c78cb7ab151e/tasks/b65zg0lrd.output)",
+      "Read(//c/Users/t20in/AppData/Local/Temp/claude/d--Projects-NiveshX/f6761f61-01ad-4ab7-b1bc-c78cb7ab151e/tasks/**)",
+      "WebFetch(domain:smartapi.angelone.in)",
+      "WebFetch(domain:smartapi.angelbroking.com)"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\t20in\\.claude\\projects\\d--Projects-NiveshX"
+    ]
+  }
+}

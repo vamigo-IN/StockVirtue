@@ -1,0 +1,162 @@
+import {
+  BadRequestException,
+  Body,
+  Controller,
+  Delete,
+  Get,
+  NotFoundException,
+  Param,
+  Patch,
+  Post,
+  UseGuards,
+} from '@nestjs/common';
+import {
+  AlertCondition,
+  AlertStatus,
+  Prisma,
+  User,
+} from '@prisma/client';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { Exchange, isExchange } from '../common/exchange';
+import { rupeesToPaise } from '../common/money';
+import { ScripMasterService } from '../market/scrip-master.service';
+import { PrismaService } from '../prisma/prisma.service';
+import { AlertWatcherService } from './alert-watcher.service';
+import { CreateAlertDto } from './dto/create-alert.dto';
+import { RegisterDeviceDto } from './dto/register-device.dto';
+import { UpdatePrefsDto } from './dto/update-prefs.dto';
+
+@Controller('notifications')
+@UseGuards(JwtAuthGuard)
+export class NotificationsController {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly scripMaster: ScripMasterService,
+    private readonly watcher: AlertWatcherService,
+  ) {}
+
+  // ── Device tokens ────────────────────────────────────────────────
+
+  @Post('devices')
+  async registerDevice(
+    @CurrentUser() user: User,
+    @Body() dto: RegisterDeviceDto,
+  ) {
+    const device = await this.prisma.deviceToken.upsert({
+      where: { token: dto.token },
+      update: { userId: user.id, platform: dto.platform, lastSeenAt: new Date() },
+      create: {
+        userId: user.id,
+        token: dto.token,
+        platform: dto.platform,
+      },
+    });
+    return { id: device.id, platform: device.platform };
+  }
+
+  @Delete('devices/:token')
+  async unregisterDevice(
+    @CurrentUser() user: User,
+    @Param('token') token: string,
+  ) {
+    await this.prisma.deviceToken.deleteMany({
+      where: { token, userId: user.id },
+    });
+    return { ok: true };
+  }
+
+  // ── Email preferences ────────────────────────────────────────────
+
+  @Patch('preferences')
+  async setPreferences(
+    @CurrentUser() user: User,
+    @Body() dto: UpdatePrefsDto,
+  ) {
+    const updated = await this.prisma.user.update({
+      where: { id: user.id },
+      data: { tradeEmailsOptIn: dto.tradeEmails },
+      select: { tradeEmailsOptIn: true },
+    });
+    return { tradeEmails: updated.tradeEmailsOptIn };
+  }
+
+  // ── Price alerts ─────────────────────────────────────────────────
+
+  @Get('alerts')
+  list(@CurrentUser() user: User) {
+    return this.prisma.priceAlert.findMany({
+      where: { userId: user.id },
+      orderBy: { createdAt: 'desc' },
+      take: 200,
+    });
+  }
+
+  @Post('alerts')
+  async create(@CurrentUser() user: User, @Body() dto: CreateAlertDto) {
+    const exchange = this.parseExchange(dto.exchange ?? 'NSE');
+    const inst = this.scripMaster.getInstrument(dto.symbol, exchange);
+    if (!inst) {
+      throw new NotFoundException(
+        `Symbol "${dto.symbol}" not found on ${exchange}`,
+      );
+    }
+    const alert = await this.prisma.priceAlert.create({
+      data: {
+        userId: user.id,
+        symbol: inst.name,
+        tradingsymbol: inst.symbol,
+        symboltoken: inst.token,
+        exchange: inst.exchange,
+        condition: dto.condition,
+        priceP: rupeesToPaise(dto.price),
+        note: dto.note,
+      },
+    });
+    this.watcher.track(alert);
+    return alert;
+  }
+
+  @Delete('alerts/:id')
+  async cancel(@CurrentUser() user: User, @Param('id') id: string) {
+    const existing = await this.prisma.priceAlert.findUnique({ where: { id } });
+    if (!existing || existing.userId !== user.id) {
+      throw new NotFoundException('Alert not found');
+    }
+    if (existing.status === AlertStatus.ACTIVE) {
+      try {
+        await this.prisma.priceAlert.update({
+          where: { id },
+          data: { status: AlertStatus.CANCELLED },
+        });
+      } catch (err) {
+        if (
+          err instanceof Prisma.PrismaClientKnownRequestError &&
+          err.code === 'P2025'
+        ) {
+          throw new NotFoundException('Alert not found');
+        }
+        throw err;
+      }
+    }
+    this.watcher.untrack(id);
+    return { ok: true };
+  }
+
+  // For symmetry with limit-watcher debug endpoint.
+  @Get('alerts/watcher/status')
+  status() {
+    return this.watcher.stats();
+  }
+
+  private parseExchange(value: string): Exchange {
+    const upper = value.toUpperCase();
+    if (!isExchange(upper)) {
+      throw new BadRequestException(`Invalid exchange "${value}"`);
+    }
+    // Reference the enum so the import isn't unused if a future caller drops
+    // it; otherwise this is a no-op.
+    AlertCondition;
+    return upper;
+  }
+}

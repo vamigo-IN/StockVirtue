@@ -1,0 +1,33 @@
+import { Module } from '@nestjs/common';
+import { AchievementsModule } from '../achievements/achievements.module';
+import { LearnModule } from '../learn/learn.module';
+import { MarketModule } from '../market/market.module';
+import { PortfolioModule } from '../portfolio/portfolio.module';
+import { RedisModule } from '../redis/redis.module';
+import { SmartApiModule } from '../smartapi/smartapi.module';
+import { AdminAuditService } from './admin-audit.service';
+import { AdminAuthService } from './admin-auth.service';
+import { AdminGuard } from './admin-auth.guard';
+import { AdminHealthService } from './admin-health.service';
+import { AdminStatsService } from './admin-stats.service';
+import { AdminController } from './admin.controller';
+
+@Module({
+  imports: [
+    MarketModule,
+    SmartApiModule,
+    PortfolioModule,
+    RedisModule,
+    LearnModule,
+    AchievementsModule,
+  ],
+  controllers: [AdminController],
+  providers: [
+    AdminAuditService,
+    AdminAuthService,
+    AdminGuard,
+    AdminHealthService,
+    AdminStatsService,
+  ],
+})
+export class AdminModule {}

@@ -1,0 +1,103 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>StockVirtue — tick stream test</title>
+  <style>
+    body { font: 14px ui-monospace, SFMono-Regular, Menlo, monospace; padding: 16px; background:#0e1116; color:#e6edf3; }
+    h1 { font-size: 16px; margin: 0 0 8px; }
+    .row { margin: 8px 0; }
+    input, button { font: inherit; background:#1c2128; color:#e6edf3; border:1px solid #30363d; padding:6px 10px; border-radius:4px; }
+    button { cursor:pointer; }
+    button:hover { background:#262b33; }
+    #status { padding:6px 10px; border-radius:4px; display:inline-block; }
+    .ok { background:#1f6f43; }
+    .bad { background:#7a2a2a; }
+    #log { height: 60vh; overflow: auto; background:#1c2128; border:1px solid #30363d; border-radius:4px; padding:8px; white-space:pre; }
+    .tick { color:#7ee787; }
+    .meta { color:#8b949e; }
+    .err  { color:#ff7b72; }
+  </style>
+</head>
+<body>
+  <h1>StockVirtue tick stream</h1>
+  <div class="row">
+    <span id="status" class="bad">disconnected</span>
+    backend: <input id="url" value="http://localhost:3000" size="30" />
+    <button onclick="connect()">connect</button>
+    <button onclick="disconnect()">disconnect</button>
+  </div>
+  <div class="row">
+    JWT access token: <input id="token" size="80" placeholder="paste accessToken from /auth/otp/verify" />
+  </div>
+  <div class="row">
+    symbols (comma-sep): <input id="symbols" value="SBIN,RELIANCE,INFY,TCS,HDFCBANK" size="50" />
+    exchange: <input id="exchange" value="NSE" size="6" />
+    <button onclick="subscribe()">subscribe</button>
+    <button onclick="unsubscribe()">unsubscribe</button>
+    <button onclick="status()">status</button>
+  </div>
+  <pre id="log"></pre>
+
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
+  <script>
+    let socket = null;
+    const log = document.getElementById('log');
+    const statusEl = document.getElementById('status');
+    function line(cls, text) {
+      const el = document.createElement('span');
+      el.className = cls;
+      el.textContent = `[${new Date().toLocaleTimeString()}] ${text}\n`;
+      log.appendChild(el);
+      log.scrollTop = log.scrollHeight;
+    }
+    function setStatus(connected) {
+      statusEl.className = connected ? 'ok' : 'bad';
+      statusEl.textContent = connected ? 'connected' : 'disconnected';
+    }
+    function connect() {
+      if (socket) socket.disconnect();
+      const url = document.getElementById('url').value.trim();
+      const token = document.getElementById('token').value.trim();
+      if (!token) {
+        line('err', 'paste an access token first (POST /api/auth/otp/verify → accessToken)');
+        return;
+      }
+      socket = io(url, {
+        transports: ['websocket'],
+        auth: { token },
+      });
+      socket.on('connect',    () => { setStatus(true);  line('meta', `connected: ${socket.id}`); });
+      socket.on('disconnect', (r) => { setStatus(false); line('meta', `disconnected: ${r}`); });
+      socket.on('connect_error', (e) => line('err', `error: ${e.message}`));
+      socket.on('tick', (t) => {
+        const extras = [
+          t.open != null ? `O=${t.open}` : null,
+          t.high != null ? `H=${t.high}` : null,
+          t.low != null ? `L=${t.low}` : null,
+          t.close != null ? `C=${t.close}` : null,
+          t.volume != null ? `V=${t.volume}` : null,
+        ].filter(Boolean).join(' ');
+        line('tick', `${t.symbol ?? '???'} (${t.exchange}/${t.token}) ltp=${t.ltp} ${extras}`);
+      });
+    }
+    function disconnect() { socket?.disconnect(); socket = null; }
+    function buildSymbols() {
+      const ex = document.getElementById('exchange').value.trim().toUpperCase();
+      return document.getElementById('symbols').value.split(',').map(s => s.trim()).filter(Boolean).map(symbol => ({ symbol, exchange: ex }));
+    }
+    function subscribe() {
+      if (!socket) return line('err', 'not connected');
+      socket.emit('subscribe', { symbols: buildSymbols() }, (ack) => line('meta', `subscribe ack: ${JSON.stringify(ack)}`));
+    }
+    function unsubscribe() {
+      if (!socket) return line('err', 'not connected');
+      socket.emit('unsubscribe', { symbols: buildSymbols() }, (ack) => line('meta', `unsubscribe ack: ${JSON.stringify(ack)}`));
+    }
+    function status() {
+      if (!socket) return line('err', 'not connected');
+      socket.emit('status', {}, (ack) => line('meta', `status: ${JSON.stringify(ack)}`));
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,879 @@
+import 'dart:async';
+
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../../core/company_names.dart';
+import '../../../core/market_hours.dart';
+import '../../../core/money_format.dart';
+import '../../../data/models/order.dart';
+import '../../../data/models/portfolio.dart';
+import '../../../widgets/empty_state.dart';
+import '../../home/screens/shell_screen.dart';
+import '../../orders/widgets/trade_sheet.dart';
+import '../../share/share_trade.dart';
+import '../../symbol/screens/symbol_detail_screen.dart';
+import '../portfolio_providers.dart';
+import '../widgets/allocation_card.dart';
+import 'analytics_screen.dart';
+import 'portfolio_history_screen.dart';
+import 'sector_heatmap_screen.dart';
+
+const _upColor = Color(0xFF22C55E);
+const _downColor = Color(0xFFEF4444);
+
+class PortfolioScreen extends ConsumerStatefulWidget {
+  const PortfolioScreen({super.key});
+
+  @override
+  ConsumerState<PortfolioScreen> createState() => _PortfolioScreenState();
+}
+
+class _PortfolioScreenState extends ConsumerState<PortfolioScreen> {
+  // Polls the portfolio endpoint every 30s while the market is open so
+  // unrealized P&L and the equity hero track live LTP movement without a
+  // manual pull-to-refresh. The /portfolio endpoint server-side re-fetches
+  // multi-quote LTPs on each call, so this is genuinely live (not cached).
+  Timer? _autoRefresh;
+
+  @override
+  void initState() {
+    super.initState();
+    _autoRefresh = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (!mounted) return;
+      if (!isMarketOpen()) return;
+      ref.invalidate(portfolioProvider);
+    });
+  }
+
+  @override
+  void dispose() {
+    _autoRefresh?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final portfolio = ref.watch(portfolioProvider);
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text(
+          'Portfolio',
+          style: TextStyle(fontWeight: FontWeight.w700),
+        ),
+        actions: const [
+          _LiveBadge(),
+          SizedBox(width: 12),
+        ],
+      ),
+      body: RefreshIndicator(
+        onRefresh: () async {
+          ref.invalidate(portfolioProvider);
+          await ref.read(portfolioProvider.future);
+        },
+        child: portfolio.when(
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (e, _) => ListView(
+            children: [
+              Padding(padding: const EdgeInsets.all(24), child: Text('$e')),
+            ],
+          ),
+          data: (snap) => _Body(snap: snap),
+        ),
+      ),
+    );
+  }
+}
+
+/// "LIVE · auto-refresh 30s" pill rendered in the app bar while the
+/// market is open. Subscribes to [marketStateProvider] so the indicator
+/// flips off the moment the session ends without needing to rebuild
+/// the whole screen.
+class _LiveBadge extends ConsumerWidget {
+  const _LiveBadge();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final open = ref.watch(marketOpenProvider);
+    if (!open) return const SizedBox.shrink();
+    const upColor = Color(0xFF22C55E);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: upColor.withValues(alpha: 0.16),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: const Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _PulseDot(),
+          SizedBox(width: 5),
+          Text(
+            'LIVE',
+            style: TextStyle(
+              color: upColor,
+              fontSize: 10,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 0.6,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PulseDot extends StatefulWidget {
+  const _PulseDot();
+
+  @override
+  State<_PulseDot> createState() => _PulseDotState();
+}
+
+class _PulseDotState extends State<_PulseDot>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1100),
+  )..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _ctrl,
+      builder: (_, _) => Container(
+        width: 6,
+        height: 6,
+        decoration: BoxDecoration(
+          color: const Color(0xFF22C55E)
+              .withValues(alpha: 0.5 + 0.5 * _ctrl.value),
+          shape: BoxShape.circle,
+        ),
+      ),
+    );
+  }
+}
+
+class _Body extends ConsumerWidget {
+  const _Body({required this.snap});
+  final PortfolioSnapshot snap;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final positions = snap.positions;
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+      children: [
+        _EquityHero(snap: snap),
+        const SizedBox(height: 14),
+        _WalletRow(wallet: snap.wallet),
+        const SizedBox(height: 14),
+        _MetricsCard(snap: snap),
+        if (snap.positions.isNotEmpty) ...[
+          const SizedBox(height: 14),
+          AllocationCard(positions: snap.positions),
+        ],
+        const SizedBox(height: 24),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: Row(
+            children: [
+              Text(
+                'Holdings',
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Theme.of(context)
+                      .colorScheme
+                      .surfaceContainerHighest
+                      .withValues(alpha: 0.5),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  '${positions.length}',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: Theme.of(context)
+                        .colorScheme
+                        .onSurface
+                        .withValues(alpha: 0.65),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 10),
+        if (positions.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 24),
+            child: EmptyState(
+              icon: Icons.show_chart,
+              title: 'No open positions',
+              subtitle:
+                  'Pick a stock from your home feed or a watchlist to place your first trade.',
+              actionLabel: 'Go to home',
+              onAction: () =>
+                  ref.read(shellTabIndexProvider.notifier).state = 0,
+            ),
+          )
+        else
+          for (final p in positions) ...[
+            _PositionTile(position: p),
+            const SizedBox(height: 10),
+          ],
+      ],
+    );
+  }
+}
+
+class _EquityHero extends StatelessWidget {
+  const _EquityHero({required this.snap});
+  final PortfolioSnapshot snap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final s = snap.summary;
+    final isUp = s.unrealizedPnL >= 0;
+    final color = isUp ? _upColor : _downColor;
+    final pnlPct = s.invested > 0 ? (s.unrealizedPnL / s.invested) * 100 : 0.0;
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            scheme.primaryContainer.withValues(alpha: 0.55),
+            scheme.surfaceContainerHighest.withValues(alpha: 0.4),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: scheme.outlineVariant.withValues(alpha: 0.35),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Total equity',
+                  style: TextStyle(
+                    color: scheme.onSurface.withValues(alpha: 0.65),
+                    fontSize: 13,
+                    letterSpacing: 0.3,
+                  ),
+                ),
+              ),
+              InkWell(
+                borderRadius: BorderRadius.circular(8),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const AnalyticsScreen(),
+                  ),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.analytics_outlined,
+                        size: 14,
+                        color: scheme.onSurface.withValues(alpha: 0.75),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Analytics',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: scheme.onSurface.withValues(alpha: 0.75),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 4),
+              InkWell(
+                borderRadius: BorderRadius.circular(8),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const SectorHeatmapScreen(),
+                  ),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.grid_view_outlined,
+                        size: 14,
+                        color: scheme.onSurface.withValues(alpha: 0.75),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        'Sectors',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: scheme.onSurface.withValues(alpha: 0.75),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(width: 4),
+              InkWell(
+                borderRadius: BorderRadius.circular(8),
+                onTap: () => Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const PortfolioHistoryScreen(),
+                  ),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.timeline,
+                        size: 14,
+                        color: scheme.onSurface.withValues(alpha: 0.75),
+                      ),
+                      const SizedBox(width: 4),
+                      Text(
+                        'History',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: scheme.onSurface.withValues(alpha: 0.75),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            formatInr(s.totalEquity),
+            style: const TextStyle(
+              fontSize: 30,
+              fontWeight: FontWeight.w700,
+              letterSpacing: -0.5,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      isUp ? Icons.trending_up : Icons.trending_down,
+                      color: color,
+                      size: 14,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      '${isUp ? '+' : ''}${formatInr(s.unrealizedPnL)} '
+                      '(${pnlPct.toStringAsFixed(2)}%)',
+                      style: TextStyle(
+                        color: color,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                'unrealized',
+                style: TextStyle(
+                  color: scheme.onSurface.withValues(alpha: 0.55),
+                  fontSize: 12,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _WalletRow extends StatelessWidget {
+  const _WalletRow({required this.wallet});
+  final WalletInfo wallet;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: _MiniCard(
+            label: 'Cash balance',
+            value: formatInr(wallet.balance),
+            icon: Icons.account_balance_wallet_outlined,
+            tint: const Color(0xFF22C55E),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: _MiniCard(
+            label: 'Available',
+            value: formatInr(wallet.available),
+            icon: Icons.savings_outlined,
+            tint: const Color(0xFF06B6D4),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _MiniCard extends StatelessWidget {
+  const _MiniCard({
+    required this.label,
+    required this.value,
+    required this.icon,
+    required this.tint,
+  });
+
+  final String label;
+  final String value;
+  final IconData icon;
+  final Color tint;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest.withValues(alpha: 0.4),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: scheme.outlineVariant.withValues(alpha: 0.3),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 28,
+                height: 28,
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: tint.withValues(alpha: 0.18),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(icon, color: tint, size: 15),
+              ),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: scheme.onSurface.withValues(alpha: 0.6),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            value,
+            style: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              letterSpacing: -0.3,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MetricsCard extends StatelessWidget {
+  const _MetricsCard({required this.snap});
+  final PortfolioSnapshot snap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final s = snap.summary;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 8),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest.withValues(alpha: 0.35),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(
+          color: scheme.outlineVariant.withValues(alpha: 0.3),
+        ),
+      ),
+      child: Column(
+        children: [
+          _MetricRow(label: 'Invested', value: formatInr(s.invested)),
+          _MetricRow(label: 'Current value', value: formatInr(s.currentValue)),
+          Container(
+            height: 1,
+            margin: const EdgeInsets.symmetric(vertical: 8),
+            color: scheme.outlineVariant.withValues(alpha: 0.2),
+          ),
+          _MetricRow(
+            label: 'Realized P&L (lifetime)',
+            value:
+                '${s.totalRealizedPnL >= 0 ? '+' : ''}${formatInr(s.totalRealizedPnL)}',
+            valueColor:
+                s.totalRealizedPnL >= 0 ? _upColor : _downColor,
+          ),
+          _MetricRow(
+            label: 'Brokerage & taxes paid',
+            value: formatInr(s.totalFeesPaid),
+            valueColor: scheme.onSurface.withValues(alpha: 0.7),
+          ),
+          Builder(builder: (context) {
+            // Win ratio over positions that have actually realized something
+            // (a partial sell, a cover-short, a settlement). We deliberately
+            // ignore zero-PnL positions so an opening leg of an existing
+            // trade doesn't dilute the ratio toward 0.
+            final settled = snap.positions
+                .where((p) => p.realizedPnL != 0)
+                .toList();
+            if (settled.isEmpty) return const SizedBox.shrink();
+            final winners =
+                settled.where((p) => p.realizedPnL > 0).length;
+            final ratio = winners / settled.length;
+            final color = ratio >= 0.5 ? _upColor : _downColor;
+            return _MetricRow(
+              label: 'Win ratio (closed positions)',
+              value: '${(ratio * 100).toStringAsFixed(1)}% '
+                  '($winners / ${settled.length})',
+              valueColor: color,
+            );
+          }),
+        ],
+      ),
+    );
+  }
+}
+
+class _MetricRow extends StatelessWidget {
+  const _MetricRow({
+    required this.label,
+    required this.value,
+    this.valueColor,
+  });
+
+  final String label;
+  final String value;
+  final Color? valueColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 5),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12.5,
+              color: Theme.of(context)
+                  .colorScheme
+                  .onSurface
+                  .withValues(alpha: 0.62),
+            ),
+          ),
+          Text(
+            value,
+            style: TextStyle(
+              fontWeight: FontWeight.w600,
+              fontSize: 13,
+              color: valueColor,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PositionTile extends ConsumerWidget {
+  const _PositionTile({required this.position});
+  final PortfolioPosition position;
+
+  Future<void> _squareOff(BuildContext context, WidgetRef ref) async {
+    // Closing a long means selling, closing a short means buying. Quantity
+    // is always |position.quantity|; product matches the position's so we
+    // close the exact same slot (an MIS long doesn't accidentally trigger
+    // an MIS short on the CNC book).
+    final isShort = position.quantity < 0;
+    final wallet = ref.read(portfolioProvider).value?.wallet.balance ?? 0;
+    final order = await showTradeSheet(
+      context,
+      side: isShort ? OrderSide.buy : OrderSide.sell,
+      symbol: position.symbol,
+      exchange: position.exchange,
+      symboltoken: position.symboltoken,
+      referencePrice: position.ltp,
+      ownedQuantity: position.quantity,
+      walletBalance: wallet,
+    );
+    if (order != null) {
+      ref.invalidate(portfolioProvider);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final scheme = Theme.of(context).colorScheme;
+    final isUp = position.unrealizedPnL >= 0;
+    final color = isUp ? _upColor : _downColor;
+    final qty = position.quantity;
+    final isShort = qty < 0;
+    final name = companyNameFor(position.symbol);
+    final ltp = position.ltp;
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onLongPress: () => shareTrade(
+        context,
+        payload: ShareTradePayload.fromPosition(position),
+      ),
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => SymbolDetailScreen(
+            symbol: position.symbol,
+            tradingsymbol: position.tradingsymbol,
+            symboltoken: position.symboltoken,
+            exchange: position.exchange,
+          ),
+        ),
+      ),
+      child: Ink(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+        decoration: BoxDecoration(
+          color: scheme.surfaceContainerHighest.withValues(alpha: 0.4),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: scheme.outlineVariant.withValues(alpha: 0.3),
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                fontSize: 14.5,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          _ProductBadge(intraday: position.isIntraday),
+                          if (isShort) ...[
+                            const SizedBox(width: 4),
+                            _ShortBadge(),
+                          ],
+                        ],
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        '${qty.abs()} @ ${formatInr(position.avgPrice)}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: scheme.onSurface.withValues(alpha: 0.6),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Text(
+                      ltp != null ? formatInr(ltp) : '—',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      '${isUp ? '+' : ''}${formatInr(position.unrealizedPnL)} '
+                      '(${position.unrealizedPnLPct.toStringAsFixed(2)}%)',
+                      style: TextStyle(
+                        color: color,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Container(
+              height: 1,
+              color: scheme.outlineVariant.withValues(alpha: 0.18),
+            ),
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Invested ${formatInr(position.invested)} · Now '
+                    '${formatInr(position.currentValue)}',
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      color: scheme.onSurface.withValues(alpha: 0.6),
+                    ),
+                  ),
+                ),
+                TextButton.icon(
+                  onPressed: () => _squareOff(context, ref),
+                  icon: const Icon(
+                    Icons.close_fullscreen,
+                    size: 14,
+                    color: _downColor,
+                  ),
+                  label: const Text(
+                    'Square off',
+                    style: TextStyle(
+                      color: _downColor,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 12,
+                    ),
+                  ),
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    minimumSize: const Size(0, 28),
+                    backgroundColor: _downColor.withValues(alpha: 0.1),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ProductBadge extends StatelessWidget {
+  const _ProductBadge({required this.intraday});
+  final bool intraday;
+
+  @override
+  Widget build(BuildContext context) {
+    final color =
+        intraday ? const Color(0xFFF59E0B) : const Color(0xFF06B6D4);
+    final label = intraday ? 'MIS' : 'CNC';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.18),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: color,
+          fontSize: 9.5,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.4,
+        ),
+      ),
+    );
+  }
+}
+
+class _ShortBadge extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+      decoration: BoxDecoration(
+        color: _downColor.withValues(alpha: 0.2),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: const Text(
+        'SHORT',
+        style: TextStyle(
+          color: _downColor,
+          fontSize: 9.5,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.4,
+        ),
+      ),
+    );
+  }
+}

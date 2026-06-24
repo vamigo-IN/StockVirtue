@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "orders" ADD COLUMN     "feesP" BIGINT NOT NULL DEFAULT 0;

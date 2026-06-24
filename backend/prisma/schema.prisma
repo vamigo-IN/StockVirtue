@@ -1,0 +1,452 @@
+// StockVirtue backend — Prisma schema
+// Edit and run `npx prisma migrate dev --name <change>` to evolve the DB.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserStatus {
+  ACTIVE
+  BLOCKED
+  PENDING
+}
+
+/// Backend dashboard operator. Completely separate from [User] — admins
+/// don't trade, don't carry watchlists, don't show up in leaderboards.
+/// Auth is email + password (scrypt-hashed) plus a signed session cookie,
+/// not the phone-OTP flow normal users go through. Boot-time seed from
+/// ADMIN_EMAIL / ADMIN_PASSWORD env vars; rotate by updating env + restart.
+model Admin {
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String
+  name         String?
+  createdAt    DateTime  @default(now())
+  lastLoginAt  DateTime?
+
+  @@map("admins")
+}
+
+enum OrderSide {
+  BUY
+  SELL
+}
+
+enum OrderType {
+  MARKET
+  LIMIT
+  STOP_LOSS // SL-M: triggers a market fill when price crosses triggerPriceP
+  STOP_LOSS_LIMIT // SL-L: trigger flips the order into a regular pending LIMIT
+  TRAILING_STOP // SELL only — trigger ratchets up with LTP, fires on retracement
+}
+
+enum OrderStatus {
+  PENDING
+  FILLED
+  CANCELLED
+  REJECTED
+}
+
+enum OrderProduct {
+  DELIVERY // CNC: T+1, full STT both sides, no brokerage
+  INTRADAY // MIS: square-off same day, lower STT, brokerage applies. TODO: auto-square.
+}
+
+/// Admin-toggleable feature flags. Currently gates which auth methods the
+/// mobile app offers — e.g. pausing Mobile OTP login. The public
+/// /auth/config endpoint reads these; the admin panel writes them. Rows are
+/// seeded with sane defaults on boot, so a missing row reads as its default.
+model FeatureFlag {
+  key       String   @id
+  enabled   Boolean
+  label     String?
+  updatedAt DateTime @default(now()) @updatedAt
+
+  @@map("feature_flags")
+}
+
+/// Append-only log of privileged admin actions, for accountability. Written
+/// by the admin panel on every state-changing operation (block/unblock,
+/// feature-flag toggle, snapshot run, login). Never updated or deleted.
+model AdminAuditLog {
+  id         String   @id @default(cuid())
+  adminId    String?
+  adminEmail String
+  action     String // e.g. 'user.block', 'flag.set', 'snapshot.run', 'login'
+  target     String? // affected entity id (userId, flag key, …)
+  detail     String? // freeform extra context
+  ip         String?
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+  @@map("admin_audit_logs")
+}
+
+model User {
+  id          String     @id @default(cuid())
+  phone       String?    @unique
+  displayName String?
+  emailAlias  String?    @unique
+  firebaseUid String?    @unique
+  /// scrypt hash for server-side email/password accounts (PHC-ish format,
+  /// same scheme as Admin). Null for Firebase-only users (Google/phone).
+  passwordHash String?
+  /// True once the email/password user has confirmed ownership via the
+  /// emailed OTP. Firebase identities (Google) are considered verified by
+  /// the provider and set this true on creation.
+  emailVerified Boolean  @default(false)
+  /// Profile photo URL from a federated provider (e.g. Google `picture`
+  /// claim). Backfilled on each sign-in; null for users without one.
+  avatarUrl   String?
+  /// Opt-in for a per-trade email on every order fill. Default OFF — an active
+  /// user fills many orders/day, so this would be spammy on by default.
+  /// High-signal emails (referral redeemed, password reset) are always sent.
+  tradeEmailsOptIn Boolean @default(false)
+  /// Set the first time achievements are evaluated for this account. New
+  /// accounts get it stamped at creation (so their genuine first unlock
+  /// notifies). Existing accounts are null until their first evaluation,
+  /// which silently snapshots historical unlocks instead of spamming push/
+  /// email — see AchievementsService.evaluate.
+  achievementsBaselinedAt DateTime?
+  status      UserStatus @default(ACTIVE)
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  lastLoginAt DateTime?
+  /// Public invite code — same FNV-1a hash the client used to display
+  /// before the redemption flow shipped, so codes already in the wild
+  /// keep working. Nullable for backfill safety; new users always get
+  /// one populated at creation time.
+  referralCode String?  @unique
+  /// FK to the user whose code I redeemed. Set once on successful
+  /// redemption and never changed. Each user can redeem at most one
+  /// code in their lifetime.
+  referredById String?
+
+  watchlists Watchlist[]
+  wallet     Wallet?
+  orders     Order[]
+  positions  Position[]
+  leaderboard LeaderboardEntry?
+  deviceTokens DeviceToken[]
+  priceAlerts  PriceAlert[]
+  portfolioSnapshots PortfolioSnapshot[]
+  ownedRooms      Room[]       @relation("RoomOwner")
+  roomMemberships RoomMember[]
+  referredBy      User?        @relation("UserReferrals", fields: [referredById], references: [id], onDelete: SetNull)
+  referrals       User[]       @relation("UserReferrals")
+  achievements    UserAchievement[]
+  lessonProgress  LessonProgress[]
+  quizAttempts    QuizAttempt[]
+
+  @@index([phone])
+  @@index([referredById])
+  @@map("users")
+}
+
+model DeviceToken {
+  id         String   @id @default(cuid())
+  userId     String
+  token      String   @unique
+  platform   String // 'android' | 'ios' | 'web'
+  createdAt  DateTime @default(now())
+  lastSeenAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@map("device_tokens")
+}
+
+enum AlertCondition {
+  ABOVE
+  BELOW
+}
+
+enum AlertStatus {
+  ACTIVE
+  TRIGGERED
+  CANCELLED
+}
+
+model PriceAlert {
+  id            String         @id @default(cuid())
+  userId        String
+  symbol        String
+  tradingsymbol String
+  symboltoken   String
+  exchange      String
+  condition     AlertCondition
+  priceP        BigInt
+  status        AlertStatus    @default(ACTIVE)
+  note          String?
+  createdAt     DateTime       @default(now())
+  triggeredAt   DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([status, symboltoken, exchange])
+  @@map("price_alerts")
+}
+
+model Watchlist {
+  id        String   @id @default(cuid())
+  userId    String
+  name      String
+  position  Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user  User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  items WatchlistItem[]
+
+  @@unique([userId, name])
+  @@index([userId])
+  @@map("watchlists")
+}
+
+model WatchlistItem {
+  id            String   @id @default(cuid())
+  watchlistId   String
+  symbol        String
+  tradingsymbol String
+  symboltoken   String
+  exchange      String
+  position      Int      @default(0)
+  addedAt       DateTime @default(now())
+
+  watchlist Watchlist @relation(fields: [watchlistId], references: [id], onDelete: Cascade)
+
+  @@unique([watchlistId, symboltoken, exchange])
+  @@index([watchlistId])
+  @@map("watchlist_items")
+}
+
+// All money stored as BigInt paise (1 INR = 100 paise) to avoid float drift.
+// API responses convert to rupees (number) at the boundary.
+
+model Wallet {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  balanceP        BigInt   @default(100000000) // ₹10,00,000 starting balance
+  reservedP       BigInt   @default(0) // cash locked by PENDING buy-limit orders
+  marginReservedP BigInt   @default(0) // margin locked by open F&O short positions
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("wallets")
+}
+
+model Order {
+  id            String      @id @default(cuid())
+  userId        String
+  symbol        String
+  tradingsymbol String
+  symboltoken   String
+  exchange      String
+  side          OrderSide
+  type          OrderType    @default(MARKET)
+  product       OrderProduct @default(DELIVERY)
+  quantity      Int
+  limitPriceP   BigInt?
+  triggerPriceP BigInt?
+  trailAmountP  BigInt?     // immutable distance for TRAILING_STOP
+  fillPriceP    BigInt?
+  feesP         BigInt      @default(0) // total brokerage + taxes + charges at fill time
+  shortIntent   Boolean     @default(false) // SELL triggered orders that open a F&O short
+  reservedMarginP BigInt    @default(0) // margin locked by this pending short-open order
+  status        OrderStatus @default(PENDING)
+  rejectReason  String?
+  createdAt     DateTime    @default(now())
+  filledAt      DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([userId, status])
+  @@map("orders")
+}
+
+/// One row per user per trading-day-close. Written by the daily-snapshot
+/// cron at midnight IST. Backs equity curves, the calendar heatmap, period
+/// leaderboards (weekly / monthly), risk metrics (max drawdown, Sharpe),
+/// and any other "compare this user's equity to a past point" UI.
+model PortfolioSnapshot {
+  id              String   @id @default(cuid())
+  userId          String
+  /// Local IST date (truncated to midnight) the snapshot represents. We
+  /// store this as a DateTime for sortability; only the date portion is
+  /// meaningful.
+  asOfDate        DateTime
+  totalEquityP    BigInt
+  investedP       BigInt
+  realizedPnLP    BigInt
+  unrealizedPnLP  BigInt
+  balanceP        BigInt
+  marginReservedP BigInt
+  createdAt       DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, asOfDate])
+  @@index([userId, asOfDate])
+  @@map("portfolio_snapshots")
+}
+
+model LeaderboardEntry {
+  userId       String   @id
+  rank         Int
+  displayName  String?
+  totalEquityP BigInt
+  returnPct    Float
+  computedAt   DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([rank])
+  @@map("leaderboard_entries")
+}
+
+model Position {
+  id            String       @id @default(cuid())
+  userId        String
+  symbol        String
+  tradingsymbol String
+  symboltoken   String
+  exchange      String
+  product       OrderProduct @default(DELIVERY)
+  quantity      Int // signed: positive = long, negative = short
+  reservedQty   Int          @default(0) // qty locked by PENDING sell orders
+  avgPriceP     BigInt
+  marginP       BigInt       @default(0) // margin reserved for this short position
+  realizedPnLP  BigInt       @default(0)
+  openedAt      DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, symboltoken, exchange, product])
+  @@index([userId])
+  @@map("positions")
+}
+
+/// Multiplayer trading room. The room itself doesn't hold balances or
+/// trades — every member trades with their existing global wallet/
+/// positions. A [RoomMember.baselineEquityP] snapshot at join-time lets
+/// us compute "return since joining" per member without rewriting the
+/// trading stack to be room-scoped.
+///
+/// Tournament mode (isTournament = true) adds optional [startsAt] /
+/// [endsAt] bounds. The leaderboard freezes at endsAt; new joiners are
+/// rejected after a tournament starts so the ladder stays fair.
+model Room {
+  id          String   @id @default(cuid())
+  /// 6-character invite code (uppercase A-Z + 2-9, ambiguous chars
+  /// removed). Shared verbatim — joining flows hit /rooms/join/:code.
+  code        String   @unique
+  name        String
+  description String?
+  ownerId     String
+  isPublic    Boolean  @default(false)
+  isTournament Boolean @default(false)
+  /// Tournament window. Null for evergreen rooms; both required when
+  /// isTournament is true. Stored as full timestamps so we can show
+  /// IST-localized start/end on the client without ambiguity.
+  startsAt    DateTime?
+  endsAt      DateTime?
+  /// Soft cap. The service enforces this on join; UI shows X/Y members.
+  /// 0 = unlimited.
+  maxMembers  Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  owner   User         @relation("RoomOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  members RoomMember[]
+
+  @@index([ownerId])
+  @@index([isPublic, isTournament])
+  @@map("rooms")
+}
+
+/// One row per (user, room) pair the user has joined. The
+/// [baselineEquityP] is the totalEquity snapshot at join-time — the
+/// leaderboard is sorted by (currentEquity - baselineEquity) / baseline.
+/// Fair across members who joined at different times.
+model RoomMember {
+  id               String   @id @default(cuid())
+  roomId           String
+  userId           String
+  baselineEquityP  BigInt
+  joinedAt         DateTime @default(now())
+
+  room Room @relation(fields: [roomId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([roomId, userId])
+  @@index([userId])
+  @@index([roomId])
+  @@map("room_members")
+}
+
+/// A badge a user has permanently unlocked. The badge *catalog* (id, name,
+/// hint, icon, colour) lives in code on both the client and server; this
+/// table stores only the per-user unlock event, so the server is the source
+/// of truth for "what's earned" — anti-spoof, survives reinstall, and the
+/// same across devices. [badgeId] matches the code catalog id (e.g.
+/// 'first_trade'). Re-evaluation is idempotent via the unique constraint.
+model UserAchievement {
+  id         String   @id @default(cuid())
+  userId     String
+  badgeId    String
+  unlockedAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, badgeId])
+  @@index([userId])
+  @@index([badgeId])
+  @@map("user_achievements")
+}
+
+/// One row per (user, lesson) the user has completed in the Trading Academy.
+/// Lesson *content* lives in code (mobile); this is just the completion
+/// record, so progress is server-authoritative, syncs across devices, and
+/// can drive learning achievements. [lessonId] matches the code lesson id
+/// (e.g. 'candles').
+model LessonProgress {
+  id          String   @id @default(cuid())
+  userId      String
+  lessonId    String
+  completedAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, lessonId])
+  @@index([userId])
+  @@map("lesson_progress")
+}
+
+/// One row per end-of-lesson quiz attempt. Full history is kept (retakes are
+/// allowed) so we can show a best score and power the 'quiz ace' achievement.
+/// [score]/[total] are question counts, not money. [passed] is score == total.
+model QuizAttempt {
+  id          String   @id @default(cuid())
+  userId      String
+  lessonId    String
+  score       Int
+  total       Int
+  passed      Boolean
+  attemptedAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, lessonId])
+  @@map("quiz_attempts")
+}

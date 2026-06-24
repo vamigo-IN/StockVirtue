@@ -1,0 +1,83 @@
+/// Friendly company names for popular Indian equities and indices.
+///
+/// Angel One's scrip master only ships short tickers (e.g. "RELIANCE",
+/// "SBIN") — no full company names. Until we adopt a richer instrument
+/// catalog, this curated map gives the symbol-detail screen something more
+/// readable as the page heading. Symbols not in the map fall back to the
+/// ticker.
+const Map<String, String> _companyNames = {
+  // Large-cap equities
+  'RELIANCE': 'Reliance Industries',
+  'TCS': 'Tata Consultancy Services',
+  'HDFCBANK': 'HDFC Bank',
+  'INFY': 'Infosys',
+  'ICICIBANK': 'ICICI Bank',
+  'HINDUNILVR': 'Hindustan Unilever',
+  'ITC': 'ITC',
+  'SBIN': 'State Bank of India',
+  'BHARTIARTL': 'Bharti Airtel',
+  'KOTAKBANK': 'Kotak Mahindra Bank',
+  'LT': 'Larsen & Toubro',
+  'AXISBANK': 'Axis Bank',
+  'BAJFINANCE': 'Bajaj Finance',
+  'BAJAJFINSV': 'Bajaj Finserv',
+  'HCLTECH': 'HCL Technologies',
+  'WIPRO': 'Wipro',
+  'ASIANPAINT': 'Asian Paints',
+  'MARUTI': 'Maruti Suzuki India',
+  'M&M': 'Mahindra & Mahindra',
+  'TATAMOTORS': 'Tata Motors',
+  'TATASTEEL': 'Tata Steel',
+  'ULTRACEMCO': 'UltraTech Cement',
+  'SUNPHARMA': 'Sun Pharmaceutical',
+  'DRREDDY': "Dr. Reddy's Laboratories",
+  'CIPLA': 'Cipla',
+  'NESTLEIND': 'Nestlé India',
+  'BRITANNIA': 'Britannia Industries',
+  'TITAN': 'Titan Company',
+  'POWERGRID': 'Power Grid Corporation',
+  'NTPC': 'NTPC',
+  'ONGC': 'Oil and Natural Gas Corp.',
+  'COALINDIA': 'Coal India',
+  'IOC': 'Indian Oil Corporation',
+  'BPCL': 'Bharat Petroleum',
+  'HINDALCO': 'Hindalco Industries',
+  'JSWSTEEL': 'JSW Steel',
+  'GRASIM': 'Grasim Industries',
+  'ADANIENT': 'Adani Enterprises',
+  'ADANIPORTS': 'Adani Ports',
+  'TECHM': 'Tech Mahindra',
+  'INDUSINDBK': 'IndusInd Bank',
+  'EICHERMOT': 'Eicher Motors',
+  'HEROMOTOCO': 'Hero MotoCorp',
+  'BAJAJ-AUTO': 'Bajaj Auto',
+  'DIVISLAB': 'Divi’s Laboratories',
+  'APOLLOHOSP': 'Apollo Hospitals',
+  'HDFCLIFE': 'HDFC Life Insurance',
+  'SBILIFE': 'SBI Life Insurance',
+  'BAJAJHLDNG': 'Bajaj Holdings',
+  'PIDILITIND': 'Pidilite Industries',
+  'DABUR': 'Dabur India',
+  'GODREJCP': 'Godrej Consumer Products',
+  'MARICO': 'Marico',
+  'BERGEPAINT': 'Berger Paints',
+  'LICI': 'Life Insurance Corp.',
+  'DMART': 'Avenue Supermarts',
+  'PAYTM': 'One 97 Communications',
+  'NYKAA': 'FSN E-Commerce Ventures',
+  'ZOMATO': 'Zomato',
+  // Major indices
+  'NIFTY': 'Nifty 50',
+  'BANKNIFTY': 'Nifty Bank',
+  'FINNIFTY': 'Nifty Financial Services',
+  'MIDCPNIFTY': 'Nifty Midcap Select',
+  'NIFTYNXT50': 'Nifty Next 50',
+  'SENSEX': 'BSE Sensex',
+  'BANKEX': 'BSE Bankex',
+  'SENSEX50': 'BSE Sensex 50',
+};
+
+/// Returns the friendly company name for [symbol] if known, otherwise the
+/// symbol itself (the ticker stem).
+String companyNameFor(String symbol) =>
+    _companyNames[symbol.toUpperCase()] ?? symbol;

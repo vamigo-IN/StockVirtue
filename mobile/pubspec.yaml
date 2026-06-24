@@ -1,0 +1,48 @@
+name: stockvirtue
+description: "StockVirtue — Indian stock market simulator with virtual money."
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.11.5
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+
+  # State management
+  flutter_riverpod: ^3.3.2
+
+  # HTTP + interceptors
+  dio: ^5.7.0
+  pretty_dio_logger: ^1.4.0
+
+  # Secure token storage (Android/iOS/macOS/Linux/Windows; web falls back to localStorage)
+  flutter_secure_storage: ^10.3.1
+
+  # Socket.IO client for live tick stream
+  socket_io_client: ^3.0.0
+
+  # TradingView chart embedding on native platforms
+  webview_flutter: ^4.10.0
+  # package:web is provided transitively by Flutter SDK; pinned here for the
+  # iframe widget on web.
+  web: ^1.1.0
+
+  # Trade-history export sharing (native share sheet / Web Share API)
+  share_plus: ^13.1.0
+
+  # Real SMS OTP + Google sign-in via Firebase. Init is gated so the app
+  # still runs in dev-OTP mode without firebase_options.dart present.
+  firebase_core: ^4.11.0
+  firebase_auth: ^6.5.3
+  google_sign_in: ^7.2.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true

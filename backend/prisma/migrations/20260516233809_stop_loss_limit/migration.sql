@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "OrderType" ADD VALUE 'STOP_LOSS_LIMIT';

@@ -1,0 +1,64 @@
+# ── secrets ────────────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+**/.env
+!**/.env.example
+*.pem
+*.key
+# Android release-signing material — NEVER commit (keep the .example).
+*.jks
+*.keystore
+*.p12
+**/key.properties
+!**/key.properties.example
+# Stray service-account / credential files (FCM_SERVICE_ACCOUNT lives in .env).
+**/service-account*.json
+**/*serviceaccount*.json
+**/firebase-adminsdk*.json
+
+# ── node / nest ────────────────────────────────────────────────
+node_modules/
+dist/
+build/
+coverage/
+.nyc_output/
+*.tsbuildinfo
+.eslintcache
+
+# ── logs ───────────────────────────────────────────────────────
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# ── flutter / dart ─────────────────────────────────────────────
+mobile/.dart_tool/
+mobile/.packages
+mobile/.pub-cache/
+mobile/.pub/
+mobile/build/
+mobile/.flutter-plugins
+mobile/.flutter-plugins-dependencies
+mobile/ios/Pods/
+mobile/ios/.symlinks/
+mobile/android/.gradle/
+mobile/android/local.properties
+
+# ── docker volumes (local) ─────────────────────────────────────
+.docker-data/
+
+# ── runtime caches (scrip master, etc.) ────────────────────────
+.cache/
+
+# ── editor ─────────────────────────────────────────────────────
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.swp
+.DS_Store
+Thumbs.db
