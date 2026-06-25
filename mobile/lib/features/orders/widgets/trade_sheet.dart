@@ -245,13 +245,20 @@ class _TradeSheetState extends ConsumerState<_TradeSheet> {
           ),
         );
       } else {
+        // A MARKET order that didn't fill immediately was queued because the
+        // market is closed — it executes at the open price when the market
+        // next opens. Other pending types wait for their price trigger.
+        final isAfterMarket = _type == OrderType.market;
         unawaited(
           notifications.push(
             kind: AppNotificationKind.orderPlaced,
-            title: '$side ${order.quantity} ${widget.symbol} pending',
-            body:
-                '${_typeLabelFor(_type)} order on ${widget.exchange} — '
-                'waiting for trigger',
+            title: '$side ${order.quantity} ${widget.symbol} '
+                '${isAfterMarket ? 'queued' : 'pending'}',
+            body: isAfterMarket
+                ? 'Market is closed — this order will execute at the '
+                    'open price when the market reopens.'
+                : '${_typeLabelFor(_type)} order on ${widget.exchange} — '
+                    'waiting for trigger',
           ),
         );
       }

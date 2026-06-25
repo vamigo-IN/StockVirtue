@@ -15,6 +15,7 @@ import {
 } from '@prisma/client';
 import { Exchange } from '../common/exchange';
 import { computeFees } from '../common/fees';
+import { isMarketOpen } from '../common/market-hours';
 import { FeatureFlagsService } from '../feature-flags/feature-flags.service';
 import {
   isFnoInstrumentType,
@@ -135,7 +136,33 @@ export class OrdersService {
       }
       return this.placeTrailingStop({ ...input, type, inst });
     }
+    // MARKET. When the market is OPEN we fill immediately at the live price.
+    // When it's CLOSED, we queue an after-market order (AMO): it sits PENDING
+    // and the tick-watcher fills it at the open price on the first live tick
+    // when the market next opens. (Users wanting a specific price use a LIMIT.)
+    if (!isMarketOpen()) {
+      return this.placePendingMarket({ ...input, type, inst });
+    }
     return this.placeMarket({ ...input, type, inst });
+  }
+
+  /// After-market MARKET order: reserve at the last-known price and queue it
+  /// PENDING so the tick-watcher fills it at the open price when the market
+  /// next opens. Reuses the LIMIT reservation/short-open path; the watcher
+  /// fires a pending MARKET unconditionally (vs. on a price threshold).
+  private async placePendingMarket(
+    input: PlaceOrderInput & { inst: Instrument },
+  ) {
+    const ltp = await this.fetchLtpRupees(input.inst);
+    if (ltp === null) {
+      throw new BadRequestException(
+        'Live price is unavailable for this symbol right now. Try again shortly.',
+      );
+    }
+    return this.placeLimit(
+      { ...input, limitPrice: ltp },
+      OrderType.MARKET,
+    );
   }
 
   /// Last traded price (in rupees) for any instrument, or null if the feed has
@@ -369,7 +396,12 @@ export class OrdersService {
     });
   }
 
-  private async placeLimit(input: PlaceOrderInput & { inst: Instrument }) {
+  /// `orderType` is LIMIT for a real limit order; placePendingMarket passes
+  /// MARKET to queue an after-market order through the same reservation path.
+  private async placeLimit(
+    input: PlaceOrderInput & { inst: Instrument },
+    orderType: OrderType = OrderType.LIMIT,
+  ) {
     const { inst } = input;
     const product = input.product ?? OrderProduct.DELIVERY;
     const limitPriceP = rupeesToPaise(input.limitPrice!);
@@ -433,7 +465,7 @@ export class OrdersService {
               symboltoken: inst.token,
               exchange: inst.exchange,
               side: input.side,
-              type: OrderType.LIMIT,
+              type: orderType,
               product,
               quantity: input.quantity,
               limitPriceP,
@@ -443,7 +475,7 @@ export class OrdersService {
             },
           });
           this.logger.log(
-            `[${input.userId}] LIMIT SHORT ${product} SELL ${input.quantity} ${inst.name} @ ₹${input.limitPrice} (pending, margin ₹${Number(marginP) / 100})`,
+            `[${input.userId}] ${orderType} SHORT ${product} SELL ${input.quantity} ${inst.name} @ ₹${input.limitPrice} (pending, margin ₹${Number(marginP) / 100})`,
           );
           return order;
         } else {
@@ -459,7 +491,7 @@ export class OrdersService {
           symboltoken: inst.token,
           exchange: inst.exchange,
           side: input.side,
-          type: OrderType.LIMIT,
+          type: orderType,
           product,
           quantity: input.quantity,
           limitPriceP,
@@ -467,7 +499,7 @@ export class OrdersService {
         },
       });
       this.logger.log(
-        `[${input.userId}] LIMIT ${product} ${input.side} ${input.quantity} ${inst.name} @ ₹${input.limitPrice} (pending)`,
+        `[${input.userId}] ${orderType} ${product} ${input.side} ${input.quantity} ${inst.name} @ ₹${input.limitPrice} (pending)`,
       );
       return order;
     });
@@ -858,12 +890,16 @@ export class OrdersService {
         order.status !== OrderStatus.PENDING ||
         (order.type !== OrderType.LIMIT &&
           order.type !== OrderType.STOP_LOSS &&
-          order.type !== OrderType.TRAILING_STOP)
+          order.type !== OrderType.TRAILING_STOP &&
+          order.type !== OrderType.MARKET)
       ) {
         return null;
       }
+      // For a queued after-market MARKET order the reservation reference is its
+      // limitPriceP (the last-known price captured at placement); it still fills
+      // at the live tick price below.
       const thresholdP =
-        order.type === OrderType.LIMIT
+        order.type === OrderType.LIMIT || order.type === OrderType.MARKET
           ? order.limitPriceP
           : order.triggerPriceP;
       if (thresholdP === null) return null;
@@ -933,6 +969,26 @@ export class OrdersService {
             },
           });
         } else {
+          // An after-market MARKET order reserved at the prior price; if the
+          // stock gaps up at open the live cost can exceed the reserved hold.
+          // Reject cleanly rather than let the balance go negative.
+          if (
+            order.type === OrderType.MARKET &&
+            wallet.balanceP < notionalP + feesP
+          ) {
+            await tx.wallet.update({
+              where: { userId: order.userId },
+              data: { reservedP: wallet.reservedP - reservedP },
+            });
+            return tx.order.update({
+              where: { id: orderId },
+              data: {
+                status: OrderStatus.REJECTED,
+                rejectReason:
+                  'Insufficient funds to fill at the market-open price',
+              },
+            });
+          }
           await tx.wallet.update({
             where: { userId: order.userId },
             data: {

@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { Order, OrderSide, OrderStatus, OrderType } from '@prisma/client';
 import { Exchange, isExchange } from '../common/exchange';
+import { isMarketOpen } from '../common/market-hours';
 import { rupeesToPaise } from '../common/money';
 // (re-export needed below)
 import { PrismaService } from '../prisma/prisma.service';
@@ -32,6 +33,9 @@ const TRACKED_TYPES = [
   OrderType.STOP_LOSS,
   OrderType.STOP_LOSS_LIMIT,
   OrderType.TRAILING_STOP,
+  // Queued after-market MARKET orders — filled at the open price on the first
+  // live tick once the market opens (see decide()).
+  OrderType.MARKET,
 ];
 
 @Injectable()
@@ -70,7 +74,11 @@ export class LimitWatcherService implements OnModuleInit {
     let thresholdP: bigint | null = null;
     let limitRupees: number | null = null;
     let trailRupees: number | null = null;
-    if (order.type === OrderType.LIMIT) {
+    if (order.type === OrderType.MARKET) {
+      // Pending after-market order — limitPriceP holds the reservation price;
+      // it fires on the first tick (see decide), not on a threshold crossing.
+      thresholdP = order.limitPriceP;
+    } else if (order.type === OrderType.LIMIT) {
       thresholdP = order.limitPriceP;
     } else if (order.type === OrderType.STOP_LOSS) {
       thresholdP = order.triggerPriceP;
@@ -128,6 +136,11 @@ export class LimitWatcherService implements OnModuleInit {
     order: TrackedOrder,
     ltp: number,
   ): { fire: boolean; convert: boolean } {
+    if (order.type === OrderType.MARKET) {
+      // After-market order: fill at the open price on the first tick once the
+      // regular session is open (ignore any pre-open/indicative ticks).
+      return { fire: isMarketOpen(), convert: false };
+    }
     if (order.type === OrderType.LIMIT) {
       const fire =
         order.side === OrderSide.BUY
