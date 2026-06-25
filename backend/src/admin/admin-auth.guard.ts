@@ -50,37 +50,65 @@ export class AdminGuard implements CanActivate {
 }
 
 /// True when the Origin/Referer's hostname matches the host this request was
-/// served on. We compare HOSTNAMES (ignoring port) and accept either the raw
-/// Host header or X-Forwarded-Host, so the check keeps passing behind a
-/// TLS-terminating reverse proxy (where the public host — e.g. the prod domain
-/// on :443 — differs from the internal host:port the app binds to). A genuine
-/// cross-site Origin still fails to match, and the SameSite=strict cookie
-/// remains the primary CSRF defence.
+/// served on. We compare HOSTNAMES (ignoring port) against the raw Host header,
+/// X-Forwarded-Host, and an optional PUBLIC_URL.
+///
+/// Crucially, if EVERY host candidate is a loopback/private address, the
+/// reverse proxy obscured our real public host (e.g. it proxies to
+/// localhost:3000 without forwarding Host / X-Forwarded-Host) and we can't
+/// positively validate the origin — so we fall back to the SameSite=strict
+/// session cookie, which already gated this request above (a cross-site POST
+/// never carries it). When the public host IS known, a genuine cross-site
+/// Origin still fails to match and is rejected.
 function isSameSite(source: string, req: Request): boolean {
-  let sourceHost: string;
-  try {
-    sourceHost = new URL(source).hostname;
-  } catch {
-    return false;
-  }
+  const sourceHost = hostFromUrl(source);
+  if (!sourceHost) return false;
+
   const candidates = new Set<string>();
-  const add = (value?: string | string[]) => {
-    if (!value) return;
-    const raw = Array.isArray(value) ? value[0] : value;
-    // X-Forwarded-Host can be a comma-separated chain; the first hop is ours.
-    const first = raw.split(',')[0].trim();
-    if (first) candidates.add(hostnameOf(first));
-  };
-  add(req.headers['x-forwarded-host']);
-  add(req.headers.host);
-  return candidates.has(sourceHost);
+  addHostHeader(req.headers['x-forwarded-host'], candidates);
+  addHostHeader(req.headers.host, candidates);
+  const publicHost = hostFromUrl(process.env.PUBLIC_URL ?? '');
+  if (publicHost) candidates.add(publicHost);
+
+  if (candidates.has(sourceHost)) return true;
+
+  if (candidates.size > 0 && [...candidates].every(isPrivateHost)) {
+    return true;
+  }
+  return false;
 }
 
-/// Strips the port from a Host header value, IPv6-safe.
-function hostnameOf(hostHeader: string): string {
+/// Parses a full URL → hostname; null if not a URL.
+function hostFromUrl(value: string): string | null {
+  if (!value) return null;
   try {
-    return new URL(`http://${hostHeader}`).hostname;
+    return new URL(value).hostname;
   } catch {
-    return hostHeader.split(':')[0];
+    return null;
   }
+}
+
+/// Adds the hostname from a Host-style header (may carry a port or, for
+/// X-Forwarded-Host, a comma-separated chain whose first hop is ours).
+function addHostHeader(
+  value: string | string[] | undefined,
+  out: Set<string>,
+): void {
+  if (!value) return;
+  const raw = Array.isArray(value) ? value[0] : value;
+  const first = raw.split(',')[0].trim();
+  if (!first) return;
+  const host = hostFromUrl(`http://${first}`);
+  if (host) out.add(host);
+}
+
+/// Loopback / RFC-1918 private hosts a reverse proxy typically uses internally.
+function isPrivateHost(h: string): boolean {
+  if (h === 'localhost' || h === '0.0.0.0' || h === '::1') return true;
+  if (h.endsWith('.local') || h.endsWith('.internal')) return true;
+  if (/^127\./.test(h)) return true;
+  if (/^10\./.test(h)) return true;
+  if (/^192\.168\./.test(h)) return true;
+  if (/^172\.(1[6-9]|2\d|3[01])\./.test(h)) return true;
+  return false;
 }

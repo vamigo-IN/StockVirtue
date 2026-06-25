@@ -29,6 +29,12 @@ export class AllExceptionsFilter implements ExceptionFilter {
       );
     }
 
+    // A guard may have already written the response (e.g. AdminGuard sends an
+    // HTML redirect to /admin/login or a 403 page, then returns false — which
+    // makes Nest raise a ForbiddenException that lands here). Re-sending would
+    // throw ERR_HTTP_HEADERS_SENT, so bail out once the response is committed.
+    if (response.headersSent) return;
+
     // 4xx (HttpException) bodies are controlled messages and safe to return.
     // For 5xx / non-HttpException, never leak the internal message/stack to the
     // client (Prisma/driver errors embed schema + query internals) — log it
