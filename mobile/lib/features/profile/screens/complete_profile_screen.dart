@@ -1,7 +1,7 @@
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/error_mapper.dart';
 import '../../auth/auth_controller.dart';
 
 /// Mandatory profile completion for first-time users. Triggered by the
@@ -53,17 +53,8 @@ class _CompleteProfileScreenState extends ConsumerState<CompleteProfileScreen> {
           );
       // The AuthGate listens to authControllerProvider; once profileComplete
       // flips to true it pushes the onboarding screen automatically.
-    } on DioException catch (e) {
-      final body = e.response?.data;
-      String msg = e.message ?? 'Failed to save';
-      if (body is Map) {
-        final m = body['message'];
-        if (m is String) msg = m;
-        if (m is List && m.isNotEmpty) msg = m.first.toString();
-      }
-      setState(() => _error = msg);
     } catch (e) {
-      setState(() => _error = '$e');
+      setState(() => _error = friendlyError(e, context: 'profile'));
     } finally {
       if (mounted) setState(() => _saving = false);
     }

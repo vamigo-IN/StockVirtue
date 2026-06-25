@@ -1,8 +1,8 @@
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/error_mapper.dart';
 import '../../../data/models/room.dart';
 import '../rooms_repository.dart';
 
@@ -41,10 +41,8 @@ class _JoinByCodeScreenState extends ConsumerState<JoinByCodeScreen> {
     try {
       final joined = await ref.read(roomsRepositoryProvider).joinByCode(code);
       if (mounted) Navigator.of(context).pop<RoomSummary>(joined);
-    } on DioException catch (e) {
-      setState(() => _error = _extractError(e));
     } catch (e) {
-      setState(() => _error = '$e');
+      setState(() => _error = friendlyError(e, context: 'room-join'));
     } finally {
       if (mounted) setState(() => _joining = false);
     }
@@ -169,14 +167,4 @@ class _UppercaseFormatter extends TextInputFormatter {
     TextEditingValue newValue,
   ) =>
       newValue.copyWith(text: newValue.text.toUpperCase());
-}
-
-String _extractError(DioException e) {
-  final body = e.response?.data;
-  if (body is Map) {
-    final m = body['message'];
-    if (m is String) return m;
-    if (m is List && m.isNotEmpty) return m.first.toString();
-  }
-  return e.message ?? 'Failed to join room';
 }

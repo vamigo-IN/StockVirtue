@@ -1,7 +1,7 @@
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/error_mapper.dart';
 import '../../../data/models/room.dart';
 import '../rooms_repository.dart';
 
@@ -62,10 +62,8 @@ class _CreateRoomScreenState extends ConsumerState<CreateRoomScreen> {
       final created =
           await ref.read(roomsRepositoryProvider).create(input);
       if (mounted) Navigator.of(context).pop<RoomSummary>(created);
-    } on DioException catch (e) {
-      setState(() => _error = _extractError(e));
     } catch (e) {
-      setState(() => _error = '$e');
+      setState(() => _error = friendlyError(e, context: 'room-create'));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -468,12 +466,3 @@ String _fmt(DateTime d) {
   return '${d.day} ${months[d.month - 1]} ${d.year} · $h12:$m $ampm';
 }
 
-String _extractError(DioException e) {
-  final body = e.response?.data;
-  if (body is Map) {
-    final m = body['message'];
-    if (m is String) return m;
-    if (m is List && m.isNotEmpty) return m.first.toString();
-  }
-  return e.message ?? 'Failed to create room';
-}

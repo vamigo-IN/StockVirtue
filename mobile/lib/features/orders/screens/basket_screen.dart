@@ -1,8 +1,8 @@
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/company_names.dart';
+import '../../../core/error_mapper.dart';
 import '../../../data/models/order.dart';
 import '../../market/market_repository.dart';
 import '../../notifications/notifications_provider.dart';
@@ -81,15 +81,8 @@ class _BasketScreenState extends ConsumerState<BasketScreen> {
       }
       if (!mounted) return;
       Navigator.of(context).pop(result);
-    } on DioException catch (e) {
-      final body = e.response?.data;
-      String msg = e.message ?? 'Basket failed';
-      if (body is Map && body['message'] is String) {
-        msg = body['message'] as String;
-      }
-      setState(() => _error = msg);
     } catch (e) {
-      setState(() => _error = '$e');
+      setState(() => _error = friendlyError(e, context: 'basket'));
     } finally {
       if (mounted) setState(() => _submitting = false);
     }

@@ -113,8 +113,47 @@ class _SplashScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(
-      body: Center(child: CircularProgressIndicator()),
+    final scheme = Theme.of(context).colorScheme;
+    return Scaffold(
+      body: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Image.asset(
+              'assets/logo.png',
+              width: 116,
+              height: 116,
+              filterQuality: FilterQuality.medium,
+            ),
+            const SizedBox(height: 20),
+            const Text(
+              'StockVirtue',
+              style: TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.w900,
+                letterSpacing: -0.5,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Trade. Learn. Compete.',
+              style: TextStyle(
+                fontSize: 12.5,
+                color: scheme.onSurface.withValues(alpha: 0.55),
+              ),
+            ),
+            const SizedBox(height: 28),
+            SizedBox(
+              width: 22,
+              height: 22,
+              child: CircularProgressIndicator(
+                strokeWidth: 2.4,
+                color: scheme.primary,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

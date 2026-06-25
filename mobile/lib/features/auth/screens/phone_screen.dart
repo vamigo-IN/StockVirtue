@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../auth_controller.dart';
+import '../auth_errors.dart';
 import 'otp_screen.dart';
 
 /// Phone step of the auth flow: collects a number and kicks off Firebase Phone
@@ -51,7 +52,7 @@ class _PhoneScreenState extends ConsumerState<PhoneScreen> {
         ),
       );
     } catch (e) {
-      setState(() => _error = e.toString());
+      setState(() => _error = friendlyAuthError(e));
     } finally {
       if (mounted) setState(() => _busy = false);
     }

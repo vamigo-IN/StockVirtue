@@ -1,10 +1,10 @@
 import 'dart:async';
 
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/error_mapper.dart';
 import '../../../core/fees.dart';
 import '../../../core/preferences.dart';
 import '../../../data/models/order.dart';
@@ -178,15 +178,10 @@ class _TradeSheetState extends ConsumerState<_TradeSheet> {
         _brokeragePreview = results[0] as BrokeragePreview;
         _marginPreview = results[1] as MarginPreview;
       });
-    } on DioException catch (e) {
-      final body = e.response?.data;
-      String msg = e.message ?? 'Preview failed';
-      if (body is Map && body['message'] is String) {
-        msg = body['message'] as String;
-      }
-      if (mounted) setState(() => _previewError = msg);
     } catch (e) {
-      if (mounted) setState(() => _previewError = '$e');
+      if (mounted) {
+        setState(() => _previewError = friendlyError(e, context: 'trade'));
+      }
     } finally {
       if (mounted) setState(() => _previewLoading = false);
     }
@@ -262,15 +257,8 @@ class _TradeSheetState extends ConsumerState<_TradeSheet> {
       }
       if (!mounted) return;
       Navigator.of(context).pop(order);
-    } on DioException catch (e) {
-      final body = e.response?.data;
-      String msg = e.message ?? 'Network error';
-      if (body is Map && body['message'] is String) {
-        msg = body['message'] as String;
-      }
-      setState(() => _error = msg);
     } catch (e) {
-      setState(() => _error = '$e');
+      setState(() => _error = friendlyError(e, context: 'trade'));
     } finally {
       if (mounted) setState(() => _busy = false);
     }

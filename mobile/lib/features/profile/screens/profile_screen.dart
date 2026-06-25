@@ -1,7 +1,7 @@
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/error_mapper.dart';
 import '../../../core/theme_provider.dart';
 import '../../../data/models/user.dart';
 import '../../achievements/achievements_provider.dart';
@@ -636,17 +636,8 @@ class _EditProfileSheetState extends ConsumerState<_EditProfileSheet> {
             email: _emailC.text.trim(),
           );
       if (mounted) Navigator.of(context).pop(true);
-    } on DioException catch (e) {
-      final body = e.response?.data;
-      String msg = e.message ?? 'Failed to update';
-      if (body is Map) {
-        final m = body['message'];
-        if (m is String) msg = m;
-        if (m is List && m.isNotEmpty) msg = m.first.toString();
-      }
-      setState(() => _error = msg);
     } catch (e) {
-      setState(() => _error = '$e');
+      setState(() => _error = friendlyError(e, context: 'profile'));
     } finally {
       if (mounted) setState(() => _saving = false);
     }

@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../../../core/error_mapper.dart';
 import '../../../core/market_hours.dart';
 import '../../../core/money_format.dart';
 import '../../../data/models/room.dart';
@@ -73,7 +74,32 @@ class _RoomDetailScreenState extends ConsumerState<RoomDetailScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('$e')),
+          SnackBar(content: Text(friendlyError(e, context: 'room-leave'))),
+        );
+      }
+    }
+  }
+
+  Future<void> _join(RoomDetail room) async {
+    try {
+      await ref.read(roomsRepositoryProvider).joinPublic(room.id);
+      ref.invalidate(myRoomsProvider);
+      ref.invalidate(roomDetailProvider(room.id));
+      ref.invalidate(publicRoomsProvider(null));
+      ref.invalidate(publicRoomsProvider(true));
+      ref.invalidate(publicRoomsProvider(false));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Joined room')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(friendlyError(e, context: 'room-join')),
+            backgroundColor: Colors.redAccent,
+          ),
         );
       }
     }
@@ -112,7 +138,7 @@ class _RoomDetailScreenState extends ConsumerState<RoomDetailScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('$e')),
+          SnackBar(content: Text(friendlyError(e, context: 'room-close'))),
         );
       }
     }
@@ -160,7 +186,13 @@ class _RoomDetailScreenState extends ConsumerState<RoomDetailScreen> {
               Padding(padding: const EdgeInsets.all(24), child: Text('$e')),
             ],
           ),
-          data: (room) => _Body(room: room),
+          data: (room) => _Body(
+            room: room,
+            // Non-members browsing a public room get a one-tap Join.
+            onJoin: (!room.iAmMember && room.isPublic && !isOwner)
+                ? () => _join(room)
+                : null,
+          ),
         ),
       ),
     );
@@ -168,8 +200,11 @@ class _RoomDetailScreenState extends ConsumerState<RoomDetailScreen> {
 }
 
 class _Body extends StatelessWidget {
-  const _Body({required this.room});
+  const _Body({required this.room, this.onJoin});
   final RoomDetail room;
+
+  /// Set for non-members of a public room — renders a prominent Join button.
+  final VoidCallback? onJoin;
 
   @override
   Widget build(BuildContext context) {
@@ -180,6 +215,26 @@ class _Body extends StatelessWidget {
         const SizedBox(height: 14),
         _CodeRow(room: room),
         const SizedBox(height: 16),
+        if (onJoin != null) ...[
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.icon(
+              onPressed: onJoin,
+              icon: const Icon(Icons.group_add_outlined, size: 18),
+              label: const Text(
+                'Join this room',
+                style: TextStyle(fontWeight: FontWeight.w800),
+              ),
+              style: FilledButton.styleFrom(
+                minimumSize: const Size.fromHeight(48),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+        ],
         if (room.frozen) ...[
           const _FrozenBanner(),
           const SizedBox(height: 12),

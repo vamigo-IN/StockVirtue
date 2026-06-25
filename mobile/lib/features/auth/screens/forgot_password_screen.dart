@@ -6,9 +6,10 @@ import '../auth_errors.dart';
 import 'reset_password_screen.dart';
 
 /// Step 1 of forgot-password: collect the email and ask the server to send a
-/// reset code, then move to [ResetPasswordScreen]. The server responds the
-/// same whether or not the account exists (anti-enumeration), so we always
-/// proceed.
+/// reset code. We only advance to [ResetPasswordScreen] if the request
+/// succeeds — if the email isn't registered (404) or signs in with Google
+/// (400), the server throws and we show the reason instead of stranding the
+/// user on an OTP screen that will never receive a code.
 class ForgotPasswordScreen extends ConsumerStatefulWidget {
   const ForgotPasswordScreen({super.key, this.initialEmail});
 

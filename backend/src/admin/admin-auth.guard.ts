@@ -35,9 +35,8 @@ export class AdminGuard implements CanActivate {
     // a legitimate operator.
     const method = req.method.toUpperCase();
     if (method !== 'GET' && method !== 'HEAD') {
-      const host = req.headers.host;
       const source = req.headers.origin || req.headers.referer;
-      if (source && (!host || !sameOrigin(source, host))) {
+      if (source && !isSameSite(source, req)) {
         res.status(403).type('html').send('Forbidden (CSRF check failed)');
         return false;
       }
@@ -50,10 +49,38 @@ export class AdminGuard implements CanActivate {
   }
 }
 
-function sameOrigin(source: string, host: string): boolean {
+/// True when the Origin/Referer's hostname matches the host this request was
+/// served on. We compare HOSTNAMES (ignoring port) and accept either the raw
+/// Host header or X-Forwarded-Host, so the check keeps passing behind a
+/// TLS-terminating reverse proxy (where the public host — e.g. the prod domain
+/// on :443 — differs from the internal host:port the app binds to). A genuine
+/// cross-site Origin still fails to match, and the SameSite=strict cookie
+/// remains the primary CSRF defence.
+function isSameSite(source: string, req: Request): boolean {
+  let sourceHost: string;
   try {
-    return new URL(source).host === host;
+    sourceHost = new URL(source).hostname;
   } catch {
     return false;
+  }
+  const candidates = new Set<string>();
+  const add = (value?: string | string[]) => {
+    if (!value) return;
+    const raw = Array.isArray(value) ? value[0] : value;
+    // X-Forwarded-Host can be a comma-separated chain; the first hop is ours.
+    const first = raw.split(',')[0].trim();
+    if (first) candidates.add(hostnameOf(first));
+  };
+  add(req.headers['x-forwarded-host']);
+  add(req.headers.host);
+  return candidates.has(sourceHost);
+}
+
+/// Strips the port from a Host header value, IPv6-safe.
+function hostnameOf(hostHeader: string): string {
+  try {
+    return new URL(`http://${hostHeader}`).hostname;
+  } catch {
+    return hostHeader.split(':')[0];
   }
 }

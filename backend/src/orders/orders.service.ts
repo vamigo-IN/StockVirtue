@@ -16,7 +16,6 @@ import {
 import { Exchange } from '../common/exchange';
 import { computeFees } from '../common/fees';
 import { FeatureFlagsService } from '../feature-flags/feature-flags.service';
-import { marketSession } from '../common/market-hours';
 import {
   isFnoInstrumentType,
   marginRateBps,
@@ -139,28 +138,45 @@ export class OrdersService {
     return this.placeMarket({ ...input, type, inst });
   }
 
-  private async placeMarket(input: PlaceOrderInput & { inst: Instrument }) {
-    const { inst } = input;
-    // SmartAPI's LTP endpoint returns the prior session's close while
-    // the market is shut, so a MARKET fill outside trading hours would
-    // print at a stale price. Refuse with a clear message pointing to
-    // LIMIT (which sits PENDING and fires from the watcher when ticks
-    // resume) — that's also how real brokers behave.
-    const session = marketSession();
-    if (session.kind !== 'open') {
-      throw new BadRequestException(
-        `${session.reason} Use a LIMIT order to queue at your target price.`,
+  /// Last traded price (in rupees) for any instrument, or null if the feed has
+  /// nothing. SmartAPI's getLtp endpoint only serves cash scrips (NSE/BSE);
+  /// F&O (NFO/BFO) must go through the multi-quote endpoint, so route by
+  /// instrument type — this is why option MARKET orders used to fail.
+  private async fetchLtpRupees(inst: Instrument): Promise<number | null> {
+    const fno =
+      isFnoInstrumentType(inst.instrumentType) ||
+      inst.exchange === 'NFO' ||
+      inst.exchange === 'BFO';
+    if (fno) {
+      const rows = await this.smartapi.getMultiQuote(
+        { [inst.exchange]: [inst.token] },
+        'LTP',
       );
+      const ltp = rows[0]?.ltp;
+      return ltp && ltp > 0 ? ltp : null;
     }
     const quote = await this.smartapi.getLtp({
       exchange: inst.exchange,
       tradingsymbol: inst.symbol,
       symboltoken: inst.token,
     });
-    if (!quote.ltp || quote.ltp <= 0) {
-      throw new BadRequestException('Market price unavailable for this symbol');
+    return quote.ltp && quote.ltp > 0 ? quote.ltp : null;
+  }
+
+  private async placeMarket(input: PlaceOrderInput & { inst: Instrument }) {
+    const { inst } = input;
+    // Paper-trading simulator: a MARKET order fills at the latest available
+    // price for ANY instrument (cash or F&O). When the market is shut the feed
+    // returns the prior close, which is a perfectly acceptable fill here — no
+    // real capital is at risk, and hard-blocking off-hours just confuses
+    // learners. (The admin trading-halt kill-switch still gates `place()`.)
+    const ltp = await this.fetchLtpRupees(inst);
+    if (ltp === null) {
+      throw new BadRequestException(
+        'Live price is unavailable for this symbol right now. Try a LIMIT order to queue at your target price.',
+      );
     }
-    const fillPriceP = rupeesToPaise(quote.ltp);
+    const fillPriceP = rupeesToPaise(ltp);
     const notionalP = fillPriceP * BigInt(input.quantity);
     const product = input.product ?? OrderProduct.DELIVERY;
     const fees = computeFees({
@@ -344,7 +360,7 @@ export class OrdersService {
         },
       });
       this.logger.log(
-        `[${input.userId}] MARKET ${product} ${input.side} ${input.quantity} ${inst.name} @ ₹${quote.ltp}`,
+        `[${input.userId}] MARKET ${product} ${input.side} ${input.quantity} ${inst.name} @ ₹${ltp}`,
       );
       return order;
     }).then((order) => {
@@ -676,15 +692,13 @@ export class OrdersService {
     input: PlaceOrderInput & { inst: Instrument },
   ) {
     const { inst } = input;
-    const quote = await this.smartapi.getLtp({
-      exchange: inst.exchange,
-      tradingsymbol: inst.symbol,
-      symboltoken: inst.token,
-    });
-    if (!quote.ltp || quote.ltp <= 0) {
-      throw new BadRequestException('Market price unavailable for this symbol');
+    const ltp = await this.fetchLtpRupees(inst);
+    if (ltp === null) {
+      throw new BadRequestException(
+        'Live price is unavailable for this symbol right now. Try again shortly.',
+      );
     }
-    const ltpP = rupeesToPaise(quote.ltp);
+    const ltpP = rupeesToPaise(ltp);
     const trailAmountP = rupeesToPaise(input.trailAmount!);
     const product = input.product ?? OrderProduct.DELIVERY;
 

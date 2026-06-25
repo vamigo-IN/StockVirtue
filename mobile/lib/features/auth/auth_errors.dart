@@ -2,23 +2,14 @@ import 'package:dio/dio.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
-/// Turns an auth error into a short, user-facing message. Handles backend
-/// (Dio) errors from the server email/password flow plus Firebase/Google
-/// errors from the federated flows.
+import '../../core/error_mapper.dart';
+
+/// Turns an auth error into a short, user-facing message. Backend (Dio) errors
+/// are delegated to the central [friendlyError] mapper with auth context;
+/// Firebase/Google errors from the federated flows are handled here.
 String friendlyAuthError(Object? err) {
   if (err is DioException) {
-    final data = err.response?.data;
-    if (data is Map && data['message'] != null) {
-      final m = data['message'];
-      if (m is List) return m.map((e) => e.toString()).join('\n');
-      return m.toString();
-    }
-    if (err.type == DioExceptionType.connectionTimeout ||
-        err.type == DioExceptionType.receiveTimeout ||
-        err.type == DioExceptionType.connectionError) {
-      return 'Network error. Check your connection and try again.';
-    }
-    return 'Something went wrong. Please try again.';
+    return friendlyError(err, context: 'auth');
   }
   if (err is FirebaseAuthException) {
     switch (err.code) {

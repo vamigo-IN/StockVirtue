@@ -1,9 +1,9 @@
 import 'dart:math' as math;
 
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/error_mapper.dart';
 import '../../../core/money_format.dart';
 import '../../../data/models/option_chain.dart';
 import '../../../data/models/order.dart';
@@ -179,15 +179,8 @@ class _StrategyBuilderScreenState
       }
       if (!mounted) return;
       Navigator.of(context).pop();
-    } on DioException catch (e) {
-      final body = e.response?.data;
-      String msg = e.message ?? 'Submit failed';
-      if (body is Map && body['message'] is String) {
-        msg = body['message'] as String;
-      }
-      setState(() => _submitError = msg);
     } catch (e) {
-      setState(() => _submitError = '$e');
+      setState(() => _submitError = friendlyError(e, context: 'strategy'));
     } finally {
       if (mounted) setState(() => _submitting = false);
     }

@@ -4,6 +4,7 @@ import {
   ConflictException,
   Injectable,
   Logger,
+  NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -129,8 +130,15 @@ export class AuthService {
       'Too many login attempts. Try again later.',
     );
     const user = await this.users.findByEmail(email);
-    if (!user?.passwordHash) {
-      throw new UnauthorizedException('Incorrect email or password');
+    if (!user) {
+      throw new NotFoundException(
+        'No account is registered with this email. Please sign up first.',
+      );
+    }
+    if (!user.passwordHash) {
+      throw new BadRequestException(
+        'This email signs in with Google. Use “Continue with Google” instead.',
+      );
     }
     const ok = await verifyPassword(password, user.passwordHash);
     if (!ok) throw new UnauthorizedException('Incorrect email or password');
@@ -158,9 +166,11 @@ export class AuthService {
   // ── Password reset (forgot password) ─────────────────────────────
 
   /**
-   * Step 1: email a reset code to a VERIFIED email/password account. Always
-   * returns the same shape regardless of whether the account exists, so the
-   * endpoint can't be used to enumerate registered emails.
+   * Step 1: email a reset code. Per product requirement, the response tells the
+   * user whether the email is actually usable for a password reset — a clear
+   * "no account" / "use Google" beats silently dropping them on an OTP screen
+   * that never receives a code. (Trade-off: this allows email enumeration; the
+   * per-email rate limit below blunts bulk probing.)
    */
   async requestPasswordReset(rawEmail: string) {
     const email = this.normalizeEmail(rawEmail);
@@ -172,16 +182,27 @@ export class AuthService {
       'A reset code was just sent. Please wait 60 seconds before requesting another.',
     );
     const user = await this.users.findByEmail(email);
-    if (user?.passwordHash && user.emailVerified) {
-      const code = this.generateEmailOtp();
-      await this.redis.client.set(
-        this.resetOtpKey(email),
-        code,
-        'EX',
-        EMAIL_OTP_TTL,
+    if (!user) {
+      throw new NotFoundException(
+        'No account is registered with this email. Please create an account first.',
       );
-      await this.mail.sendPasswordResetEmail(email, code, EMAIL_OTP_TTL);
     }
+    if (!user.passwordHash) {
+      throw new BadRequestException(
+        'This email signs in with Google. Use “Continue with Google” instead of a password.',
+      );
+    }
+    // A reset code proves email ownership, so we send it even to an account
+    // that never finished email-OTP verification; resetPassword marks it
+    // verified on success.
+    const code = this.generateEmailOtp();
+    await this.redis.client.set(
+      this.resetOtpKey(email),
+      code,
+      'EX',
+      EMAIL_OTP_TTL,
+    );
+    await this.mail.sendPasswordResetEmail(email, code, EMAIL_OTP_TTL);
     return { ok: true, ttl: EMAIL_OTP_TTL };
   }
 
@@ -206,6 +227,9 @@ export class AuthService {
     const user = await this.users.findByEmail(email);
     if (!user) throw new UnauthorizedException('Account not found');
     await this.users.setPassword(user.id, await hashPassword(newPassword));
+    // Resetting via the emailed code proves ownership — finish verification if
+    // the account never completed sign-up OTP.
+    if (!user.emailVerified) await this.users.markEmailVerified(user.id);
     await this.redis.client.del(this.resetOtpKey(email));
     await this.redis.client.del(`reset:verify:${email}`);
     await this.revokeAllSessions(user.id);

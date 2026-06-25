@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/error_mapper.dart';
 import '../../../core/money_format.dart';
 import '../../../data/models/room.dart';
 import '../rooms_providers.dart';
+import '../rooms_repository.dart';
 import 'create_room_screen.dart';
 import 'join_by_code_screen.dart';
 import 'room_detail_screen.dart';
@@ -63,6 +65,27 @@ class _RoomsLandingScreenState extends ConsumerState<RoomsLandingScreen>
     }
   }
 
+  /// One-tap join for PUBLIC rooms / tournaments — no invite code needed.
+  Future<void> _joinPublic(String roomId) async {
+    try {
+      await ref.read(roomsRepositoryProvider).joinPublic(roomId);
+      _refreshAll();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Joined room')),
+      );
+      _openDetail(roomId);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(friendlyError(e, context: 'room-join')),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+    }
+  }
+
   void _openDetail(String roomId) {
     Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => RoomDetailScreen(roomId: roomId)),
@@ -92,17 +115,13 @@ class _RoomsLandingScreenState extends ConsumerState<RoomsLandingScreen>
           _MyRoomsTab(onOpen: _openDetail),
           _PublicRoomsTab(
             tournament: false,
-            onJoined: (id) {
-              _refreshAll();
-              _openDetail(id);
-            },
+            onOpen: _openDetail,
+            onJoin: _joinPublic,
           ),
           _PublicRoomsTab(
             tournament: true,
-            onJoined: (id) {
-              _refreshAll();
-              _openDetail(id);
-            },
+            onOpen: _openDetail,
+            onJoin: _joinPublic,
           ),
         ],
       ),
@@ -219,10 +238,16 @@ class _EmptyMine extends StatelessWidget {
 class _PublicRoomsTab extends ConsumerWidget {
   const _PublicRoomsTab({
     required this.tournament,
-    required this.onJoined,
+    required this.onOpen,
+    required this.onJoin,
   });
   final bool tournament;
-  final ValueChanged<String> onJoined;
+
+  /// Tap the card body → open the room detail to browse it.
+  final ValueChanged<String> onOpen;
+
+  /// Tap the Join button → join directly (no code needed).
+  final ValueChanged<String> onJoin;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -269,8 +294,9 @@ class _PublicRoomsTab extends ConsumerWidget {
               for (final r in rooms) ...[
                 _RoomCard(
                   room: r,
-                  onTap: () => onJoined(r.id),
+                  onTap: () => onOpen(r.id),
                   publicLayout: true,
+                  onJoin: () => onJoin(r.id),
                 ),
                 const SizedBox(height: 10),
               ],
@@ -290,11 +316,15 @@ class _RoomCard extends StatelessWidget {
     required this.room,
     required this.onTap,
     this.publicLayout = false,
+    this.onJoin,
   });
 
   final RoomSummary room;
   final VoidCallback onTap;
   final bool publicLayout;
+
+  /// When set (public/tournament browse cards), renders a one-tap Join button.
+  final VoidCallback? onJoin;
 
   @override
   Widget build(BuildContext context) {
@@ -428,6 +458,25 @@ class _RoomCard extends StatelessWidget {
                   ),
               ],
             ),
+            if (onJoin != null) ...[
+              const SizedBox(height: 10),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.tonal(
+                  onPressed: onJoin,
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size.fromHeight(38),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                  child: const Text(
+                    'Join room',
+                    style: TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                ),
+              ),
+            ],
           ],
         ),
       ),

@@ -130,21 +130,33 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const SizedBox(height: 24),
+                const SizedBox(height: 12),
+                Image.asset(
+                  'assets/logo.png',
+                  width: 92,
+                  height: 92,
+                  filterQuality: FilterQuality.medium,
+                ),
+                const SizedBox(height: 16),
                 Text(
                   'StockVirtue',
-                  style: theme.textTheme.headlineMedium,
+                  style: theme.textTheme.headlineMedium?.copyWith(
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: -0.5,
+                  ),
                   textAlign: TextAlign.center,
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 6),
                 Text(
-                  _isSignUp ? 'Create your account' : 'Sign in to continue',
+                  _isSignUp
+                      ? 'Create your account to start trading'
+                      : 'Sign in to continue',
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
                   ),
                   textAlign: TextAlign.center,
                 ),
-                const SizedBox(height: 40),
+                const SizedBox(height: 36),
                 TextField(
                   controller: _email,
                   keyboardType: TextInputType.emailAddress,

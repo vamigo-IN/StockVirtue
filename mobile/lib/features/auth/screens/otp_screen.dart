@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../auth_controller.dart';
+import '../auth_errors.dart';
 
 class OtpScreen extends ConsumerStatefulWidget {
   const OtpScreen({
@@ -53,7 +54,7 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
       // has already rebuilt with the ShellScreen/Onboarding underneath us).
       final result = ref.read(authControllerProvider);
       if (result.hasError) {
-        setState(() => _error = result.error.toString());
+        setState(() => _error = friendlyAuthError(result.error));
       } else if (result.value != null) {
         Navigator.of(context).popUntil((route) => route.isFirst);
         return;
@@ -62,7 +63,7 @@ class _OtpScreenState extends ConsumerState<OtpScreen> {
       }
     } catch (e) {
       // Defensive: anything escaping the guard (shouldn't happen, but…).
-      if (mounted) setState(() => _error = e.toString());
+      if (mounted) setState(() => _error = friendlyAuthError(e));
     } finally {
       if (mounted) setState(() => _busy = false);
     }

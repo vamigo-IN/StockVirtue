@@ -1,9 +1,9 @@
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../../../core/error_mapper.dart';
 import '../../../core/money_format.dart';
 import '../../../data/models/user.dart';
 import '../../academy/lesson_progress.dart';
@@ -223,7 +223,14 @@ class _InviteSheet extends ConsumerWidget {
     final async = ref.watch(referralStatsProvider);
     return SafeArea(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 4, 20, 24),
+        padding: EdgeInsets.only(
+          left: 20,
+          right: 20,
+          top: 4,
+          // Lift the sheet above the on-screen keyboard so the redeem field
+          // (pinned near the bottom) stays visible while typing.
+          bottom: 24 + MediaQuery.viewInsetsOf(context).bottom,
+        ),
         child: async.when(
           loading: () => const Padding(
             padding: EdgeInsets.symmetric(vertical: 60),
@@ -243,7 +250,8 @@ class _InviteSheet extends ConsumerWidget {
             // through `fallbackCode` since the server is authoritative.
             final code = stats.code ?? fallbackCode ?? 'SV-STOCKV';
             final referrerName = stats.referredByName;
-            return Column(
+            return SingleChildScrollView(
+              child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -307,6 +315,7 @@ class _InviteSheet extends ConsumerWidget {
                     _InviteRow(entry: r),
                 ],
               ],
+            ),
             );
           },
         ),
@@ -544,11 +553,13 @@ class _RedeemBlockState extends ConsumerState<_RedeemBlock> {
   }
 
   Future<void> _redeem() async {
-    final code = _codeC.text.trim().toUpperCase();
-    if (!RegExp(r'^SV-[A-F0-9]{6}$').hasMatch(code)) {
-      setState(() => _error = 'Format is SV- then 6 hex characters (A–F, 0–9)');
+    // The field shows a fixed "SV-" prefix; the user types only the 6 chars.
+    final entry = _codeC.text.trim().toUpperCase();
+    if (!RegExp(r'^[A-F0-9]{6}$').hasMatch(entry)) {
+      setState(() => _error = 'Enter the 6 characters after “SV-” (A–F, 0–9).');
       return;
     }
+    final code = 'SV-$entry';
     setState(() {
       _redeeming = true;
       _error = null;
@@ -572,10 +583,8 @@ class _RedeemBlockState extends ConsumerState<_RedeemBlock> {
           ),
         );
       }
-    } on DioException catch (e) {
-      setState(() => _error = _extractError(e));
     } catch (e) {
-      setState(() => _error = '$e');
+      setState(() => _error = friendlyError(e, context: 'referral'));
     } finally {
       if (mounted) setState(() => _redeeming = false);
     }
@@ -614,15 +623,19 @@ class _RedeemBlockState extends ConsumerState<_RedeemBlock> {
         TextField(
           controller: _codeC,
           textCapitalization: TextCapitalization.characters,
-          maxLength: 9, // SV-XXXXXX
+          maxLength: 6, // the 6 chars after the fixed "SV-" prefix
           inputFormatters: [
-            FilteringTextInputFormatter.allow(
-              RegExp(r'[A-Fa-f0-9Nn\-]'),
-            ),
+            FilteringTextInputFormatter.allow(RegExp(r'[A-Fa-f0-9]')),
             _UppercaseFormatter(),
           ],
           decoration: const InputDecoration(
-            hintText: 'SV-XXXXXX',
+            prefixText: 'SV-',
+            prefixStyle: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 2,
+            ),
+            hintText: 'XXXXXX',
             counterText: '',
             prefixIcon: Icon(Icons.qr_code_2),
           ),
@@ -772,16 +785,6 @@ class _UppercaseFormatter extends TextInputFormatter {
     TextEditingValue newValue,
   ) =>
       newValue.copyWith(text: newValue.text.toUpperCase());
-}
-
-String _extractError(DioException e) {
-  final body = e.response?.data;
-  if (body is Map) {
-    final m = body['message'];
-    if (m is String) return m;
-    if (m is List && m.isNotEmpty) return m.first.toString();
-  }
-  return e.message ?? 'Failed to redeem';
 }
 
 String _fmtRelative(DateTime d) {
