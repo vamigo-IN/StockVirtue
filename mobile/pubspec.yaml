@@ -43,8 +43,22 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
+  flutter_launcher_icons: ^0.14.4
 
 flutter:
   uses-material-design: true
   assets:
     - assets/
+
+# Launcher icon generated from the brand logo via `flutter_launcher_icons`.
+# Regenerate after changing assets/logo.png:  dart run flutter_launcher_icons
+flutter_launcher_icons:
+  image_path: "assets/logo.png"
+  android: "ic_launcher"
+  ios: true
+  remove_alpha_ios: true
+  min_sdk_android: 21
+  # The logo's own background is black, so the adaptive-icon background matches
+  # and the masked Android-8+ icon blends seamlessly with the foreground.
+  adaptive_icon_background: "#000000"
+  adaptive_icon_foreground: "assets/logo.png"
