@@ -8,6 +8,7 @@ import {
 import { Order, OrderSide, OrderStatus, OrderType } from '@prisma/client';
 import { Exchange, isExchange } from '../common/exchange';
 import { isMarketOpen } from '../common/market-hours';
+import { HolidaysService } from '../market/holidays.service';
 import { rupeesToPaise } from '../common/money';
 // (re-export needed below)
 import { PrismaService } from '../prisma/prisma.service';
@@ -51,6 +52,7 @@ export class LimitWatcherService implements OnModuleInit {
     private readonly prisma: PrismaService,
     private readonly tickBus: TickBusService,
     private readonly smartApiWs: SmartApiWsService,
+    private readonly holidays: HolidaysService,
   ) {}
 
   async onModuleInit() {
@@ -137,9 +139,10 @@ export class LimitWatcherService implements OnModuleInit {
     ltp: number,
   ): { fire: boolean; convert: boolean } {
     if (order.type === OrderType.MARKET) {
-      // After-market order: fill at the open price on the first tick once the
-      // regular session is open (ignore any pre-open/indicative ticks).
-      return { fire: isMarketOpen(), convert: false };
+      // Queued after-market order: fill at the open price on the first tick.
+      // onTick() already gated market hours (holiday-aware), so any tick that
+      // reaches here is in a live regular session — fire unconditionally.
+      return { fire: true, convert: false };
     }
     if (order.type === OrderType.LIMIT) {
       const fire =
@@ -173,9 +176,13 @@ export class LimitWatcherService implements OnModuleInit {
     // prior close (see market-hours.ts); without this guard a resting
     // LIMIT/SL sitting at that price would fire instantly off-hours. Queued
     // after-market MARKET orders are unaffected: they only fill on the first
-    // in-session tick (decide() returns fire = isMarketOpen()), which this
-    // guard lets through once the regular session opens.
-    if (!isMarketOpen()) return;
+    // in-session tick, which this guard lets through once the regular session
+    // opens. The check is HOLIDAY-AWARE: it consults the cached NSE/curated
+    // calendar, so trades are also blocked on a weekday trading holiday (a
+    // bare isMarketOpen() with no calendar would treat a holiday as open).
+    if (!isMarketOpen(new Date(), this.holidays.getCachedHolidayDates())) {
+      return;
+    }
     const key = `${tick.exchange}:${tick.token}`;
     const ids = this.byToken.get(key);
     if (!ids || ids.size === 0) return;

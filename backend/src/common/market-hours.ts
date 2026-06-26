@@ -71,8 +71,11 @@ export function marketSession(
   };
 }
 
-export function isMarketOpen(at: Date = new Date()): boolean {
-  return marketSession(at).kind === 'open';
+export function isMarketOpen(
+  at: Date = new Date(),
+  holidayDates?: Set<string>,
+): boolean {
+  return marketSession(at, holidayDates).kind === 'open';
 }
 
 function pad(n: number): string {

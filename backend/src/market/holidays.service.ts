@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import axios from 'axios';
 import { RedisService } from '../redis/redis.service';
 
@@ -17,10 +17,48 @@ const CACHE_KEY = 'market:holidays:v1';
 const CACHE_TTL_SECONDS = 24 * 60 * 60;
 
 @Injectable()
-export class HolidaysService {
+export class HolidaysService implements OnModuleInit {
   private readonly logger = new Logger(HolidaysService.name);
 
+  /// In-memory holiday calendar (YYYY-MM-DD, IST) for SYNCHRONOUS lookups on
+  /// hot paths — the order tick-watcher consults it on every tick, so it must
+  /// not await Redis. Seeded synchronously from the curated list so it is
+  /// never empty (a weekday holiday is blocked even before the first
+  /// Redis/NSE refresh lands), then replaced by the authoritative list.
+  private holidayDates: Set<string> = new Set(
+    curatedHolidaysForYears(new Date().getFullYear()).map((h) => h.date),
+  );
+
   constructor(private readonly redis: RedisService) {}
+
+  async onModuleInit(): Promise<void> {
+    await this.refreshCache();
+    // Re-warm daily so a long-running process picks up a freshly cached NSE
+    // list (or an admin refresh) without needing a restart.
+    const timer = setInterval(
+      () => void this.refreshCache(),
+      24 * 60 * 60 * 1000,
+    );
+    timer.unref?.();
+  }
+
+  /// Synchronous snapshot of the trading-holiday calendar (IST YYYY-MM-DD),
+  /// suitable for `marketSession(at, set)` / `isMarketOpen(at, set)` on hot
+  /// paths. Always non-empty (curated baseline) once the service is built.
+  getCachedHolidayDates(): Set<string> {
+    return this.holidayDates;
+  }
+
+  private async refreshCache(): Promise<void> {
+    try {
+      const payload = await this.getHolidays();
+      this.holidayDates = new Set(payload.holidays.map((h) => h.date));
+    } catch (err) {
+      this.logger.warn(
+        `Holiday cache refresh failed, keeping previous list: ${(err as Error).message}`,
+      );
+    }
+  }
 
   /// Returns the canonical Indian-equity holiday calendar for the
   /// current year. Strategy:
@@ -55,7 +93,9 @@ export class HolidaysService {
   /// Force-refresh — bypasses the Redis cache. Wired to an admin
   /// endpoint so operators can re-pull after NSE publishes a new list.
   async refresh(): Promise<HolidaysPayload> {
-    return this.getHolidays(true);
+    const payload = await this.getHolidays(true);
+    this.holidayDates = new Set(payload.holidays.map((h) => h.date));
+    return payload;
   }
 
   private async fetchFresh(): Promise<HolidaysPayload> {
@@ -170,6 +210,7 @@ const CURATED_2026: MarketHoliday[] = [
   { date: '2026-04-14', name: 'Dr. Ambedkar Jayanti' },
   { date: '2026-05-01', name: 'Maharashtra Day' },
   { date: '2026-05-27', name: 'Eid-ul-Adha (Bakri Eid)' },
+  { date: '2026-06-26', name: 'Muharram' },
   { date: '2026-08-15', name: 'Independence Day' },
   { date: '2026-08-27', name: 'Ganesh Chaturthi' },
   { date: '2026-10-02', name: 'Mahatma Gandhi Jayanti' },

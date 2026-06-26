@@ -131,6 +131,7 @@ final _holidays2026 = <MarketHoliday>[
   MarketHoliday(DateTime(2026, 4, 14), 'Dr. Ambedkar Jayanti'),
   MarketHoliday(DateTime(2026, 5, 1), 'Maharashtra Day'),
   MarketHoliday(DateTime(2026, 5, 27), 'Eid-ul-Adha (Bakri Eid)'),
+  MarketHoliday(DateTime(2026, 6, 26), 'Muharram'),
   MarketHoliday(DateTime(2026, 8, 15), 'Independence Day'),
   MarketHoliday(DateTime(2026, 8, 27), 'Ganesh Chaturthi'),
   MarketHoliday(DateTime(2026, 10, 2), 'Mahatma Gandhi Jayanti'),

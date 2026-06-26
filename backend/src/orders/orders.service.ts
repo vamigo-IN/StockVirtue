@@ -16,6 +16,7 @@ import {
 import { Exchange } from '../common/exchange';
 import { computeFees } from '../common/fees';
 import { isMarketOpen } from '../common/market-hours';
+import { HolidaysService } from '../market/holidays.service';
 import { FeatureFlagsService } from '../feature-flags/feature-flags.service';
 import {
   isFnoInstrumentType,
@@ -58,7 +59,16 @@ export class OrdersService {
     private readonly notifications: NotificationsService,
     private readonly featureFlags: FeatureFlagsService,
     private readonly achievements: AchievementsService,
+    private readonly holidays: HolidaysService,
   ) {}
+
+  /// Market-hours check that honours the trading-holiday calendar. A bare
+  /// isMarketOpen() only knows weekends + time-of-day, so it treats a weekday
+  /// holiday (e.g. Muharram) as open — which would let orders fill on a day
+  /// the exchange is shut. Always route market-hours decisions through here.
+  private isTradingOpen(): boolean {
+    return isMarketOpen(new Date(), this.holidays.getCachedHolidayDates());
+  }
 
   private fireOrderFilled(order: Order | null) {
     if (!order || order.status !== OrderStatus.FILLED) return;
@@ -140,7 +150,7 @@ export class OrdersService {
     // When it's CLOSED, we queue an after-market order (AMO): it sits PENDING
     // and the tick-watcher fills it at the open price on the first live tick
     // when the market next opens. (Users wanting a specific price use a LIMIT.)
-    if (!isMarketOpen()) {
+    if (!this.isTradingOpen()) {
       return this.placePendingMarket({ ...input, type, inst });
     }
     return this.placeMarket({ ...input, type, inst });
@@ -882,11 +892,11 @@ export class OrdersService {
 
   /** Triggered by LimitWatcherService when a tick crosses a pending order. */
   async fillLimit(orderId: string, ltpRupees: number): Promise<Order | null> {
-    // Defense-in-depth: never settle a fill while the market is closed, even
-    // if a caller forgets the session check. The tick-watcher already gates
-    // this in onTick(); this keeps the DB-level fill self-protecting so the
-    // off-hours-fill invariant can't be reopened by a future caller.
-    if (!isMarketOpen()) return null;
+    // Defense-in-depth: never settle a fill while the market is closed (incl.
+    // weekday trading holidays), even if a caller forgets the session check.
+    // The tick-watcher already gates this in onTick(); this keeps the DB-level
+    // fill self-protecting so the off-hours-fill invariant can't be reopened.
+    if (!this.isTradingOpen()) return null;
     const fillPriceP = rupeesToPaise(ltpRupees);
     return this.prisma.$transaction(async (tx) => {
       const order = await tx.order.findUnique({ where: { id: orderId } });
