@@ -292,8 +292,6 @@ class _TradeSheetState extends ConsumerState<_TradeSheet> {
     }
   }
 
-  bool get _isFno => widget.exchange == 'NFO' || widget.exchange == 'BFO';
-
   /// Lot-constrained instrument (F&O). Quantity must be whole multiples of the
   /// lot size, with the lot size itself as the minimum.
   bool get _isLotted => widget.lotSize > 1;
@@ -316,8 +314,8 @@ class _TradeSheetState extends ConsumerState<_TradeSheet> {
 
   int get _rawMaxQty {
     if (!_isBuy) {
-      // F&O allows short opens — uncap so backend can size against margin.
-      if (_isFno && widget.ownedQuantity == 0) return 1000000;
+      // Short-selling is disabled — you can only sell what you hold, so the
+      // sell quantity is capped at the owned position (0 ⇒ can't submit).
       return widget.ownedQuantity;
     }
     final price = _reservationPrice;

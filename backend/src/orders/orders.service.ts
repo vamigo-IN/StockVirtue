@@ -18,11 +18,7 @@ import { computeFees } from '../common/fees';
 import { isMarketOpen } from '../common/market-hours';
 import { HolidaysService } from '../market/holidays.service';
 import { FeatureFlagsService } from '../feature-flags/feature-flags.service';
-import {
-  isFnoInstrumentType,
-  marginRateBps,
-  requiredMarginP,
-} from '../common/margin';
+import { isFnoInstrumentType, requiredMarginP } from '../common/margin';
 import { rupeesToPaise } from '../common/money';
 import { ScripMasterService } from '../market/scrip-master.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -158,8 +154,8 @@ export class OrdersService {
 
   /// After-market MARKET order: reserve at the last-known price and queue it
   /// PENDING so the tick-watcher fills it at the open price when the market
-  /// next opens. Reuses the LIMIT reservation/short-open path; the watcher
-  /// fires a pending MARKET unconditionally (vs. on a price threshold).
+  /// next opens. Reuses the LIMIT reservation path; the watcher fires a
+  /// pending MARKET unconditionally (vs. on a price threshold).
   private async placePendingMarket(
     input: PlaceOrderInput & { inst: Instrument },
   ) {
@@ -251,8 +247,6 @@ export class OrdersService {
           'Order crosses zero. Split into a cover order and a fresh long.',
         );
       }
-      const fno = isFnoInstrumentType(inst.instrumentType);
-
       if (input.side === OrderSide.BUY) {
         if (currentQty < 0) {
           // COVER short. Debit cost from balance, release proportional margin,
@@ -321,61 +315,11 @@ export class OrdersService {
             },
           });
         } else {
-          // SHORT OPEN (or add to short). F&O only.
-          if (!fno) {
-            throw new BadRequestException(
-              'Short selling only allowed on F&O instruments',
-            );
-          }
-          // Weighted avg short price across existing + new contracts.
-          const oldAbsQty = Math.abs(currentQty);
-          const newAbsQty = oldAbsQty + qty;
-          const newAvgP =
-            currentQty < 0
-              ? (position!.avgPriceP * BigInt(oldAbsQty) +
-                  fillPriceP * BigInt(qty)) /
-                BigInt(newAbsQty)
-              : fillPriceP;
-          const newMarginP = requiredMarginP(newAbsQty, newAvgP, inst.name);
-          const oldMarginP = position?.marginP ?? 0n;
-          const marginDeltaP = newMarginP - oldMarginP;
-          const available =
-            wallet.balanceP - wallet.reservedP - wallet.marginReservedP;
-          if (available < marginDeltaP) {
-            throw new BadRequestException('INSUFFICIENT_MARGIN');
-          }
-          // Receive premium minus fees; lock margin delta.
-          await tx.wallet.update({
-            where: { userId: input.userId },
-            data: {
-              balanceP: wallet.balanceP + notionalP - feesP,
-              marginReservedP: wallet.marginReservedP + marginDeltaP,
-            },
-          });
-          if (position) {
-            await tx.position.update({
-              where: positionKey,
-              data: {
-                quantity: newQty,
-                avgPriceP: newAvgP,
-                marginP: newMarginP,
-              },
-            });
-          } else {
-            await tx.position.create({
-              data: {
-                userId: input.userId,
-                symbol: inst.name,
-                tradingsymbol: inst.symbol,
-                symboltoken: inst.token,
-                exchange: inst.exchange,
-                product,
-                quantity: newQty,
-                avgPriceP: newAvgP,
-                marginP: newMarginP,
-              },
-            });
-          }
+          // Short-selling is disabled — you can only sell holdings you own.
+          // (currentQty <= 0 here means there's no long position to reduce.)
+          throw new BadRequestException(
+            'You can only sell holdings you own. Short-selling is disabled.',
+          );
         }
       }
 
@@ -448,48 +392,14 @@ export class OrdersService {
             where: positionKey,
             data: { reservedQty: position!.reservedQty + input.quantity },
           });
-        } else if (
-          isFnoInstrumentType(inst.instrumentType) &&
-          (!position || position.quantity <= 0)
-        ) {
-          // SHORT-OPEN intent on F&O. Reserve margin at the limit price.
-          const marginP =
-            (limitPriceP *
-              BigInt(input.quantity) *
-              marginRateBps(inst.name)) /
-            10000n;
-          const available =
-            wallet.balanceP - wallet.reservedP - wallet.marginReservedP;
-          if (available < marginP) {
-            throw new BadRequestException('INSUFFICIENT_MARGIN');
-          }
-          await tx.wallet.update({
-            where: { userId: input.userId },
-            data: { marginReservedP: wallet.marginReservedP + marginP },
-          });
-          const order = await tx.order.create({
-            data: {
-              userId: input.userId,
-              symbol: inst.name,
-              tradingsymbol: inst.symbol,
-              symboltoken: inst.token,
-              exchange: inst.exchange,
-              side: input.side,
-              type: orderType,
-              product,
-              quantity: input.quantity,
-              limitPriceP,
-              shortIntent: true,
-              reservedMarginP: marginP,
-              status: OrderStatus.PENDING,
-            },
-          });
-          this.logger.log(
-            `[${input.userId}] ${orderType} SHORT ${product} SELL ${input.quantity} ${inst.name} @ ₹${input.limitPrice} (pending, margin ₹${Number(marginP) / 100})`,
-          );
-          return order;
         } else {
-          throw new BadRequestException('INSUFFICIENT_QUANTITY');
+          // Short-selling is disabled — only closing/reducing a long is
+          // allowed. Distinguish "hold some but not enough" from "hold none".
+          throw new BadRequestException(
+            position && position.quantity > 0
+              ? 'INSUFFICIENT_QUANTITY'
+              : 'You can only sell holdings you own. Short-selling is disabled.',
+          );
         }
       }
 
@@ -551,48 +461,14 @@ export class OrdersService {
             where: positionKey,
             data: { reservedQty: position!.reservedQty + input.quantity },
           });
-        } else if (
-          isFnoInstrumentType(inst.instrumentType) &&
-          (!position || position.quantity <= 0)
-        ) {
-          // SHORT-OPEN intent via SL. Reserve margin at trigger price.
-          const marginP =
-            (triggerPriceP *
-              BigInt(input.quantity) *
-              marginRateBps(inst.name)) /
-            10000n;
-          const available =
-            wallet.balanceP - wallet.reservedP - wallet.marginReservedP;
-          if (available < marginP) {
-            throw new BadRequestException('INSUFFICIENT_MARGIN');
-          }
-          await tx.wallet.update({
-            where: { userId: input.userId },
-            data: { marginReservedP: wallet.marginReservedP + marginP },
-          });
-          const order = await tx.order.create({
-            data: {
-              userId: input.userId,
-              symbol: inst.name,
-              tradingsymbol: inst.symbol,
-              symboltoken: inst.token,
-              exchange: inst.exchange,
-              side: input.side,
-              type: OrderType.STOP_LOSS,
-              product,
-              quantity: input.quantity,
-              triggerPriceP,
-              shortIntent: true,
-              reservedMarginP: marginP,
-              status: OrderStatus.PENDING,
-            },
-          });
-          this.logger.log(
-            `[${input.userId}] SL SHORT ${product} SELL ${input.quantity} ${inst.name} trigger ₹${input.triggerPrice} (pending, margin ₹${Number(marginP) / 100})`,
-          );
-          return order;
         } else {
-          throw new BadRequestException('INSUFFICIENT_QUANTITY');
+          // Short-selling is disabled — only closing/reducing a long is
+          // allowed. Distinguish "hold some but not enough" from "hold none".
+          throw new BadRequestException(
+            position && position.quantity > 0
+              ? 'INSUFFICIENT_QUANTITY'
+              : 'You can only sell holdings you own. Short-selling is disabled.',
+          );
         }
       }
 
@@ -659,51 +535,14 @@ export class OrdersService {
             where: positionKey,
             data: { reservedQty: position!.reservedQty + input.quantity },
           });
-        } else if (
-          isFnoInstrumentType(inst.instrumentType) &&
-          (!position || position.quantity <= 0)
-        ) {
-          // SHORT-OPEN intent via SL-L. Reserve margin at the limit price
-          // (worst-case fill — limit is the floor the SELL can drop to once
-          // the trigger fires).
-          const marginP =
-            (limitPriceP *
-              BigInt(input.quantity) *
-              marginRateBps(inst.name)) /
-            10000n;
-          const available =
-            wallet.balanceP - wallet.reservedP - wallet.marginReservedP;
-          if (available < marginP) {
-            throw new BadRequestException('INSUFFICIENT_MARGIN');
-          }
-          await tx.wallet.update({
-            where: { userId: input.userId },
-            data: { marginReservedP: wallet.marginReservedP + marginP },
-          });
-          const order = await tx.order.create({
-            data: {
-              userId: input.userId,
-              symbol: inst.name,
-              tradingsymbol: inst.symbol,
-              symboltoken: inst.token,
-              exchange: inst.exchange,
-              side: input.side,
-              type: OrderType.STOP_LOSS_LIMIT,
-              product,
-              quantity: input.quantity,
-              triggerPriceP,
-              limitPriceP,
-              shortIntent: true,
-              reservedMarginP: marginP,
-              status: OrderStatus.PENDING,
-            },
-          });
-          this.logger.log(
-            `[${input.userId}] SL-L SHORT ${product} SELL ${input.quantity} ${inst.name} trigger ₹${input.triggerPrice} limit ₹${input.limitPrice} (pending, margin ₹${Number(marginP) / 100})`,
-          );
-          return order;
         } else {
-          throw new BadRequestException('INSUFFICIENT_QUANTITY');
+          // Short-selling is disabled — only closing/reducing a long is
+          // allowed. Distinguish "hold some but not enough" from "hold none".
+          throw new BadRequestException(
+            position && position.quantity > 0
+              ? 'INSUFFICIENT_QUANTITY'
+              : 'You can only sell holdings you own. Short-selling is disabled.',
+          );
         }
       }
 

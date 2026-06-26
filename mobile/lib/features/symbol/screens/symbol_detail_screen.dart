@@ -11,6 +11,7 @@ import '../../../data/models/quote.dart';
 import '../../../data/models/tick.dart';
 import '../../../widgets/depth_view.dart';
 import '../../chart/screens/chart_screen.dart';
+import '../../home/indices_universe.dart';
 import '../../home/recently_viewed_storage.dart';
 import '../../options/screens/option_chain_screen.dart';
 import '../../market/market_repository.dart';
@@ -74,12 +75,21 @@ class _SymbolDetailScreenState extends ConsumerState<SymbolDetailScreen> {
   bool get _isFno => _exchange == 'NFO' || _exchange == 'BFO';
   bool get _isEquityExchange => _exchange == 'NSE' || _exchange == 'BSE';
   // SmartAPI assigns indices a token in the 99926000 (NSE) / 99919000
-  // (BSE) range — five-digit prefix is enough to identify them without
-  // a backend roundtrip. We route around the trade sheet for these
-  // since users can't actually buy an index spot.
+  // (BSE) range — the prefix identifies most of them without a backend
+  // roundtrip. But the prefix isn't reliable for every index (e.g. SENSEX),
+  // so we ALSO match against the curated index universe by (symbol, exchange).
+  // We route around the trade sheet for these since you can't buy an index spot.
   bool get _isIndex =>
       _isEquityExchange &&
-      (_symboltoken.startsWith('99926') || _symboltoken.startsWith('99919'));
+      (_symboltoken.startsWith('99926') ||
+          _symboltoken.startsWith('99919') ||
+          _isCuratedIndex);
+
+  bool get _isCuratedIndex {
+    final sym = widget.symbol.toUpperCase();
+    return allIndices
+        .any((e) => e.symbol.toUpperCase() == sym && e.exchange == _exchange);
+  }
 
   @override
   void initState() {
@@ -234,15 +244,36 @@ class _SymbolDetailScreenState extends ConsumerState<SymbolDetailScreen> {
       lotSize: (_snapshot?['lotSize'] as num?)?.toInt() ?? 1,
     );
     if (order != null && mounted) {
+      final (text, color) = _orderFeedback(side, order);
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            '${side == OrderSide.buy ? 'Bought' : 'Sold'} ${order.quantity} ${order.symbol} @ ₹${order.fillPrice?.toStringAsFixed(2) ?? '?'}',
-          ),
-          backgroundColor:
-              side == OrderSide.buy ? _upColor : _downColor,
-        ),
+        SnackBar(content: Text(text), backgroundColor: color),
       );
+    }
+  }
+
+  /// Post-order snackbar copy + colour. Only a FILLED order has a price —
+  /// a pending/queued order (market closed/holiday, or a resting limit/SL)
+  /// must NOT print a fill price (that was the "@ ₹?" bug), and a rejection
+  /// shows the reason instead.
+  (String, Color) _orderFeedback(OrderSide side, OrderRecord order) {
+    final verb = side == OrderSide.buy ? 'Bought' : 'Sold';
+    switch (order.status) {
+      case OrderStatus.filled:
+        final px = order.fillPrice;
+        final at = px != null ? ' @ ₹${px.toStringAsFixed(2)}' : '';
+        return (
+          '$verb ${order.quantity} ${order.symbol}$at',
+          side == OrderSide.buy ? _upColor : _downColor,
+        );
+      case OrderStatus.pending:
+        final msg = order.type == OrderType.market
+            ? 'Order queued — fills at the next market open'
+            : 'Order placed — waiting for your price';
+        return (msg, const Color(0xFFF59E0B));
+      case OrderStatus.rejected:
+        return (order.rejectReason ?? 'Order rejected', _downColor);
+      case OrderStatus.cancelled:
+        return ('Order cancelled', const Color(0xFF6B7280));
     }
   }
 
@@ -409,12 +440,13 @@ class _SymbolDetailScreenState extends ConsumerState<SymbolDetailScreen> {
       ),
       bottomNavigationBar: _isIndex
           // Indices aren't directly tradable on the spot market — only
-          // via F&O contracts. Swap Buy/Sell for a single "Option chain"
-          // CTA that routes to the underlying's chain page.
-          ? _IndexActionBar(underlying: widget.symbol)
+          // via F&O contracts. Swap Buy/Sell for Chart + Option-chain CTAs.
+          ? _IndexActionBar(
+              underlying: widget.symbol,
+              exchange: _exchange,
+            )
           : portfolio.maybeWhen(
               data: (p) => _ActionBar(
-                isFno: _isFno,
                 ownedQty: p.positionFor(_exchange, _symboltoken)
                         ?.quantity ??
                     0,
@@ -432,7 +464,6 @@ class _SymbolDetailScreenState extends ConsumerState<SymbolDetailScreen> {
                 ),
               ),
               orElse: () => const _ActionBar(
-                isFno: false,
                 ownedQty: 0,
                 onBuy: null,
                 onSell: null,
@@ -970,13 +1001,11 @@ class _MiniMetric extends StatelessWidget {
 
 class _ActionBar extends StatelessWidget {
   const _ActionBar({
-    required this.isFno,
     required this.ownedQty,
     required this.onBuy,
     required this.onSell,
   });
 
-  final bool isFno;
   final int ownedQty;
   final VoidCallback? onBuy;
   final VoidCallback? onSell;
@@ -984,10 +1013,10 @@ class _ActionBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final canSell = ownedQty > 0 || isFno;
-    final sellTooltip = canSell
-        ? null
-        : 'Buy shares first — short selling needs F&O.';
+    // Short-selling is disabled — you can only sell what you hold.
+    final canSell = ownedQty > 0;
+    final sellTooltip =
+        canSell ? null : 'You can only sell holdings you own.';
     return SafeArea(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
@@ -1051,11 +1080,9 @@ class _ActionBar extends StatelessWidget {
                     children: [
                       const Icon(Icons.remove_shopping_cart, size: 18),
                       const SizedBox(width: 8),
-                      Text(
-                        ownedQty > 0
-                            ? 'Sell'
-                            : (isFno ? 'Short' : 'Sell'),
-                        style: const TextStyle(
+                      const Text(
+                        'Sell',
+                        style: TextStyle(
                           fontWeight: FontWeight.w700,
                           fontSize: 15,
                         ),
@@ -1147,13 +1174,17 @@ class _BookmarkButton extends ConsumerWidget {
   }
 }
 
-/// Bottom CTA shown on index detail screens. Replaces the standard
-/// Buy/Sell pair — you can't buy a spot index, so we route to the
-/// option chain instead. F&O contracts on the underlying are the real
-/// way to express a directional view.
+/// Bottom action bar shown on index detail screens. An index can't be
+/// bought as a spot instrument, so instead of Buy/Sell we offer two
+/// read/trade entry points: a Chart button and an Option-chain button
+/// (F&O contracts on the underlying are the real way to take a view).
 class _IndexActionBar extends StatelessWidget {
-  const _IndexActionBar({required this.underlying});
+  const _IndexActionBar({
+    required this.underlying,
+    required this.exchange,
+  });
   final String underlying;
+  final String exchange;
 
   @override
   Widget build(BuildContext context) {
@@ -1182,39 +1213,72 @@ class _IndexActionBar extends StatelessWidget {
                   color: scheme.onSurface.withValues(alpha: 0.55),
                 ),
                 const SizedBox(width: 4),
-                Text(
-                  'Indices aren\'t traded as spot — use F&O contracts.',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: scheme.onSurface.withValues(alpha: 0.55),
+                Expanded(
+                  child: Text(
+                    'Indices aren\'t traded as spot — view the chart or trade F&O.',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: scheme.onSurface.withValues(alpha: 0.55),
+                    ),
                   ),
                 ),
               ],
             ),
             const SizedBox(height: 8),
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton.icon(
-                onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => OptionChainScreen(underlying: underlying),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => ChartScreen(
+                          symbol: underlying,
+                          exchange: exchange,
+                        ),
+                      ),
+                    ),
+                    icon: const Icon(Icons.candlestick_chart_outlined, size: 18),
+                    label: const Text(
+                      'Chart',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size.fromHeight(48),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
                   ),
                 ),
-                icon: const Icon(Icons.swap_calls, size: 18),
-                label: const Text(
-                  'Open option chain',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w800,
+                const SizedBox(width: 12),
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: () => Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            OptionChainScreen(underlying: underlying),
+                      ),
+                    ),
+                    icon: const Icon(Icons.account_tree_outlined, size: 18),
+                    label: const Text(
+                      'Option chain',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size.fromHeight(48),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
                   ),
                 ),
-                style: FilledButton.styleFrom(
-                  minimumSize: const Size.fromHeight(48),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-              ),
+              ],
             ),
           ],
         ),
