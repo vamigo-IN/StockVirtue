@@ -58,7 +58,7 @@ flutter_launcher_icons:
   ios: true
   remove_alpha_ios: true
   min_sdk_android: 21
-  # The logo's own background is black, so the adaptive-icon background matches
+  # The logo sits on a white background, so the adaptive-icon background matches
   # and the masked Android-8+ icon blends seamlessly with the foreground.
-  adaptive_icon_background: "#000000"
+  adaptive_icon_background: "#FFFFFF"
   adaptive_icon_foreground: "assets/logo.png"
