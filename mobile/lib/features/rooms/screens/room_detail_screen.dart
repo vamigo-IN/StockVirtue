@@ -315,11 +315,15 @@ class _Header extends StatelessWidget {
                 color: scheme.onSurface.withValues(alpha: 0.6),
               ),
               const SizedBox(width: 4),
-              Text(
-                'Hosted by ${room.ownerName}',
-                style: TextStyle(
-                  fontSize: 11.5,
-                  color: scheme.onSurface.withValues(alpha: 0.6),
+              Flexible(
+                child: Text(
+                  'Hosted by ${room.ownerName}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    color: scheme.onSurface.withValues(alpha: 0.6),
+                  ),
                 ),
               ),
               const SizedBox(width: 10),

@@ -143,11 +143,13 @@ class _TermCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              Text(
-                term.term,
-                style: const TextStyle(
-                  fontWeight: FontWeight.w800,
-                  fontSize: 13.5,
+              Flexible(
+                child: Text(
+                  term.term,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    fontSize: 13.5,
+                  ),
                 ),
               ),
               if (term.acronym != null) ...[

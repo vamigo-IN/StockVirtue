@@ -62,21 +62,29 @@ class _MarketStatusCardState extends ConsumerState<MarketStatusCard> {
                     children: [
                       Row(
                         children: [
-                          Text(
-                            state.label,
-                            style: TextStyle(
-                              color: state.color,
-                              fontWeight: FontWeight.w700,
-                              fontSize: 14,
-                              letterSpacing: 0.3,
+                          Flexible(
+                            child: Text(
+                              state.label,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: state.color,
+                                fontWeight: FontWeight.w700,
+                                fontSize: 14,
+                                letterSpacing: 0.3,
+                              ),
                             ),
                           ),
                           const SizedBox(width: 8),
-                          Text(
-                            '· NSE / BSE',
-                            style: TextStyle(
-                              fontSize: 11.5,
-                              color: scheme.onSurface.withValues(alpha: 0.55),
+                          Flexible(
+                            child: Text(
+                              '· NSE / BSE',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 11.5,
+                                color: scheme.onSurface.withValues(alpha: 0.55),
+                              ),
                             ),
                           ),
                           // Tiny chip flagging where the holiday list

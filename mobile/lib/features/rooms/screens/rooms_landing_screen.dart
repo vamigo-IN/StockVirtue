@@ -431,31 +431,23 @@ class _RoomCard extends StatelessWidget {
                     color: scheme.onSurface.withValues(alpha: 0.55),
                   ),
                 ),
-                const Spacer(),
-                if (room.isTournament && room.endsAt != null)
-                  Text(
-                    _tournamentWindowLabel(room),
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: scheme.onSurface.withValues(alpha: 0.55),
-                    ),
-                  )
-                else if (!publicLayout && room.myBaseline != null)
-                  Text(
-                    'Baseline ${formatInr(room.myBaseline!)}',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: scheme.onSurface.withValues(alpha: 0.55),
-                    ),
-                  )
-                else
-                  Text(
-                    room.isPublic ? 'Public' : 'Private',
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    room.isTournament && room.endsAt != null
+                        ? _tournamentWindowLabel(room)
+                        : (!publicLayout && room.myBaseline != null)
+                              ? 'Baseline ${formatInr(room.myBaseline!)}'
+                              : (room.isPublic ? 'Public' : 'Private'),
+                    textAlign: TextAlign.end,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       fontSize: 11,
                       color: scheme.onSurface.withValues(alpha: 0.55),
                     ),
                   ),
+                ),
               ],
             ),
             if (onJoin != null) ...[

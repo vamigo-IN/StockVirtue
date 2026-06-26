@@ -894,9 +894,13 @@ class _PositionCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 6),
-              Text(
-                '${qty.abs()} @ ${formatInr(position.avgPrice)}',
-                style: const TextStyle(fontWeight: FontWeight.w700),
+              Flexible(
+                child: Text(
+                  '${qty.abs()} @ ${formatInr(position.avgPrice)}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
               ),
             ],
           ),
