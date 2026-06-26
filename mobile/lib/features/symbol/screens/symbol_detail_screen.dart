@@ -231,6 +231,7 @@ class _SymbolDetailScreenState extends ConsumerState<SymbolDetailScreen> {
       referencePrice: price,
       ownedQuantity: position?.quantity ?? 0,
       walletBalance: walletBalance,
+      lotSize: (_snapshot?['lotSize'] as num?)?.toInt() ?? 1,
     );
     if (order != null && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(

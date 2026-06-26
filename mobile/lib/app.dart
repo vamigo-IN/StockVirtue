@@ -32,6 +32,21 @@ class StockVirtueApp extends ConsumerWidget {
       darkTheme: buildDarkTheme(),
       themeMode: themeMode,
       scrollBehavior: const _StockVirtueScrollBehavior(),
+      builder: (context, child) {
+        // Cap text scaling: a phone set to XL / XXL accessibility font sizes
+        // would otherwise overflow fixed layouts across the app. Users still
+        // get noticeably larger text (up to 1.3×), just within a safe bound.
+        final mq = MediaQuery.of(context);
+        return MediaQuery(
+          data: mq.copyWith(
+            textScaler: mq.textScaler.clamp(
+              minScaleFactor: 1.0,
+              maxScaleFactor: 1.3,
+            ),
+          ),
+          child: child ?? const SizedBox.shrink(),
+        );
+      },
       home: const _AuthGate(),
     );
   }

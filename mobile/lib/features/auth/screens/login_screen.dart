@@ -115,6 +115,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
     final busy = _busy || _googleBusy;
     // Phone login is admin-gated; show it only when the flag is on. While the
     // config is loading or unavailable, default to hidden.
@@ -131,11 +132,28 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 const SizedBox(height: 12),
-                Image.asset(
-                  'assets/logo.png',
-                  width: 92,
-                  height: 92,
-                  filterQuality: FilterQuality.medium,
+                Center(
+                  child: Container(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(22),
+                      boxShadow: [
+                        BoxShadow(
+                          color: scheme.primary.withValues(alpha: 0.28),
+                          blurRadius: 30,
+                          spreadRadius: -8,
+                        ),
+                      ],
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(22),
+                      child: Image.asset(
+                        'assets/logo.png',
+                        width: 92,
+                        height: 92,
+                        filterQuality: FilterQuality.medium,
+                      ),
+                    ),
+                  ),
                 ),
                 const SizedBox(height: 16),
                 Text(
@@ -196,15 +214,53 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     ),
                   ),
                 if (_error != null) ...[
-                  const SizedBox(height: 12),
-                  Text(
-                    _error!,
-                    style: const TextStyle(color: Colors.redAccent),
+                  const SizedBox(height: 14),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.redAccent.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: Colors.redAccent.withValues(alpha: 0.3),
+                      ),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.error_outline,
+                          color: Colors.redAccent,
+                          size: 18,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            _error!,
+                            style: const TextStyle(
+                              color: Colors.redAccent,
+                              fontSize: 12.5,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
                 const SizedBox(height: 20),
-                ElevatedButton(
+                FilledButton(
                   onPressed: busy ? null : _submitEmail,
+                  style: FilledButton.styleFrom(
+                    minimumSize: const Size.fromHeight(54),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    textStyle: const TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 15,
+                    ),
+                  ),
                   child: _busy
                       ? const SizedBox(
                           height: 20,
@@ -252,16 +308,36 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           height: 18,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : const Icon(Icons.account_circle_outlined),
+                      : const Icon(Icons.account_circle_outlined, size: 20),
                   label: const Text('Continue with Google'),
                   onPressed: busy ? null : _signInWithGoogle,
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size.fromHeight(52),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    side: BorderSide(
+                      color: scheme.outlineVariant.withValues(alpha: 0.6),
+                    ),
+                    textStyle: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
                 ),
                 if (showPhone) ...[
                   const SizedBox(height: 12),
                   OutlinedButton.icon(
-                    icon: const Icon(Icons.phone_outlined),
+                    icon: const Icon(Icons.phone_outlined, size: 20),
                     label: const Text('Continue with phone number'),
                     onPressed: busy ? null : _goToPhone,
+                    style: OutlinedButton.styleFrom(
+                      minimumSize: const Size.fromHeight(52),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      side: BorderSide(
+                        color: scheme.outlineVariant.withValues(alpha: 0.6),
+                      ),
+                      textStyle: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
                   ),
                 ],
               ],

@@ -26,10 +26,15 @@ Future<OrderRecord?> showTradeSheet(
   required double? referencePrice,
   required int ownedQuantity,
   required double walletBalance,
+  int lotSize = 1,
 }) {
   return showModalBottomSheet<OrderRecord>(
     context: context,
     isScrollControlled: true,
+    // Cap the sheet height so it can't exceed the screen; the body scrolls.
+    constraints: BoxConstraints(
+      maxHeight: MediaQuery.of(context).size.height * 0.92,
+    ),
     builder: (ctx) => Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.of(ctx).viewInsets.bottom),
       child: _TradeSheet(
@@ -40,6 +45,7 @@ Future<OrderRecord?> showTradeSheet(
         referencePrice: referencePrice,
         ownedQuantity: ownedQuantity,
         walletBalance: walletBalance,
+        lotSize: lotSize < 1 ? 1 : lotSize,
       ),
     ),
   );
@@ -54,6 +60,7 @@ class _TradeSheet extends ConsumerStatefulWidget {
     required this.referencePrice,
     required this.ownedQuantity,
     required this.walletBalance,
+    required this.lotSize,
   });
 
   final OrderSide side;
@@ -64,6 +71,10 @@ class _TradeSheet extends ConsumerStatefulWidget {
   final int ownedQuantity;
   final double walletBalance;
 
+  /// Contract lot size. 1 for cash equity; the F&O lot (e.g. 65) for
+  /// derivatives — quantity is then constrained to whole multiples of this.
+  final int lotSize;
+
   @override
   ConsumerState<_TradeSheet> createState() => _TradeSheetState();
 }
@@ -71,7 +82,7 @@ class _TradeSheet extends ConsumerStatefulWidget {
 class _TradeSheetState extends ConsumerState<_TradeSheet> {
   late OrderType _type;
   late OrderProduct _product;
-  int _qty = 1;
+  late int _qty;
   bool _busy = false;
   String? _error;
   late final TextEditingController _limitController;
@@ -106,6 +117,8 @@ class _TradeSheetState extends ConsumerState<_TradeSheet> {
     final prefs = ref.read(prefsProvider);
     _type = prefs.defaultOrderType;
     _product = prefs.defaultProduct;
+    // F&O quantity is constrained to whole lots — start at one lot.
+    _qty = widget.lotSize > 1 ? widget.lotSize : 1;
     final ref0 = widget.referencePrice;
     final defaultStr = ref0 != null ? ref0.toStringAsFixed(2) : '';
     _limitController = TextEditingController(text: defaultStr);
@@ -273,6 +286,12 @@ class _TradeSheetState extends ConsumerState<_TradeSheet> {
 
   bool get _isFno => widget.exchange == 'NFO' || widget.exchange == 'BFO';
 
+  /// Lot-constrained instrument (F&O). Quantity must be whole multiples of the
+  /// lot size, with the lot size itself as the minimum.
+  bool get _isLotted => widget.lotSize > 1;
+  int get _step => _isLotted ? widget.lotSize : 1;
+  int get _lots => widget.lotSize > 0 ? _qty ~/ widget.lotSize : _qty;
+
   String _typeLabelFor(OrderType t) => switch (t) {
     OrderType.market => 'MARKET',
     OrderType.limit => 'LIMIT',
@@ -282,6 +301,12 @@ class _TradeSheetState extends ConsumerState<_TradeSheet> {
   };
 
   int get _maxQty {
+    final raw = _rawMaxQty;
+    if (_step <= 1) return raw;
+    return raw ~/ _step * _step; // largest whole-lot quantity ≤ raw
+  }
+
+  int get _rawMaxQty {
     if (!_isBuy) {
       // F&O allows short opens — uncap so backend can size against margin.
       if (_isFno && widget.ownedQuantity == 0) return 1000000;
@@ -291,6 +316,19 @@ class _TradeSheetState extends ConsumerState<_TradeSheet> {
     if (price <= 0) return 0;
     return (widget.walletBalance / price).floor();
   }
+
+  Widget _fieldLabel(String text) => Padding(
+    padding: const EdgeInsets.only(bottom: 8),
+    child: Text(
+      text.toUpperCase(),
+      style: TextStyle(
+        fontSize: 11,
+        fontWeight: FontWeight.w800,
+        letterSpacing: 0.6,
+        color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.55),
+      ),
+    ),
+  );
 
   String _ctaLabel(double notional) {
     final ts = _triggerPrice.toStringAsFixed(2);
@@ -360,8 +398,11 @@ class _TradeSheetState extends ConsumerState<_TradeSheet> {
               '${widget.exchange} • LTP ₹${livePrice.toStringAsFixed(2)}',
               style: TextStyle(color: Colors.white.withValues(alpha: 0.6)),
             ),
-            const SizedBox(height: 16),
-            Row(
+            const SizedBox(height: 20),
+            _fieldLabel('Product'),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
               children: [
                 ChoiceChip(
                   label: const Text('Delivery'),
@@ -369,7 +410,6 @@ class _TradeSheetState extends ConsumerState<_TradeSheet> {
                   onSelected: (_) =>
                       setState(() => _product = OrderProduct.delivery),
                 ),
-                const SizedBox(width: 8),
                 ChoiceChip(
                   label: const Text('Intraday'),
                   selected: _product == OrderProduct.intraday,
@@ -378,46 +418,32 @@ class _TradeSheetState extends ConsumerState<_TradeSheet> {
                 ),
               ],
             ),
-            const SizedBox(height: 12),
-            SegmentedButton<OrderType>(
-              segments: <ButtonSegment<OrderType>>[
-                const ButtonSegment(
-                  value: OrderType.market,
-                  label: Text('Market'),
-                ),
-                const ButtonSegment(
-                  value: OrderType.limit,
-                  label: Text('Limit'),
-                ),
-                const ButtonSegment(
-                  value: OrderType.stopLoss,
-                  label: Text('SL'),
-                ),
-                const ButtonSegment(
-                  value: OrderType.stopLossLimit,
-                  label: Text('SL-L'),
-                ),
-                const ButtonSegment(
-                  value: OrderType.trailingStop,
-                  label: Text('Trail'),
-                ),
-              ],
-              selected: {_type},
-              onSelectionChanged: (s) => setState(() => _type = s.first),
-            ),
             const SizedBox(height: 16),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            _fieldLabel('Order type'),
+            // Wrap (not SegmentedButton): five segments + large system fonts
+            // would otherwise wrap each label and stretch the control downward.
+            // Chips flow onto a second row gracefully instead.
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
               children: [
-                Text(
-                  _isBuy
-                      ? 'Available: ₹${widget.walletBalance.toStringAsFixed(2)}'
-                      : 'Available qty: ${widget.ownedQuantity}',
-                ),
-                Text('Max: $_maxQty'),
+                for (final t in OrderType.values)
+                  ChoiceChip(
+                    label: Text(switch (t) {
+                      OrderType.market => 'Market',
+                      OrderType.limit => 'Limit',
+                      OrderType.stopLoss => 'SL',
+                      OrderType.stopLossLimit => 'SL-L',
+                      OrderType.trailingStop => 'Trail',
+                    }),
+                    selected: _type == t,
+                    onSelected: (_) => setState(() => _type = t),
+                  ),
               ],
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 20),
+            if (_needsTrigger || _needsTrail || _needsLimit)
+              _fieldLabel('Price'),
             if (_needsTrigger)
               Padding(
                 padding: const EdgeInsets.only(bottom: 12),
@@ -483,43 +509,121 @@ class _TradeSheetState extends ConsumerState<_TradeSheet> {
                   style: const TextStyle(color: Colors.amber, fontSize: 12),
                 ),
               ),
+            _fieldLabel('Quantity'),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    _isBuy
+                        ? 'Available ₹${widget.walletBalance.toStringAsFixed(2)}'
+                        : 'You hold ${widget.ownedQuantity}',
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Theme.of(
+                        context,
+                      ).colorScheme.onSurface.withValues(alpha: 0.6),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  _isLotted
+                      ? 'Max ${_maxQty ~/ widget.lotSize} lots'
+                      : 'Max $_maxQty',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.onSurface.withValues(alpha: 0.6),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
             Row(
               children: [
                 IconButton.filledTonal(
-                  onPressed: _qty > 1 ? () => setState(() => _qty--) : null,
+                  onPressed: _qty - _step >= _step
+                      ? () => setState(() => _qty -= _step)
+                      : null,
                   icon: const Icon(Icons.remove),
                 ),
                 Expanded(
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 8),
-                    child: TextField(
-                      keyboardType: TextInputType.number,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w600,
-                      ),
-                      controller: TextEditingController(text: '$_qty')
-                        ..selection = TextSelection.collapsed(
-                          offset: '$_qty'.length,
-                        ),
-                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                      decoration: const InputDecoration(labelText: 'Quantity'),
-                      onChanged: (v) {
-                        final n = int.tryParse(v) ?? 0;
-                        setState(() => _qty = n);
-                      },
-                    ),
+                    // F&O: a non-editable lots display (steps by the lot only),
+                    // so quantity can't be set to a non-lot value. Equity: a
+                    // free-entry quantity field.
+                    child: _isLotted
+                        ? Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                '$_lots',
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  fontSize: 26,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              Text(
+                                _lots == 1 ? 'lot' : 'lots',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: Theme.of(context).colorScheme.onSurface
+                                      .withValues(alpha: 0.55),
+                                ),
+                              ),
+                            ],
+                          )
+                        : TextField(
+                            keyboardType: TextInputType.number,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              fontSize: 22,
+                              fontWeight: FontWeight.w600,
+                            ),
+                            controller: TextEditingController(text: '$_qty')
+                              ..selection = TextSelection.collapsed(
+                                offset: '$_qty'.length,
+                              ),
+                            inputFormatters: [
+                              FilteringTextInputFormatter.digitsOnly,
+                            ],
+                            decoration: const InputDecoration(
+                              labelText: 'Quantity',
+                            ),
+                            onChanged: (v) {
+                              final n = int.tryParse(v) ?? 0;
+                              setState(() => _qty = n);
+                            },
+                          ),
                   ),
                 ),
                 IconButton.filledTonal(
-                  onPressed: _qty < _maxQty
-                      ? () => setState(() => _qty++)
+                  onPressed: _qty + _step <= _maxQty
+                      ? () => setState(() => _qty += _step)
                       : null,
                   icon: const Icon(Icons.add),
                 ),
               ],
             ),
+            if (_isLotted) ...[
+              const SizedBox(height: 8),
+              Center(
+                child: Text(
+                  '$_lots × ${widget.lotSize} = $_qty units · lot size '
+                  '${widget.lotSize}',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Theme.of(
+                      context,
+                    ).colorScheme.onSurface.withValues(alpha: 0.6),
+                  ),
+                ),
+              ),
+            ],
             const SizedBox(height: 24),
             Builder(
               builder: (context) {
@@ -561,13 +665,16 @@ class _TradeSheetState extends ConsumerState<_TradeSheet> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text(
-                            'Est. fees (STT, GST, etc.)',
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.6),
-                              fontSize: 12,
+                          Expanded(
+                            child: Text(
+                              'Est. fees (STT, GST, etc.)',
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.6),
+                                fontSize: 12,
+                              ),
                             ),
                           ),
+                          const SizedBox(width: 8),
                           Text(
                             '₹${feeEst.total.toStringAsFixed(2)}',
                             style: TextStyle(
