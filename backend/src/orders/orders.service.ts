@@ -882,6 +882,11 @@ export class OrdersService {
 
   /** Triggered by LimitWatcherService when a tick crosses a pending order. */
   async fillLimit(orderId: string, ltpRupees: number): Promise<Order | null> {
+    // Defense-in-depth: never settle a fill while the market is closed, even
+    // if a caller forgets the session check. The tick-watcher already gates
+    // this in onTick(); this keeps the DB-level fill self-protecting so the
+    // off-hours-fill invariant can't be reopened by a future caller.
+    if (!isMarketOpen()) return null;
     const fillPriceP = rupeesToPaise(ltpRupees);
     return this.prisma.$transaction(async (tx) => {
       const order = await tx.order.findUnique({ where: { id: orderId } });

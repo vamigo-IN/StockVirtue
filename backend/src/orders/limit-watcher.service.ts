@@ -166,6 +166,16 @@ export class LimitWatcherService implements OnModuleInit {
   }
 
   private async onTick(tick: PublishedTick): Promise<void> {
+    // Market-hours gate. A simulated order must never fill, convert
+    // (SL-L → LIMIT), or ratchet a trailing stop while the market is closed —
+    // real exchanges don't match trades off-hours. The SmartAPI feed keeps
+    // delivering frames outside 09:15–15:30 IST whose LTP is frozen at the
+    // prior close (see market-hours.ts); without this guard a resting
+    // LIMIT/SL sitting at that price would fire instantly off-hours. Queued
+    // after-market MARKET orders are unaffected: they only fill on the first
+    // in-session tick (decide() returns fire = isMarketOpen()), which this
+    // guard lets through once the regular session opens.
+    if (!isMarketOpen()) return;
     const key = `${tick.exchange}:${tick.token}`;
     const ids = this.byToken.get(key);
     if (!ids || ids.size === 0) return;
