@@ -1,5 +1,9 @@
-import { Injectable } from '@nestjs/common';
-import { User } from '@prisma/client';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+} from '@nestjs/common';
+import { Prisma, User } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { referralCodeFromUserId } from './referral-code';
 
@@ -106,35 +110,88 @@ export class UsersService {
    * it's still the auto-generated placeholder when it matches "Trader-XXXX".
    * Used by the client to decide whether to push the complete-profile flow.
    */
-  isProfileComplete(user: Pick<User, 'displayName'>): boolean {
+  /**
+   * Profile is "complete" once we have the full identity set: a real
+   * displayName (not the auto "Trader-XXXX" placeholder), an email, AND a
+   * mobile number. Sign-in methods each provide some of these (email/password
+   * → email; Google → email + name; phone → phone), so the complete-profile
+   * flow collects whatever's missing.
+   */
+  isProfileComplete(
+    user: Pick<User, 'displayName' | 'emailAlias' | 'phone'>,
+  ): boolean {
     const name = user.displayName?.trim() ?? '';
-    return name.length > 0 && !/^Trader-[A-Z0-9]{4}$/.test(name);
+    const hasRealName =
+      name.length > 0 && !/^Trader-[A-Z0-9]{4}$/.test(name);
+    return hasRealName && !!user.emailAlias && !!user.phone;
   }
 
   /**
-   * Updates the editable profile fields. Only `displayName` is mutable here —
-   * `email` is the login identity + Firebase link key, so it deliberately can
-   * NOT be changed via the generic profile PATCH (that would let a user
-   * pre-claim someone else's unverified address). Changing email must go
-   * through a verify-new-email OTP flow. The `email` field is accepted but
-   * ignored for backward-compat with the existing client request shape.
+   * Updates editable profile fields. `displayName` is always mutable. `email`
+   * and `phone` are settable ONLY when not already present — so the
+   * complete-profile flow can capture the identity bits a user's sign-in
+   * method didn't provide — but an existing login identity can't be silently
+   * overwritten here. Both are unique; a clash with another account surfaces
+   * as a clear 409.
    */
   async updateProfile(
     id: string,
-    patch: { displayName?: string; email?: string },
+    patch: { displayName?: string; email?: string; phone?: string },
   ): Promise<User> {
-    const data: { displayName?: string } = {};
+    const current = await this.prisma.user.findUniqueOrThrow({ where: { id } });
+    const data: { displayName?: string; emailAlias?: string; phone?: string } =
+      {};
     if (patch.displayName !== undefined) {
       const trimmed = patch.displayName.trim();
       if (trimmed.length > 0) data.displayName = trimmed;
     }
-    if (Object.keys(data).length === 0) {
-      const current = await this.prisma.user.findUniqueOrThrow({
-        where: { id },
-      });
-      return current;
+    if (patch.email !== undefined && current.emailAlias == null) {
+      const email = patch.email.trim().toLowerCase();
+      if (email.length > 0) data.emailAlias = email;
     }
-    return this.prisma.user.update({ where: { id }, data });
+    if (patch.phone !== undefined && current.phone == null) {
+      const phone = patch.phone.trim();
+      if (phone.length > 0) data.phone = this.normalizePhone(phone);
+    }
+    if (Object.keys(data).length === 0) return current;
+    try {
+      return await this.prisma.user.update({ where: { id }, data });
+    } catch (err) {
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === 'P2002'
+      ) {
+        const target = (err.meta?.target as string[] | undefined)?.join(',');
+        const field = target?.includes('phone')
+          ? 'mobile number'
+          : target?.includes('emailAlias')
+            ? 'email'
+            : 'detail';
+        throw new ConflictException(
+          `That ${field} is already linked to another account.`,
+        );
+      }
+      throw err;
+    }
+  }
+
+  /// Normalises a user-entered mobile to E.164, defaulting to +91 (India).
+  private normalizePhone(raw: string): string {
+    const digits = raw.replace(/[^0-9]/g, '');
+    let e164: string;
+    if (raw.trim().startsWith('+')) {
+      e164 = `+${digits}`;
+    } else if (digits.length === 10) {
+      e164 = `+91${digits}`;
+    } else if (digits.length === 12 && digits.startsWith('91')) {
+      e164 = `+${digits}`;
+    } else {
+      e164 = `+${digits}`;
+    }
+    if (!/^\+\d{10,15}$/.test(e164)) {
+      throw new BadRequestException('Enter a valid mobile number');
+    }
+    return e164;
   }
 
   /**

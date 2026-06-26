@@ -147,10 +147,15 @@ class AuthRepository {
     return res.data!['tradeEmails'] as bool? ?? enabled;
   }
 
-  Future<AppUser> updateProfile({String? displayName, String? email}) async {
+  Future<AppUser> updateProfile({
+    String? displayName,
+    String? email,
+    String? phone,
+  }) async {
     final body = <String, dynamic>{};
     if (displayName != null) body['displayName'] = displayName;
     if (email != null) body['email'] = email;
+    if (phone != null) body['phone'] = phone;
     final res = await _dio.patch<Map<String, dynamic>>(
       '/auth/me',
       data: body,

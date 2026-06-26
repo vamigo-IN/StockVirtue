@@ -10,4 +10,11 @@ export class UpdateProfileDto {
   @IsOptional()
   @IsEmail({}, { message: 'Invalid email' })
   email?: string;
+
+  // Mobile number (collected at profile completion when the sign-in method
+  // didn't provide one). Validated + normalised to E.164 in UsersService.
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  phone?: string;
 }

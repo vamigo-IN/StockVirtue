@@ -10,6 +10,11 @@ import '../../data/models/user.dart';
 import 'auth_repository.dart';
 
 class AuthController extends AsyncNotifier<AppUser?> {
+  /// A referral code the user typed on the sign-up form. It can't be redeemed
+  /// until they're authenticated, so we stash it here and the complete-profile
+  /// step claims it once the account exists. Cleared after it's consumed.
+  String? pendingReferralCode;
+
   @override
   Future<AppUser?> build() async {
     final storage = ref.read(authStorageProvider);
@@ -176,10 +181,14 @@ class AuthController extends AsyncNotifier<AppUser?> {
 
   // ── Profile updates ──────────────────────────────────────────────
 
-  Future<void> updateProfile({String? displayName, String? email}) async {
+  Future<void> updateProfile({
+    String? displayName,
+    String? email,
+    String? phone,
+  }) async {
     final updated = await ref
         .read(authRepositoryProvider)
-        .updateProfile(displayName: displayName, email: email);
+        .updateProfile(displayName: displayName, email: email, phone: phone);
     state = AsyncData<AppUser?>(updated);
   }
 

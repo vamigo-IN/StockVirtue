@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../auth_controller.dart';
@@ -21,6 +22,7 @@ class LoginScreen extends ConsumerStatefulWidget {
 class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _email = TextEditingController();
   final _password = TextEditingController();
+  final _referral = TextEditingController();
   bool _isSignUp = false;
   bool _busy = false;
   bool _googleBusy = false;
@@ -31,6 +33,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   void dispose() {
     _email.dispose();
     _password.dispose();
+    _referral.dispose();
     super.dispose();
   }
 
@@ -58,6 +61,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     try {
       final controller = ref.read(authControllerProvider.notifier);
       if (_isSignUp) {
+        // Stash any referral code now; it's redeemed at profile-completion
+        // once the account exists and is authenticated.
+        final code = _referral.text.trim().toUpperCase();
+        controller.pendingReferralCode = code.isEmpty ? null : code;
         // Creates the account + emails an OTP; finish on the verify screen.
         await controller.registerWithEmail(email, password);
         if (!mounted) return;
@@ -106,8 +113,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   void _goToForgotPassword() {
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) =>
-            ForgotPasswordScreen(initialEmail: _email.text.trim()),
+        builder: (_) => ForgotPasswordScreen(initialEmail: _email.text.trim()),
       ),
     );
   }
@@ -117,217 +123,216 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final busy = _busy || _googleBusy;
-    // Phone login is admin-gated; show it only when the flag is on. While the
-    // config is loading or unavailable, default to hidden.
     final showPhone = ref.watch(authConfigProvider).maybeWhen(
-          data: (c) => c.mobileOtpEnabled,
-          orElse: () => false,
-        );
+      data: (c) => c.mobileOtpEnabled,
+      orElse: () => false,
+    );
     return Scaffold(
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const SizedBox(height: 12),
-                Center(
-                  child: Container(
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(22),
-                      boxShadow: [
-                        BoxShadow(
-                          color: scheme.primary.withValues(alpha: 0.28),
-                          blurRadius: 30,
-                          spreadRadius: -8,
-                        ),
-                      ],
-                    ),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(22),
-                      child: Image.asset(
-                        'assets/logo.png',
-                        width: 92,
-                        height: 92,
-                        filterQuality: FilterQuality.medium,
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  'StockVirtue',
-                  style: theme.textTheme.headlineMedium?.copyWith(
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: -0.5,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  _isSignUp
-                      ? 'Create your account to start trading'
-                      : 'Sign in to continue',
-                  style: theme.textTheme.bodyMedium?.copyWith(
-                    color: theme.colorScheme.onSurface.withValues(alpha: 0.6),
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 36),
-                TextField(
-                  controller: _email,
-                  keyboardType: TextInputType.emailAddress,
-                  autofillHints: const [AutofillHints.email],
-                  textInputAction: TextInputAction.next,
-                  enabled: !busy,
-                  decoration: const InputDecoration(
-                    labelText: 'Email',
-                    prefixIcon: Icon(Icons.mail_outline),
-                  ),
-                ),
-                const SizedBox(height: 14),
-                TextField(
-                  controller: _password,
-                  obscureText: _obscure,
-                  autofillHints: const [AutofillHints.password],
-                  textInputAction: TextInputAction.done,
-                  enabled: !busy,
-                  onSubmitted: (_) => busy ? null : _submitEmail(),
-                  decoration: InputDecoration(
-                    labelText: 'Password',
-                    prefixIcon: const Icon(Icons.lock_outline),
-                    suffixIcon: IconButton(
-                      icon: Icon(
-                        _obscure ? Icons.visibility_off : Icons.visibility,
-                      ),
-                      onPressed: () => setState(() => _obscure = !_obscure),
-                    ),
-                  ),
-                ),
-                if (!_isSignUp)
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: TextButton(
-                      onPressed: busy ? null : _goToForgotPassword,
-                      child: const Text('Forgot password?'),
-                    ),
-                  ),
-                if (_error != null) ...[
-                  const SizedBox(height: 14),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 10,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.redAccent.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(10),
-                      border: Border.all(
-                        color: Colors.redAccent.withValues(alpha: 0.3),
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        const Icon(
-                          Icons.error_outline,
-                          color: Colors.redAccent,
-                          size: 18,
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            _error!,
-                            style: const TextStyle(
-                              color: Colors.redAccent,
-                              fontSize: 12.5,
-                            ),
+            padding: const EdgeInsets.fromLTRB(24, 28, 24, 32),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 440),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Center(
+                    child: Container(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(24),
+                        boxShadow: [
+                          BoxShadow(
+                            color: scheme.primary.withValues(alpha: 0.28),
+                            blurRadius: 34,
+                            spreadRadius: -10,
                           ),
+                        ],
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(24),
+                        child: Image.asset(
+                          'assets/logo.png',
+                          width: 96,
+                          height: 96,
+                          filterQuality: FilterQuality.medium,
                         ),
-                      ],
+                      ),
                     ),
                   ),
-                ],
-                const SizedBox(height: 20),
-                FilledButton(
-                  onPressed: busy ? null : _submitEmail,
-                  style: FilledButton.styleFrom(
-                    minimumSize: const Size.fromHeight(54),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    textStyle: const TextStyle(
-                      fontWeight: FontWeight.w800,
-                      fontSize: 15,
+                  const SizedBox(height: 18),
+                  Text(
+                    'StockVirtue',
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.headlineMedium?.copyWith(
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: -0.5,
                     ),
                   ),
-                  child: _busy
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : Text(_isSignUp ? 'Create account' : 'Sign in'),
-                ),
-                const SizedBox(height: 8),
-                TextButton(
-                  onPressed: busy
-                      ? null
-                      : () => setState(() {
-                            _isSignUp = !_isSignUp;
+                  const SizedBox(height: 6),
+                  Text(
+                    'Trade Indian markets with ₹10,00,000 of virtual money.',
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.bodyMedium?.copyWith(
+                      color: scheme.onSurface.withValues(alpha: 0.6),
+                    ),
+                  ),
+                  const SizedBox(height: 26),
+                  _ModeToggle(
+                    isSignUp: _isSignUp,
+                    onChanged: busy
+                        ? null
+                        : (v) => setState(() {
+                            _isSignUp = v;
                             _error = null;
                           }),
-                  child: Text(
-                    _isSignUp
-                        ? 'Already have an account? Sign in'
-                        : "Don't have an account? Create one",
                   ),
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  children: [
-                    const Expanded(child: Divider()),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      child: Text(
-                        'or',
-                        style: TextStyle(
-                          color:
-                              theme.colorScheme.onSurface.withValues(alpha: 0.5),
+                  const SizedBox(height: 20),
+                  TextField(
+                    controller: _email,
+                    keyboardType: TextInputType.emailAddress,
+                    autofillHints: const [AutofillHints.email],
+                    textInputAction: TextInputAction.next,
+                    enabled: !busy,
+                    decoration: const InputDecoration(
+                      labelText: 'Email',
+                      prefixIcon: Icon(Icons.mail_outline),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
+                  TextField(
+                    controller: _password,
+                    obscureText: _obscure,
+                    autofillHints: const [AutofillHints.password],
+                    textInputAction:
+                        _isSignUp ? TextInputAction.next : TextInputAction.done,
+                    enabled: !busy,
+                    onSubmitted: (_) =>
+                        busy || _isSignUp ? null : _submitEmail(),
+                    decoration: InputDecoration(
+                      labelText: 'Password',
+                      prefixIcon: const Icon(Icons.lock_outline),
+                      suffixIcon: IconButton(
+                        icon: Icon(
+                          _obscure ? Icons.visibility_off : Icons.visibility,
                         ),
+                        onPressed: () => setState(() => _obscure = !_obscure),
                       ),
                     ),
-                    const Expanded(child: Divider()),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                OutlinedButton.icon(
-                  icon: _googleBusy
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.account_circle_outlined, size: 20),
-                  label: const Text('Continue with Google'),
-                  onPressed: busy ? null : _signInWithGoogle,
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size.fromHeight(52),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(14),
-                    ),
-                    side: BorderSide(
-                      color: scheme.outlineVariant.withValues(alpha: 0.6),
-                    ),
-                    textStyle: const TextStyle(fontWeight: FontWeight.w700),
                   ),
-                ),
-                if (showPhone) ...[
-                  const SizedBox(height: 12),
+                  // Referral code — sign-up only; redeemed after the account
+                  // is created (carried through to the complete-profile step).
+                  if (_isSignUp) ...[
+                    const SizedBox(height: 14),
+                    TextField(
+                      controller: _referral,
+                      enabled: !busy,
+                      textCapitalization: TextCapitalization.characters,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.allow(
+                          RegExp(r'[A-Za-z0-9\-]'),
+                        ),
+                        _UpperCaseFormatter(),
+                      ],
+                      decoration: const InputDecoration(
+                        labelText: 'Referral code (optional)',
+                        hintText: 'SV-XXXXXX',
+                        prefixIcon: Icon(Icons.card_giftcard_outlined),
+                        helperText: 'Got a friend’s code? Add it for a bonus.',
+                      ),
+                    ),
+                  ],
+                  if (!_isSignUp)
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton(
+                        onPressed: busy ? null : _goToForgotPassword,
+                        child: const Text('Forgot password?'),
+                      ),
+                    ),
+                  if (_error != null) ...[
+                    const SizedBox(height: 14),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.redAccent.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(
+                          color: Colors.redAccent.withValues(alpha: 0.3),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(
+                            Icons.error_outline,
+                            color: Colors.redAccent,
+                            size: 18,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              _error!,
+                              style: const TextStyle(
+                                color: Colors.redAccent,
+                                fontSize: 12.5,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                  SizedBox(height: _isSignUp ? 20 : 12),
+                  FilledButton(
+                    onPressed: busy ? null : _submitEmail,
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size.fromHeight(54),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      textStyle: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        fontSize: 15,
+                      ),
+                    ),
+                    child: _busy
+                        ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : Text(_isSignUp ? 'Create account' : 'Sign in'),
+                  ),
+                  const SizedBox(height: 18),
+                  Row(
+                    children: [
+                      const Expanded(child: Divider()),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        child: Text(
+                          'or',
+                          style: TextStyle(
+                            color: scheme.onSurface.withValues(alpha: 0.5),
+                          ),
+                        ),
+                      ),
+                      const Expanded(child: Divider()),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
                   OutlinedButton.icon(
-                    icon: const Icon(Icons.phone_outlined, size: 20),
-                    label: const Text('Continue with phone number'),
-                    onPressed: busy ? null : _goToPhone,
+                    icon: _googleBusy
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.account_circle_outlined, size: 20),
+                    label: const Text('Continue with Google'),
+                    onPressed: busy ? null : _signInWithGoogle,
                     style: OutlinedButton.styleFrom(
                       minimumSize: const Size.fromHeight(52),
                       shape: RoundedRectangleBorder(
@@ -339,12 +344,99 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                       textStyle: const TextStyle(fontWeight: FontWeight.w700),
                     ),
                   ),
+                  if (showPhone) ...[
+                    const SizedBox(height: 12),
+                    OutlinedButton.icon(
+                      icon: const Icon(Icons.phone_outlined, size: 20),
+                      label: const Text('Continue with phone number'),
+                      onPressed: busy ? null : _goToPhone,
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size.fromHeight(52),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        side: BorderSide(
+                          color: scheme.outlineVariant.withValues(alpha: 0.6),
+                        ),
+                        textStyle: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
           ),
         ),
       ),
     );
   }
+}
+
+/// Segmented Sign in / Sign up switch. Two equal halves keep it within bounds
+/// even at large text scales.
+class _ModeToggle extends StatelessWidget {
+  const _ModeToggle({required this.isSignUp, required this.onChanged});
+  final bool isSignUp;
+  final ValueChanged<bool>? onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: scheme.surfaceContainerHighest.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          _seg(context, 'Sign in', !isSignUp, () => onChanged?.call(false)),
+          _seg(context, 'Sign up', isSignUp, () => onChanged?.call(true)),
+        ],
+      ),
+    );
+  }
+
+  Widget _seg(
+    BuildContext context,
+    String label,
+    bool selected,
+    VoidCallback onTap,
+  ) {
+    final scheme = Theme.of(context).colorScheme;
+    return Expanded(
+      child: GestureDetector(
+        onTap: onChanged == null ? null : onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: selected ? scheme.primary : Colors.transparent,
+            borderRadius: BorderRadius.circular(9),
+          ),
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontWeight: FontWeight.w800,
+              fontSize: 14,
+              color: selected
+                  ? scheme.onPrimary
+                  : scheme.onSurface.withValues(alpha: 0.7),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _UpperCaseFormatter extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) => newValue.copyWith(text: newValue.text.toUpperCase());
 }
