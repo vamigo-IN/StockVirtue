@@ -267,7 +267,10 @@ class _OrderTileState extends ConsumerState<_OrderTile> {
     final sideColor = isBuy ? _upColor : _downColor;
     final scheme = Theme.of(context).colorScheme;
     final timeStr = _formatTime(order.createdAt);
-    final showCancel = order.isPending && order.isTriggered;
+    // Every pending order is cancellable on a learning platform — including
+    // after-market MARKET orders queued for the next open (type MARKET, so
+    // not "triggered") and resting limit/SL orders.
+    final showCancel = order.isPending;
     final priceShown =
         order.fillPrice ?? order.limitPrice ?? order.triggerPrice;
     final name = companyNameFor(order.symbol);

@@ -25,6 +25,8 @@ class PortfolioPosition {
   final String symboltoken;
   final String exchange;
   final String product; // 'DELIVERY' or 'INTRADAY'
+  /// Contract lot size (1 for cash equity; the F&O lot for derivatives).
+  final int lotSize;
   final int quantity;
   final int reservedQty;
   final int availableQty;
@@ -42,6 +44,7 @@ class PortfolioPosition {
     required this.symboltoken,
     required this.exchange,
     required this.product,
+    required this.lotSize,
     required this.quantity,
     required this.reservedQty,
     required this.availableQty,
@@ -66,6 +69,7 @@ class PortfolioPosition {
       symboltoken: json['symboltoken'] as String,
       exchange: json['exchange'] as String,
       product: json['product'] as String? ?? 'DELIVERY',
+      lotSize: (json['lotSize'] as num?)?.toInt() ?? 1,
       quantity: quantity,
       reservedQty: reservedQty,
       availableQty:

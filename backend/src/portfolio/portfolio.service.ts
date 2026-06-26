@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { Position } from '@prisma/client';
+import { Exchange } from '../common/exchange';
 import { paiseToRupees, rupeesToPaise } from '../common/money';
+import { ScripMasterService } from '../market/scrip-master.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SmartApiService } from '../smartapi/smartapi.service';
 import { WalletService } from '../wallet/wallet.service';
@@ -16,6 +18,7 @@ export class PortfolioService {
     private readonly prisma: PrismaService,
     private readonly wallet: WalletService,
     private readonly smartapi: SmartApiService,
+    private readonly scripMaster: ScripMasterService,
   ) {}
 
   async getPortfolio(userId: string) {
@@ -54,6 +57,13 @@ export class PortfolioService {
         tradingsymbol: position.tradingsymbol,
         symboltoken: position.symboltoken,
         exchange: position.exchange,
+        // Contract lot size (1 for cash) — lets the client constrain F&O
+        // square-off quantity to whole lots, like the buy flow.
+        lotSize:
+          this.scripMaster.getByToken(
+            position.exchange as Exchange,
+            position.symboltoken,
+          )?.lotSize ?? 1,
         product: position.product,
         quantity: position.quantity, // signed
         isShort,

@@ -1284,7 +1284,7 @@ export class OrdersService {
         return updated;
       }
       const thresholdP =
-        order.type === OrderType.LIMIT
+        order.type === OrderType.LIMIT || order.type === OrderType.MARKET
           ? order.limitPriceP
           : order.type === OrderType.STOP_LOSS
             ? order.triggerPriceP

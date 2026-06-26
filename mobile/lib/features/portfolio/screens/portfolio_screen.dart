@@ -658,16 +658,24 @@ class _PositionTile extends ConsumerWidget {
     // close the exact same slot (an MIS long doesn't accidentally trigger
     // an MIS short on the CNC book).
     final isShort = position.quantity < 0;
+    final isFno =
+        position.exchange == 'NFO' || position.exchange == 'BFO';
     final wallet = ref.read(portfolioProvider).value?.wallet.balance ?? 0;
     final order = await showTradeSheet(
       context,
       side: isShort ? OrderSide.buy : OrderSide.sell,
-      symbol: position.symbol,
+      // F&O positions list under the underlying (e.g. NIFTY) but must be
+      // squared off against the exact contract — pass the tradingsymbol so the
+      // backend resolves the right instrument instead of "Symbol not found".
+      symbol: isFno ? position.tradingsymbol : position.symbol,
       exchange: position.exchange,
       symboltoken: position.symboltoken,
       referencePrice: position.ltp,
       ownedQuantity: position.quantity,
       walletBalance: wallet,
+      lotSize: position.lotSize,
+      // Default to closing the whole position (it's already a whole-lot qty).
+      initialQuantity: position.quantity.abs(),
     );
     if (order != null) {
       ref.invalidate(portfolioProvider);

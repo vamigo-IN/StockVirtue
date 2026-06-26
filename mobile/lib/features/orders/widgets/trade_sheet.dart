@@ -27,6 +27,7 @@ Future<OrderRecord?> showTradeSheet(
   required int ownedQuantity,
   required double walletBalance,
   int lotSize = 1,
+  int? initialQuantity,
 }) {
   return showModalBottomSheet<OrderRecord>(
     context: context,
@@ -46,6 +47,7 @@ Future<OrderRecord?> showTradeSheet(
         ownedQuantity: ownedQuantity,
         walletBalance: walletBalance,
         lotSize: lotSize < 1 ? 1 : lotSize,
+        initialQuantity: initialQuantity,
       ),
     ),
   );
@@ -61,6 +63,7 @@ class _TradeSheet extends ConsumerStatefulWidget {
     required this.ownedQuantity,
     required this.walletBalance,
     required this.lotSize,
+    this.initialQuantity,
   });
 
   final OrderSide side;
@@ -74,6 +77,10 @@ class _TradeSheet extends ConsumerStatefulWidget {
   /// Contract lot size. 1 for cash equity; the F&O lot (e.g. 65) for
   /// derivatives — quantity is then constrained to whole multiples of this.
   final int lotSize;
+
+  /// Pre-selected quantity (e.g. the full position when squaring off). Falls
+  /// back to one lot / 1 unit when null.
+  final int? initialQuantity;
 
   @override
   ConsumerState<_TradeSheet> createState() => _TradeSheetState();
@@ -117,8 +124,9 @@ class _TradeSheetState extends ConsumerState<_TradeSheet> {
     final prefs = ref.read(prefsProvider);
     _type = prefs.defaultOrderType;
     _product = prefs.defaultProduct;
-    // F&O quantity is constrained to whole lots — start at one lot.
-    _qty = widget.lotSize > 1 ? widget.lotSize : 1;
+    // Start at the pre-selected quantity (e.g. full position on square-off),
+    // else one lot for F&O / 1 unit for cash.
+    _qty = widget.initialQuantity ?? (widget.lotSize > 1 ? widget.lotSize : 1);
     final ref0 = widget.referencePrice;
     final defaultStr = ref0 != null ? ref0.toStringAsFixed(2) : '';
     _limitController = TextEditingController(text: defaultStr);
