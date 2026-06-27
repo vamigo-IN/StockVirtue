@@ -14,6 +14,14 @@
       },
       "oauth_client": [
         {
+          "client_id": "524853413405-ebuklve94qm30i9b2ao6nla9psc1fk3r.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.vamigo.stockvirtue",
+            "certificate_hash": "7191632e2364ba4dce28d16ebafcc237a5a5746d"
+          }
+        },
+        {
           "client_id": "524853413405-itbnoic42doq9emfvk346c2na5jmecgt.apps.googleusercontent.com",
           "client_type": 1,
           "android_info": {
