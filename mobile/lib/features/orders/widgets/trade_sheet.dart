@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/analytics.dart';
 import '../../../core/error_mapper.dart';
 import '../../../core/fees.dart';
 import '../../../core/preferences.dart';
@@ -241,6 +242,14 @@ class _TradeSheetState extends ConsumerState<_TradeSheet> {
       ref.invalidate(portfolioProvider);
       ref.invalidate(ordersListProvider);
       ref.invalidate(watchlistsListProvider);
+      Analytics.instance.logTrade(
+        side: widget.side == OrderSide.buy ? 'buy' : 'sell',
+        symbol: widget.symbol,
+        quantity: order.quantity,
+        orderType: _typeLabelFor(_type),
+        status: order.status.name,
+        value: order.notional,
+      );
       // Push an in-app notification — MARKET fills immediately, the others
       // sit pending until the limit-watcher fires.
       final notifications = ref.read(notificationsProvider.notifier);

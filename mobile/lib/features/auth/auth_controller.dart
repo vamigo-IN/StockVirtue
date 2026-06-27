@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
+import '../../core/analytics.dart';
 import '../../core/firebase_init.dart';
 import '../../data/auth_storage.dart';
 import '../../data/models/user.dart';
@@ -21,7 +22,9 @@ class AuthController extends AsyncNotifier<AppUser?> {
     final tokens = await storage.read();
     if (tokens == null) return null;
     try {
-      return await ref.read(authRepositoryProvider).me();
+      final user = await ref.read(authRepositoryProvider).me();
+      Analytics.instance.setUser(user.id);
+      return user;
     } catch (_) {
       // Either expired or invalid. The Dio interceptor will already have
       // attempted a refresh + retry on 401, so if we land here we are out.
@@ -46,6 +49,9 @@ class AuthController extends AsyncNotifier<AppUser?> {
       final result =
           await ref.read(authRepositoryProvider).verifyEmail(email, code);
       await ref.read(authStorageProvider).write(result.tokens);
+      Analytics.instance
+        ..setUser(result.user.id)
+        ..logSignUp('email');
       return result.user;
     });
   }
@@ -58,6 +64,9 @@ class AuthController extends AsyncNotifier<AppUser?> {
     final auth = outcome.auth;
     if (auth == null) return true; // requires verification
     await ref.read(authStorageProvider).write(auth.tokens);
+    Analytics.instance
+      ..setUser(auth.user.id)
+      ..logLogin('password');
     state = AsyncData<AppUser?>(auth.user);
     return false;
   }
@@ -79,6 +88,9 @@ class AuthController extends AsyncNotifier<AppUser?> {
           .read(authRepositoryProvider)
           .resetPassword(email, code, newPassword);
       await ref.read(authStorageProvider).write(result.tokens);
+      Analytics.instance
+        ..setUser(result.user.id)
+        ..logLogin('password_reset');
       return result.user;
     });
   }
@@ -98,7 +110,7 @@ class AuthController extends AsyncNotifier<AppUser?> {
         state = await AsyncValue.guard(() async {
           final cred =
               await FirebaseAuth.instance.signInWithCredential(credential);
-          return _exchangeUserCredential(cred);
+          return _exchangeUserCredential(cred, method: 'phone');
         });
       },
       verificationFailed: (FirebaseAuthException e) {
@@ -121,7 +133,7 @@ class AuthController extends AsyncNotifier<AppUser?> {
       );
       final cred =
           await FirebaseAuth.instance.signInWithCredential(credential);
-      return _exchangeUserCredential(cred);
+      return _exchangeUserCredential(cred, method: 'phone');
     });
   }
 
@@ -148,7 +160,7 @@ class AuthController extends AsyncNotifier<AppUser?> {
       );
       final cred =
           await FirebaseAuth.instance.signInWithCredential(credential);
-      return _exchangeUserCredential(cred);
+      return _exchangeUserCredential(cred, method: 'google');
     });
   }
 
@@ -156,7 +168,10 @@ class AuthController extends AsyncNotifier<AppUser?> {
 
   /// Pulls the Firebase ID token off a freshly-signed-in user and trades it
   /// with our backend for app JWTs. Used by every sign-in method.
-  Future<AppUser> _exchangeUserCredential(UserCredential cred) async {
+  Future<AppUser> _exchangeUserCredential(
+    UserCredential cred, {
+    required String method,
+  }) async {
     final idToken = await cred.user?.getIdToken();
     if (idToken == null) {
       throw StateError('Firebase did not return an ID token');
@@ -164,6 +179,9 @@ class AuthController extends AsyncNotifier<AppUser?> {
     final result =
         await ref.read(authRepositoryProvider).firebaseLogin(idToken);
     await ref.read(authStorageProvider).write(result.tokens);
+    Analytics.instance
+      ..setUser(result.user.id)
+      ..logLogin(method);
     return result.user;
   }
 
@@ -212,6 +230,9 @@ class AuthController extends AsyncNotifier<AppUser?> {
       await GoogleSignIn.instance.signOut();
     } catch (_) {}
     await storage.clear();
+    Analytics.instance
+      ..logLogout()
+      ..setUser(null);
     state = const AsyncData<AppUser?>(null);
   }
 }

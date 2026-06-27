@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'core/analytics.dart';
 import 'core/market_hours.dart';
 import 'core/theme.dart';
 import 'core/theme_provider.dart';
@@ -31,6 +32,9 @@ class StockVirtueApp extends ConsumerWidget {
       theme: buildLightTheme(),
       darkTheme: buildDarkTheme(),
       themeMode: themeMode,
+      // Auto-logs screen_view for named routes (and app_open / session /
+      // engagement events are collected automatically by the SDK).
+      navigatorObservers: [Analytics.instance.navigatorObserver],
       scrollBehavior: const _StockVirtueScrollBehavior(),
       builder: (context, child) {
         // Cap text scaling: a phone set to XL / XXL accessibility font sizes
