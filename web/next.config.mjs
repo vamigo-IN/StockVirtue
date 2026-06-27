@@ -1,0 +1,24 @@
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  // Self-contained server bundle — drop the `.next/standalone` output behind
+  // nginx / pm2 on the stockvirtue.com host.
+  output: 'standalone',
+  reactStrictMode: true,
+  poweredByHeader: false,
+  // We hand-author clean markup; don't let a missing eslint config fail prod builds.
+  eslint: { ignoreDuringBuilds: true },
+  async headers() {
+    return [
+      {
+        source: '/(.*)',
+        headers: [
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'X-Frame-Options', value: 'SAMEORIGIN' },
+          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+        ],
+      },
+    ];
+  },
+};
+
+export default nextConfig;

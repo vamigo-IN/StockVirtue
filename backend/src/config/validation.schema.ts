@@ -68,4 +68,11 @@ export const validationSchema = Joi.object({
     otherwise: Joi.string().allow('').default(''),
   }),
   ADMIN_SESSION_TTL: Joi.number().default(28800),
+
+  // Marketing website (stockvirtue.com). SITE_ADMIN_KEY authenticates the
+  // website server when saving site settings; blank disables that write
+  // endpoint. SITE_CONTACT_TO receives contact-form emails (defaults to
+  // ADMIN_EMAIL). Both optional so the backend boots without the website.
+  SITE_ADMIN_KEY: Joi.string().allow('').default(''),
+  SITE_CONTACT_TO: Joi.string().email().allow('').default(''),
 });

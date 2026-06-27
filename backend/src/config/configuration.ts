@@ -46,6 +46,14 @@ export interface AdminConfig {
   sessionTtl: number;
 }
 
+/// Marketing website (stockvirtue.com) integration. `adminKey` authenticates
+/// the website's Next.js server when it saves site settings (server-to-server);
+/// blank disables the write endpoint. `contactTo` receives contact-form emails.
+export interface SiteConfig {
+  adminKey: string;
+  contactTo: string;
+}
+
 export interface AppConfig {
   nodeEnv: NodeEnv;
   host: string;
@@ -57,6 +65,7 @@ export interface AppConfig {
   fcm: FcmConfig;
   smtp: SmtpConfig;
   admin: AdminConfig;
+  site: SiteConfig;
 }
 
 export default (): AppConfig => ({
@@ -110,5 +119,12 @@ export default (): AppConfig => ({
         : (process.env.JWT_REFRESH_SECRET ?? '')),
     // 8 hours — a working shift. Re-login required after that.
     sessionTtl: parseInt(process.env.ADMIN_SESSION_TTL ?? '28800', 10),
+  },
+  site: {
+    adminKey: process.env.SITE_ADMIN_KEY ?? '',
+    contactTo:
+      process.env.SITE_CONTACT_TO ||
+      process.env.ADMIN_EMAIL ||
+      'admin@stockvirtue.local',
   },
 });

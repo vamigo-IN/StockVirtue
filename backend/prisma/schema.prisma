@@ -450,3 +450,23 @@ model QuizAttempt {
   @@index([userId, lessonId])
   @@map("quiz_attempts")
 }
+
+/// Singleton settings for the marketing website (stockvirtue.com), edited from
+/// the website's admin panel. Separate concern from the app — holds public site
+/// metadata, social links, and raw HTML "code injection" blocks for site /
+/// domain verification and analytics. Exactly one row (id = "singleton").
+model SiteSetting {
+  id              String   @id @default("singleton")
+  siteTitle       String   @default("")
+  siteDescription String   @default("") @db.Text
+  contactEmail    String   @default("")
+  playStoreUrl    String   @default("")
+  /// { twitter, instagram, linkedin, youtube, facebook }
+  social          Json     @default("{}")
+  headCode        String   @default("") @db.Text
+  bodyStartCode   String   @default("") @db.Text
+  bodyEndCode     String   @default("") @db.Text
+  updatedAt       DateTime @updatedAt
+
+  @@map("site_settings")
+}

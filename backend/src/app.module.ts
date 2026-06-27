@@ -29,6 +29,7 @@ import { ReferralsModule } from './referrals/referrals.module';
 import { AchievementsModule } from './achievements/achievements.module';
 import { LearnModule } from './learn/learn.module';
 import { AdminModule } from './admin/admin.module';
+import { SiteModule } from './site/site.module';
 
 @Module({
   imports: [
@@ -67,6 +68,7 @@ import { AdminModule } from './admin/admin.module';
     AchievementsModule,
     LearnModule,
     AdminModule,
+    SiteModule,
   ],
   controllers: [AppController],
   providers: [
