@@ -17,9 +17,13 @@ export function Footer({ settings }: { settings: SiteSettings }) {
       <div className="container">
         <div className="footer-top">
           <div>
-            <Link href="/" className="brand">
-              <span className="brand-mark">S</span>
-              {SITE.name}
+            <Link
+              href="/"
+              className="footer-logo"
+              aria-label={`${SITE.name} home`}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/logo.png" alt={SITE.name} />
             </Link>
             <p className="footer-disclaimer">
               {SITE.name} is a virtual stock-market simulator for learning.

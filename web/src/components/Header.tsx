@@ -7,8 +7,8 @@ export function Header() {
     <header className="header">
       <div className="container header-inner">
         <Link href="/" className="brand" aria-label={`${SITE.name} home`}>
-          <span className="brand-mark">S</span>
-          {SITE.name}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo.png" alt={SITE.name} className="brand-logo" />
         </Link>
         <nav className="nav" aria-label="Primary">
           <div className="nav-links" style={{ display: 'flex', gap: 26 }}>

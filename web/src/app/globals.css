@@ -140,6 +140,28 @@ p { margin: 0 0 1rem; }
   font-size: 1rem;
   box-shadow: 0 4px 12px rgba(22, 163, 74, 0.35);
 }
+/* Real brand logo image (header + admin bar). */
+.brand-logo {
+  height: 34px;
+  width: auto;
+  display: block;
+}
+/* Footer logo sits on a white chip so the colour logo reads on the dark bg. */
+.footer-logo {
+  display: inline-block;
+  background: #fff;
+  padding: 8px 12px;
+  border-radius: 10px;
+  line-height: 0;
+}
+.footer-logo img {
+  height: 26px;
+  width: auto;
+  display: block;
+}
+@media (max-width: 480px) {
+  .brand-logo { height: 28px; }
+}
 .nav {
   display: flex;
   align-items: center;

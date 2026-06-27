@@ -20,8 +20,9 @@ export default function AdminLayout({
       >
         <div className="container header-inner">
           <Link href="/admin/dashboard" className="brand">
-            <span className="brand-mark">S</span>
-            {SITE.name} <span className="muted" style={{ fontWeight: 600 }}>· Admin</span>
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/logo.png" alt={SITE.name} className="brand-logo" />
+            <span className="muted" style={{ fontWeight: 600 }}>· Admin</span>
           </Link>
           <Link href="/" className="muted" style={{ fontSize: '0.9rem' }}>
             ← View site

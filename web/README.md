@@ -55,15 +55,14 @@ npm run build && npm run start   # production (port 3001)
 
 ## Deploy
 
-`next build` emits a standalone server (`output: 'standalone'`). Run it under
-pm2 behind nginx on the `stockvirtue.com` host, e.g.:
+Build and run under pm2 behind nginx on the `stockvirtue.com` host:
 
 ```bash
 npm ci && npm run build
-node .next/standalone/server.js   # honors PORT (default 3000)
+npm run start            # next start -p 3001  (e.g. pm2 start npm --name stockvirtue-web -- run start)
 ```
 
-Point nginx `stockvirtue.com` → the Next.js port. (The backend stays on
+Point nginx `stockvirtue.com` → `127.0.0.1:3001`. (The backend stays on
 `api.stockvirtue.com`.)
 
 ## Admin & code injection

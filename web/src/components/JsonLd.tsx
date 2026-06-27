@@ -12,7 +12,7 @@ export function JsonLd() {
       name: SITE.name,
       legalName: SITE.company,
       url: SITE.url,
-      logo: `${SITE.url}/icon.png`,
+      logo: `${SITE.url}/logo.png`,
       email: SITE.email,
       sameAs: [SITE.playUrl],
     },
