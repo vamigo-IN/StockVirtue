@@ -41,7 +41,19 @@ export const DEFAULT_SETTINGS: SiteSettings = {
   bodyEndCode: '',
 };
 
-const API_BASE = process.env.API_BASE || 'https://api.stockvirtue.com';
+/**
+ * Backend base URL. The NestJS backend serves every route under a global
+ * `/api` prefix (the mobile app uses `…/api` too). We normalise here so the
+ * prefix is always present whether or not API_BASE already includes it —
+ * otherwise calls 404 and the contact form / settings silently fail.
+ */
+const API_BASE = (() => {
+  const raw = (process.env.API_BASE || 'https://api.stockvirtue.com').replace(
+    /\/+$/,
+    '',
+  );
+  return /\/api$/.test(raw) ? raw : `${raw}/api`;
+})();
 
 /**
  * Server-side fetch of live settings, merged over defaults. Never throws — if
