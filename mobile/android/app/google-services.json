@@ -30,6 +30,14 @@
           }
         },
         {
+          "client_id": "524853413405-u56d3h21kb2re1lo8kiuiv6u68695qo3.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.vamigo.stockvirtue",
+            "certificate_hash": "e97cc68441c1c246b0b8959a737d42c5ef46d8f7"
+          }
+        },
+        {
           "client_id": "524853413405-0719u29hhml63nnbl8pfrn2nud2c56t4.apps.googleusercontent.com",
           "client_type": 3
         }
