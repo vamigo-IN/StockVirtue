@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { DeviceToken, Order } from '@prisma/client';
 import { FirebaseAdminService } from '../firebase/firebase-admin.service';
-import { MailService, escapeHtml } from '../mail/mail.service';
+import { MailService } from '../mail/mail.service';
 import { PrismaService } from '../prisma/prisma.service';
 
 export interface NotificationPayload {
@@ -93,14 +93,28 @@ export class NotificationsService {
     });
     if (!user?.emailAlias || !user.tradeEmailsOptIn) return;
     const verb = order.side === 'BUY' ? 'Bought' : 'Sold';
-    const sym = escapeHtml(order.symbol);
+    const product =
+      order.product === 'INTRADAY' ? 'Intraday (MIS)' : 'Delivery (CNC)';
+    const bodyHtml =
+      this.mail.heroCard({
+        eyebrow: `${order.side} · Filled`,
+        value: `${order.quantity} × ${order.symbol}`,
+        caption: `Filled @ ₹${price}`,
+        tone: order.side === 'BUY' ? 'green' : 'red',
+      }) +
+      this.mail.detailTable([
+        { label: 'Order type', value: order.type },
+        { label: 'Product', value: product },
+      ]) +
+      this.mail.para(
+        'Open the StockVirtue app to review your portfolio and P&amp;L.',
+      );
     await this.mail
       .notify(
         user.emailAlias,
         `${verb} ${order.quantity} ${order.symbol} @ ${price}`,
         'Order filled',
-        `<p>Your <b>${escapeHtml(order.side)}</b> order filled:</p>
-         <p style="font-size:16px"><b>${order.quantity}</b> × <b>${sym}</b> @ <b>${price}</b> <span style="color:#888">(${escapeHtml(order.type)} · ${escapeHtml(order.product)})</span></p>`,
+        bodyHtml,
         `Your ${order.side} order filled: ${order.quantity} ${order.symbol} @ ${price} (${order.type}).`,
       )
       // Email must never break the fill path.

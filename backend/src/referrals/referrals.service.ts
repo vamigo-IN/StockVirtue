@@ -182,8 +182,14 @@ export class ReferralsService {
         redeemer.emailAlias,
         'Your referral bonus is in',
         'Referral bonus credited',
-        `<p>You redeemed an invite from <b>${escapeHtml(referrerName)}</b>.</p>
-         <p style="font-size:18px">₹<b>${referredRupees}</b> has been added to your virtual wallet.</p>`,
+        this.mail.heroCard({
+          eyebrow: 'Wallet credit',
+          value: `+₹${referredRupees}`,
+          caption: 'Added to your virtual wallet',
+        }) +
+          this.mail.para(
+            `You redeemed an invite from <b>${escapeHtml(referrerName)}</b>. Welcome aboard — your bonus is ready to put to work.`,
+          ),
         `You redeemed an invite from ${referrerName}. Rs ${referredRupees} added to your virtual wallet.`,
       );
     }
@@ -192,8 +198,14 @@ export class ReferralsService {
         referrer.emailAlias,
         'You earned a referral bonus',
         'Referral bonus credited',
-        `<p><b>${escapeHtml(redeemerName)}</b> just joined StockVirtue with your invite code.</p>
-         <p style="font-size:18px">₹<b>${referrerRupees}</b> has been added to your virtual wallet.</p>`,
+        this.mail.heroCard({
+          eyebrow: 'Wallet credit',
+          value: `+₹${referrerRupees}`,
+          caption: 'Added to your virtual wallet',
+        }) +
+          this.mail.para(
+            `<b>${escapeHtml(redeemerName)}</b> just joined StockVirtue with your invite code. Keep sharing to earn more.`,
+          ),
         `${redeemerName} joined with your invite code. Rs ${referrerRupees} added to your virtual wallet.`,
       );
     }

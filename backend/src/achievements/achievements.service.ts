@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { MailService, escapeHtml } from '../mail/mail.service';
+import { MailService } from '../mail/mail.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { TOTAL_LESSONS } from '../learn/lesson-catalog';
@@ -196,12 +196,14 @@ export class AchievementsService {
         user.emailAlias,
         `Achievement unlocked: ${badge.name}`,
         'Achievement unlocked 🏆',
-        `<p>You just earned a new badge on StockVirtue:</p>
-         <p style="font-size:18px;font-weight:700;margin:8px 0">${escapeHtml(
-           badge.name,
-         )}</p>
-         <p style="color:#555">${escapeHtml(badge.hint)}</p>
-         <p style="color:#888;font-size:13px;margin-top:16px">Open the app to see all your badges.</p>`,
+        this.mail.badgeTile({
+          glyph: '🏆',
+          title: badge.name,
+          subtitle: badge.hint,
+        }) +
+          this.mail.para(
+            'Open the StockVirtue app to see all your badges and keep the streak going.',
+          ),
         `Achievement unlocked: ${badge.name} — ${badge.hint}`,
       )
       .catch((err: unknown) => {

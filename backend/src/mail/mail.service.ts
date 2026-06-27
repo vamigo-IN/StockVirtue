@@ -47,6 +47,17 @@ const BRAND = {
 const FONT =
   "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
 
+/** Accent tones for hero cards (green = positive/buy, red = sell, neutral). */
+type HeroTone = 'green' | 'red' | 'neutral';
+const HERO_TONES: Record<
+  HeroTone,
+  { bg: string; border: string; accent: string }
+> = {
+  green: { bg: BRAND.codeBg, border: BRAND.codeBorder, accent: BRAND.codeText },
+  red: { bg: '#FEF2F2', border: '#FECACA', accent: '#B91C1C' },
+  neutral: { bg: '#F4F4F5', border: '#E4E4E7', accent: BRAND.heading },
+};
+
 @Injectable()
 export class MailService {
   private readonly logger = new Logger(MailService.name);
@@ -147,6 +158,60 @@ export class MailService {
       this.layout(inner, bodyText.slice(0, 140)),
       bodyText,
     );
+  }
+
+  // ── Reusable body components (compose into notify() bodyHtml) ─────
+  // Each returns trusted HTML; plain-text inputs are HTML-escaped here so
+  // callers pass raw strings. `para()` takes trusted HTML for inline emphasis.
+
+  /** Centred highlight card for a hero value (wallet credit, trade fill…). */
+  heroCard(opts: {
+    eyebrow: string;
+    value: string;
+    caption?: string;
+    tone?: HeroTone;
+  }): string {
+    const t = HERO_TONES[opts.tone ?? 'green'];
+    const caption = opts.caption
+      ? `<div style="font-family:${FONT};font-size:13px;color:${BRAND.body};margin-top:8px;">${escapeHtml(opts.caption)}</div>`
+      : '';
+    return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:2px 0 4px;"><tr>
+      <td align="center" style="background:${t.bg};border:1px solid ${t.border};border-radius:14px;padding:22px 16px;">
+        <div style="font-family:${FONT};font-size:12px;font-weight:700;letter-spacing:1.1px;text-transform:uppercase;color:${t.accent};">${escapeHtml(opts.eyebrow)}</div>
+        <div style="font-family:${FONT};font-size:30px;font-weight:800;letter-spacing:-0.5px;line-height:1.15;color:${t.accent};margin-top:8px;">${escapeHtml(opts.value)}</div>
+        ${caption}
+      </td></tr></table>`;
+  }
+
+  /** Clean key→value detail table (e.g. order type / product). */
+  detailTable(rows: Array<{ label: string; value: string }>): string {
+    const cells = rows
+      .map((r, i) => {
+        const top = i ? 'border-top:1px solid #F1F2F4;' : '';
+        return `<tr>
+        <td style="padding:11px 2px;${top}font-family:${FONT};font-size:13px;color:${BRAND.muted};">${escapeHtml(r.label)}</td>
+        <td align="right" style="padding:11px 2px;${top}font-family:${FONT};font-size:13px;font-weight:600;color:${BRAND.heading};">${escapeHtml(r.value)}</td>
+      </tr>`;
+      })
+      .join('');
+    return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:8px 0 4px;border-top:1px solid #EEF0F2;">${cells}</table>`;
+  }
+
+  /** Circular glyph badge with a title + optional subtitle (achievements). */
+  badgeTile(opts: { glyph: string; title: string; subtitle?: string }): string {
+    const subtitle = opts.subtitle
+      ? `<div style="font-family:${FONT};font-size:14px;line-height:21px;color:${BRAND.body};margin-top:6px;">${escapeHtml(opts.subtitle)}</div>`
+      : '';
+    return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td align="center" style="padding:4px 0 2px;">
+      <div style="width:74px;height:74px;line-height:74px;border-radius:50%;background:${BRAND.codeBg};border:1px solid ${BRAND.codeBorder};font-size:34px;text-align:center;">${escapeHtml(opts.glyph)}</div>
+      <div style="font-family:${FONT};font-size:19px;font-weight:800;letter-spacing:-0.2px;color:${BRAND.heading};margin-top:14px;">${escapeHtml(opts.title)}</div>
+      ${subtitle}
+    </td></tr></table>`;
+  }
+
+  /** Standard body paragraph. `html` is trusted (allows <b>/<a> emphasis). */
+  para(html: string): string {
+    return `<p style="margin:0 0 14px;font-family:${FONT};font-size:15px;line-height:23px;color:${BRAND.body};">${html}</p>`;
   }
 
   // ── Internals ────────────────────────────────────────────────────
