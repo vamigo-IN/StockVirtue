@@ -32,6 +32,8 @@ import {
   layout,
   learningBody,
   loginPage,
+  messageDetailBody,
+  messagesBody,
   referralsBody,
   roomsBody,
   settingsBody,
@@ -39,6 +41,8 @@ import {
   userDetailBody,
   usersBody,
 } from './admin-views';
+import { ContactStatus } from '@prisma/client';
+import { SiteService } from '../site/site.service';
 
 @Controller('admin')
 export class AdminController {
@@ -51,6 +55,7 @@ export class AdminController {
     private readonly audit: AdminAuditService,
     private readonly learn: LearnService,
     private readonly achievements: AchievementsService,
+    private readonly site: SiteService,
   ) {}
 
   // ─── Login / logout ──────────────────────────────────────────────
@@ -247,6 +252,127 @@ export class AdminController {
         body: learningBody({ learn, achievements }),
       }),
     );
+  }
+
+  // ─── Contact messages ────────────────────────────────────────────
+
+  @Get('messages')
+  @UseGuards(AdminGuard)
+  async messages(
+    @Req() req: Request,
+    @Res() res: Response,
+    @Query('status') statusRaw?: string,
+    @Query('page') pageRaw?: string,
+  ) {
+    const status = (statusRaw ?? 'ALL').toUpperCase();
+    const page = pageRaw ? Math.max(1, parseInt(pageRaw, 10)) : 1;
+    const list = await this.site.listMessages({
+      page,
+      status: status as ContactStatus | 'ALL',
+    });
+    const adminEmail = await this.currentAdminEmail(req);
+    res.type('html').send(
+      layout({
+        title: 'Messages',
+        current: 'messages',
+        adminEmail,
+        body: messagesBody({
+          rows: list.rows.map((m) => ({
+            id: m.id,
+            name: m.name,
+            email: m.email,
+            subject: m.subject,
+            message: m.message,
+            status: m.status,
+            createdAt: m.createdAt.toISOString(),
+            repliedAt: m.repliedAt?.toISOString() ?? null,
+          })),
+          total: list.total,
+          newCount: list.newCount,
+          page: list.page,
+          pages: list.pages,
+          status: String(list.status),
+        }),
+      }),
+    );
+  }
+
+  @Get('messages/:id')
+  @UseGuards(AdminGuard)
+  async messageDetail(
+    @Req() req: Request,
+    @Res() res: Response,
+    @Param('id') id: string,
+  ) {
+    const m = await this.site.getMessage(id);
+    const adminEmail = await this.currentAdminEmail(req);
+    if (!m) {
+      res
+        .status(HttpStatus.NOT_FOUND)
+        .type('html')
+        .send(
+          layout({
+            title: 'Message not found',
+            current: 'messages',
+            adminEmail,
+            body: `<a href="/admin/messages" class="text-indigo-300">← Back</a><div class="text-zinc-400 mt-4">No message with id <code>${id}</code>.</div>`,
+          }),
+        );
+      return;
+    }
+    // Opening a NEW message marks it read.
+    await this.site.markReadIfNew(id);
+    res.type('html').send(
+      layout({
+        title: m.subject || 'Message',
+        current: 'messages',
+        adminEmail,
+        body: messageDetailBody({
+          id: m.id,
+          name: m.name,
+          email: m.email,
+          subject: m.subject,
+          message: m.message,
+          status: m.status === 'NEW' ? 'READ' : m.status,
+          reply: m.reply,
+          createdAt: m.createdAt.toISOString(),
+          repliedAt: m.repliedAt?.toISOString() ?? null,
+        }),
+      }),
+    );
+  }
+
+  @Post('messages/:id/status')
+  @UseGuards(AdminGuard)
+  async setMessageStatus(
+    @Req() req: Request,
+    @Param('id') id: string,
+    @Body() body: { status?: string },
+    @Res() res: Response,
+  ) {
+    const allowed: ContactStatus[] = ['NEW', 'READ', 'REPLIED', 'ARCHIVED'];
+    const status = (body.status ?? '').toUpperCase() as ContactStatus;
+    if (allowed.includes(status)) {
+      await this.site.setMessageStatus(id, status);
+      await this.auditAction(req, 'message.status', id, status);
+    }
+    res.redirect(`/admin/messages/${encodeURIComponent(id)}`);
+  }
+
+  @Post('messages/:id/reply')
+  @UseGuards(AdminGuard)
+  async replyMessage(
+    @Req() req: Request,
+    @Param('id') id: string,
+    @Body() body: { reply?: string },
+    @Res() res: Response,
+  ) {
+    const reply = (body.reply ?? '').trim();
+    if (reply) {
+      await this.site.replyToMessage(id, reply);
+      await this.auditAction(req, 'message.reply', id);
+    }
+    res.redirect(`/admin/messages/${encodeURIComponent(id)}`);
   }
 
   @Get('health')

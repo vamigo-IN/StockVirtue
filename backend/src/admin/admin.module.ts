@@ -4,6 +4,7 @@ import { LearnModule } from '../learn/learn.module';
 import { MarketModule } from '../market/market.module';
 import { PortfolioModule } from '../portfolio/portfolio.module';
 import { RedisModule } from '../redis/redis.module';
+import { SiteModule } from '../site/site.module';
 import { SmartApiModule } from '../smartapi/smartapi.module';
 import { AdminAuditService } from './admin-audit.service';
 import { AdminAuthService } from './admin-auth.service';
@@ -20,6 +21,7 @@ import { AdminController } from './admin.controller';
     RedisModule,
     LearnModule,
     AchievementsModule,
+    SiteModule,
   ],
   controllers: [AdminController],
   providers: [

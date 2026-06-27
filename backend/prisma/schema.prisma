@@ -470,3 +470,29 @@ model SiteSetting {
 
   @@map("site_settings")
 }
+
+enum ContactStatus {
+  NEW
+  READ
+  REPLIED
+  ARCHIVED
+}
+
+/// A contact-form submission from the marketing website. Persisted so the
+/// admin panel can show every query even if the notification email fails, and
+/// so operators can triage (status) and reply.
+model ContactMessage {
+  id        String        @id @default(cuid())
+  name      String
+  email     String
+  subject   String?
+  message   String        @db.Text
+  status    ContactStatus @default(NEW)
+  reply     String?       @db.Text
+  repliedAt DateTime?
+  createdAt DateTime      @default(now())
+
+  @@index([status, createdAt])
+  @@index([createdAt])
+  @@map("contact_messages")
+}

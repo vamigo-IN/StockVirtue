@@ -57,6 +57,7 @@ export interface LayoutOpts {
     | 'rooms'
     | 'referrals'
     | 'learning'
+    | 'messages'
     | 'health'
     | 'settings'
     | 'audit';
@@ -71,6 +72,7 @@ const NAV_ITEMS = [
   { key: 'rooms', label: 'Rooms', href: '/admin/rooms', icon: '◌' },
   { key: 'referrals', label: 'Referrals', href: '/admin/referrals', icon: '↗' },
   { key: 'learning', label: 'Learning', href: '/admin/learning', icon: '◆' },
+  { key: 'messages', label: 'Messages', href: '/admin/messages', icon: '✉' },
   { key: 'health', label: 'System health', href: '/admin/health', icon: '♥' },
   { key: 'settings', label: 'Settings', href: '/admin/settings', icon: '⚙' },
   { key: 'audit', label: 'Audit log', href: '/admin/audit', icon: '☰' },
@@ -903,4 +905,145 @@ export function healthBody(blocks: Array<{
       </div>`;
     })
     .join('')}</div>`;
+}
+
+// ─── Contact messages ───────────────────────────────────────────────────
+
+interface ContactRow {
+  id: string;
+  name: string;
+  email: string;
+  subject: string | null;
+  message: string;
+  status: string;
+  createdAt: string;
+  repliedAt: string | null;
+}
+
+function statusTone(status: string): string {
+  switch (status) {
+    case 'NEW':
+      return 'bg-indigo-500/15 text-indigo-300';
+    case 'READ':
+      return 'bg-amber-500/15 text-amber-300';
+    case 'REPLIED':
+      return 'bg-emerald-500/15 text-emerald-300';
+    default:
+      return 'bg-zinc-600/20 text-zinc-400';
+  }
+}
+
+export function messagesBody(list: {
+  rows: ContactRow[];
+  total: number;
+  newCount: number;
+  page: number;
+  pages: number;
+  status: string;
+}): string {
+  const statuses = ['ALL', 'NEW', 'READ', 'REPLIED', 'ARCHIVED'];
+  const filters = statuses
+    .map((s) => {
+      const active = (list.status || 'ALL') === s;
+      const cls = active
+        ? 'bg-indigo-500 text-white'
+        : 'bg-zinc-900 text-zinc-400 hover:text-zinc-200 border border-zinc-800';
+      return `<a href="/admin/messages?status=${s}" class="px-3 py-1.5 rounded-lg text-xs font-bold tracking-wider ${cls}">${s}${s === 'NEW' && list.newCount ? ` (${list.newCount})` : ''}</a>`;
+    })
+    .join('');
+  const rows = list.rows.length
+    ? list.rows
+        .map((m) => {
+          const snippet =
+            m.message.length > 90 ? m.message.slice(0, 90) + '…' : m.message;
+          return `<tr class="border-b border-zinc-800 hover:bg-zinc-900/60">
+        <td class="px-3 py-3">
+          <a href="/admin/messages/${esc(m.id)}" class="font-medium text-indigo-300 hover:underline">${esc(m.name)}</a>
+          <div class="text-[11px] text-zinc-500">${esc(m.email)}</div>
+        </td>
+        <td class="px-3 py-3 text-zinc-300">${esc(m.subject || '—')}<div class="text-[11px] text-zinc-500">${esc(snippet)}</div></td>
+        <td class="px-3 py-3"><span class="text-[10px] px-2 py-0.5 rounded-md font-bold tracking-wider ${statusTone(m.status)}">${esc(m.status)}</span></td>
+        <td class="px-3 py-3 text-[11px] text-zinc-500 whitespace-nowrap">${esc(m.createdAt.slice(0, 16).replace('T', ' '))}</td>
+        <td class="px-3 py-3 text-right"><a href="/admin/messages/${esc(m.id)}" class="text-xs text-indigo-300 hover:underline">Open →</a></td>
+      </tr>`;
+        })
+        .join('')
+    : `<tr><td colspan="5" class="px-3 py-10 text-center text-zinc-500">No messages${list.status !== 'ALL' ? ` with status ${esc(list.status)}` : ''}.</td></tr>`;
+  const pager = renderPager(
+    list.page,
+    list.pages,
+    (p) => `/admin/messages?page=${p}&status=${list.status}`,
+  );
+  return `
+    <div class="flex items-center gap-2 mb-4 flex-wrap">${filters}</div>
+    <div class="text-xs text-zinc-500 mb-2">${list.total.toLocaleString()} message${list.total === 1 ? '' : 's'}</div>
+    <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl overflow-hidden">
+      <table class="w-full text-sm">
+        <thead class="text-[11px] uppercase tracking-wider text-zinc-500 border-b border-zinc-800">
+          <tr>
+            <th class="px-3 py-3 text-left">From</th>
+            <th class="px-3 py-3 text-left">Subject / preview</th>
+            <th class="px-3 py-3 text-left">Status</th>
+            <th class="px-3 py-3 text-left">Received</th>
+            <th class="px-3 py-3"></th>
+          </tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>
+    ${pager}`;
+}
+
+export function messageDetailBody(m: ContactRow & { reply: string | null }): string {
+  const statusBtn = (s: string, label: string) =>
+    `<button name="status" value="${s}" class="px-3 py-1.5 rounded-lg text-xs font-bold border border-zinc-700 hover:border-indigo-500 hover:text-indigo-300">${label}</button>`;
+  return `
+    <a href="/admin/messages" class="text-sm text-zinc-400 hover:text-indigo-300">← Back to messages</a>
+    <div class="mt-4 grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div class="lg:col-span-2 space-y-6">
+        <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">
+          <div class="flex items-center gap-3 flex-wrap">
+            <h2 class="text-lg font-bold">${esc(m.subject || 'No subject')}</h2>
+            <span class="text-[10px] px-2 py-0.5 rounded-md font-bold tracking-wider ${statusTone(m.status)}">${esc(m.status)}</span>
+          </div>
+          <div class="text-sm text-zinc-400 mt-1">
+            From <span class="text-zinc-200 font-medium">${esc(m.name)}</span>
+            &lt;<a href="mailto:${esc(m.email)}" class="text-indigo-300 hover:underline">${esc(m.email)}</a>&gt;
+            · ${esc(m.createdAt.slice(0, 16).replace('T', ' '))} UTC
+          </div>
+          <div class="mt-5 whitespace-pre-wrap text-zinc-200 leading-relaxed">${esc(m.message)}</div>
+        </div>
+        ${
+          m.reply
+            ? `<div class="bg-emerald-500/5 border border-emerald-500/30 rounded-2xl p-6">
+                <div class="text-xs uppercase tracking-wider text-emerald-300 font-bold mb-2">Your reply${m.repliedAt ? ` · ${esc(m.repliedAt.slice(0, 16).replace('T', ' '))} UTC` : ''}</div>
+                <div class="whitespace-pre-wrap text-zinc-200">${esc(m.reply)}</div>
+              </div>`
+            : ''
+        }
+        <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">
+          <h3 class="font-bold mb-3">Reply by email</h3>
+          <form method="post" action="/admin/messages/${esc(m.id)}/reply">
+            <textarea name="reply" rows="6" required placeholder="Type your reply — it will be emailed to ${esc(m.email)}"
+              class="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-indigo-500">${esc(m.reply ?? '')}</textarea>
+            <button class="mt-3 px-4 py-2 bg-indigo-500 hover:bg-indigo-400 text-white font-bold text-sm rounded-lg">Send reply &amp; mark replied</button>
+          </form>
+        </div>
+      </div>
+      <div class="space-y-4">
+        <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5">
+          <h3 class="font-bold mb-3 text-sm">Set status</h3>
+          <form method="post" action="/admin/messages/${esc(m.id)}/status" class="flex flex-wrap gap-2">
+            ${statusBtn('NEW', 'New')}
+            ${statusBtn('READ', 'Read')}
+            ${statusBtn('REPLIED', 'Replied')}
+            ${statusBtn('ARCHIVED', 'Archive')}
+          </form>
+        </div>
+        <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5 text-sm">
+          <a href="mailto:${esc(m.email)}?subject=${encodeURIComponent('Re: ' + (m.subject || 'Your message to StockVirtue'))}"
+            class="text-indigo-300 hover:underline">Open in mail client ↗</a>
+        </div>
+      </div>
+    </div>`;
 }
