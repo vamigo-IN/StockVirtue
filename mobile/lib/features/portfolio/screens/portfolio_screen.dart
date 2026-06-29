@@ -718,7 +718,12 @@ class _PositionTile extends ConsumerWidget {
     final color = isUp ? _upColor : _downColor;
     final qty = position.quantity;
     final isShort = qty < 0;
-    final name = companyNameFor(position.symbol);
+    final isFno = position.exchange == 'NFO' || position.exchange == 'BFO';
+    // For derivatives show the actual contract (…CE / …PE / …FUT) instead of
+    // the bare underlying, so a Call/Put holding reads clearly at a glance.
+    final name =
+        isFno ? position.tradingsymbol : companyNameFor(position.symbol);
+    final fnoKind = isFno ? _fnoKind(position.tradingsymbol) : null;
     final ltp = live.ltp;
     return InkWell(
       borderRadius: BorderRadius.circular(14),
@@ -769,6 +774,13 @@ class _PositionTile extends ConsumerWidget {
                             ),
                           ),
                           const SizedBox(width: 6),
+                          if (fnoKind != null) ...[
+                            _FnoBadge(
+                              label: fnoKind.label,
+                              color: fnoKind.color,
+                            ),
+                            const SizedBox(width: 4),
+                          ],
                           _ProductBadge(intraday: position.isIntraday),
                           if (isShort) ...[
                             const SizedBox(width: 4),
@@ -859,6 +871,43 @@ class _PositionTile extends ConsumerWidget {
               ],
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Parses the option/future kind from an F&O tradingsymbol suffix, with the
+/// colour to render its badge in. Null for anything that isn't an option or
+/// future (e.g. a malformed/unexpected symbol).
+({String label, Color color})? _fnoKind(String tradingsymbol) {
+  final s = tradingsymbol.toUpperCase();
+  if (s.endsWith('CE')) return (label: 'CALL', color: _upColor);
+  if (s.endsWith('PE')) return (label: 'PUT', color: _downColor);
+  if (s.endsWith('FUT')) return (label: 'FUT', color: const Color(0xFF8B5CF6));
+  return null;
+}
+
+class _FnoBadge extends StatelessWidget {
+  const _FnoBadge({required this.label, required this.color});
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.18),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: color,
+          fontSize: 9.5,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 0.4,
         ),
       ),
     );
