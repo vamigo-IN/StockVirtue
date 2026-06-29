@@ -87,6 +87,15 @@ export class AuthController {
       tradeEmailsOptIn: user.tradeEmailsOptIn,
       status: user.status,
       profileComplete: this.users.isProfileComplete(user),
+      // Sign-in method — drives which identity field the client locks when
+      // editing the profile. MUST match auth.service.sanitize() so /auth/me
+      // (read on launch) and the login responses agree.
+      authProvider:
+        user.passwordHash != null
+          ? 'email'
+          : user.emailVerified
+            ? 'google'
+            : 'phone',
       createdAt: user.createdAt,
       lastLoginAt: user.lastLoginAt,
       // Referral fields — code is the user's public invite ID, and
