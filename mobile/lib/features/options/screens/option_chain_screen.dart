@@ -68,7 +68,9 @@ class _OptionChainScreenState extends ConsumerState<OptionChainScreen> {
     // subscribe so the spot bar updates without a poll. The feed is a
     // future, so we hook it via the post-frame callback rather than
     // ref.watch (initState can't subscribe to providers reactively).
-    WidgetsBinding.instance.addPostFrameCallback((_) => _resolveUnderlying());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _resolveUnderlying();
+    });
   }
 
   Future<void> _resolveUnderlying() async {
@@ -221,6 +223,7 @@ class _ChainBodyState extends ConsumerState<_ChainBody> {
     // the actionable rows instead of the deepest OTM tail; and open the
     // live feed for this expiry's contracts.
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
       _scrollToAtm();
       _syncLegSubs();
     });
@@ -231,6 +234,7 @@ class _ChainBodyState extends ConsumerState<_ChainBody> {
     super.didUpdateWidget(old);
     if (old.chain.expiry != widget.chain.expiry) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
         _scrollToAtm();
         _syncLegSubs();
       });

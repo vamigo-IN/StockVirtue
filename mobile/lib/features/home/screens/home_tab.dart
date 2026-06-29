@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../data/models/portfolio.dart';
 import '../../../data/models/user.dart';
 import '../../bookmarks/bookmarks_storage.dart';
 import '../../bookmarks/widgets/bookmarks_rail.dart';
 import '../../news/widgets/news_section.dart';
 import '../../market/market_repository.dart';
+import '../../portfolio/portfolio_live.dart';
 import '../../portfolio/portfolio_providers.dart';
 import '../../ticks/ticks_providers.dart';
 import '../../ticks/ticks_service.dart';
@@ -41,18 +43,30 @@ class _HomeTabState extends ConsumerState<HomeTab> {
     List<FeedQuote> indices,
     List<FeedQuote> trending,
     List<BookmarkedSymbol> bookmarks,
+    List<PortfolioPosition> positions,
   ) {
-    final desired = <TickSubscription>[
-      for (final q in indices)
-        TickSubscription(symbol: q.symbol, exchange: q.exchange),
-      for (final q in trending)
-        TickSubscription(symbol: q.symbol, exchange: q.exchange),
-      for (final b in bookmarks)
-        TickSubscription(symbol: b.symbol, exchange: b.exchange),
-    ];
+    if (!mounted) return;
+    // Dedup by key — a symbol can appear in more than one strip (e.g. a
+    // holding that's also trending), and we want exactly one subscription.
+    final byKey = <String, TickSubscription>{};
+    void put(TickSubscription s) => byKey['${s.exchange}:${s.symbol}'] = s;
+    for (final q in indices) {
+      put(TickSubscription(symbol: q.symbol, exchange: q.exchange));
+    }
+    for (final q in trending) {
+      put(TickSubscription(symbol: q.symbol, exchange: q.exchange));
+    }
+    for (final b in bookmarks) {
+      put(TickSubscription(symbol: b.symbol, exchange: b.exchange));
+    }
+    // Holdings too, so the live portfolio hero strip ticks without a poll.
+    for (final p in positions) {
+      put(subForPosition(p));
+    }
+    final desired = byKey.values.toList();
     final service = ref.read(ticksServiceProvider);
     final existing = _subs.map((s) => '${s.exchange}:${s.symbol}').toSet();
-    final wanted = desired.map((s) => '${s.exchange}:${s.symbol}').toSet();
+    final wanted = byKey.keys.toSet();
     final toAdd = desired
         .where((s) => !existing.contains('${s.exchange}:${s.symbol}'))
         .toList();
@@ -88,9 +102,14 @@ class _HomeTabState extends ConsumerState<HomeTab> {
     final indices = ref.watch(homeIndicesProvider).value ?? const [];
     final trending = ref.watch(homeTrendingProvider).value ?? const [];
     final bookmarks = ref.watch(bookmarksProvider).value ?? const [];
-    if (indices.isNotEmpty || trending.isNotEmpty || bookmarks.isNotEmpty) {
+    final positions =
+        ref.watch(portfolioProvider).value?.positions ?? const [];
+    if (indices.isNotEmpty ||
+        trending.isNotEmpty ||
+        bookmarks.isNotEmpty ||
+        positions.isNotEmpty) {
       WidgetsBinding.instance.addPostFrameCallback(
-        (_) => _sync(indices, trending, bookmarks),
+        (_) => _sync(indices, trending, bookmarks, positions),
       );
     }
     return Scaffold(

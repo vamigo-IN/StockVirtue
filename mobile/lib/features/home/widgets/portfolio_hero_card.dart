@@ -4,7 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/money_format.dart';
 import '../../../data/models/portfolio.dart';
 import '../../home/screens/shell_screen.dart';
+import '../../portfolio/portfolio_live.dart';
 import '../../portfolio/portfolio_providers.dart';
+import '../../ticks/ticks_providers.dart';
 
 /// Compact portfolio strip at the top of home. Single row: equity on the
 /// left, day-P&L chip on the right, gradient tint that picks up the
@@ -39,12 +41,16 @@ class _LoadedStrip extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
-    final s = snap.summary;
-    final isUp = s.unrealizedPnL >= 0;
+    // Live-overlaid totals — equity + day-P&L track holding LTPs in real time
+    // (rebuilds only when the aggregate changes), matching the Portfolio tab.
+    final live =
+        ref.watch(latestTicksProvider.select((m) => liveSummaryOf(snap, m)));
+    final isUp = live.unrealizedPnL >= 0;
     const upColor = Color(0xFF22C55E);
     const downColor = Color(0xFFEF4444);
     final pnlColor = isUp ? upColor : downColor;
-    final pnlPct = s.invested > 0 ? (s.unrealizedPnL / s.invested) * 100 : 0.0;
+    final pnlPct =
+        live.invested > 0 ? (live.unrealizedPnL / live.invested) * 100 : 0.0;
 
     return InkWell(
       borderRadius: BorderRadius.circular(14),
@@ -96,7 +102,7 @@ class _LoadedStrip extends ConsumerWidget {
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      _money(s.totalEquity),
+                      _money(live.totalEquity),
                       style: const TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w800,

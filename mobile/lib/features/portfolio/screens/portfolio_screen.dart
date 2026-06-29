@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -8,7 +6,6 @@ import '../../../core/market_hours.dart';
 import '../../../core/money_format.dart';
 import '../../../data/models/order.dart';
 import '../../../data/models/portfolio.dart';
-import '../../../data/models/tick.dart';
 import '../../../widgets/empty_state.dart';
 import '../../home/screens/shell_screen.dart';
 import '../../orders/widgets/trade_sheet.dart';
@@ -16,6 +13,7 @@ import '../../share/share_trade.dart';
 import '../../symbol/screens/symbol_detail_screen.dart';
 import '../../ticks/ticks_providers.dart';
 import '../../ticks/ticks_service.dart';
+import '../portfolio_live.dart';
 import '../portfolio_providers.dart';
 import '../widgets/allocation_card.dart';
 import 'analytics_screen.dart';
@@ -25,64 +23,6 @@ import 'sector_heatmap_screen.dart';
 const _upColor = Color(0xFF22C55E);
 const _downColor = Color(0xFFEF4444);
 
-/// Tick-map key for a position (`${exchange}:${symboltoken}` — matches Tick.key).
-String _tickKeyFor(PortfolioPosition p) => '${p.exchange}:${p.symboltoken}';
-
-/// A position's values overlaid with the latest live LTP (when present);
-/// current value and unrealised P&L are recomputed so the holding moves
-/// continuously while the market is open, between the 30s reconcile polls.
-class _LivePos {
-  final double? ltp;
-  final double currentValue;
-  final double unrealizedPnL;
-  final double unrealizedPnLPct;
-  const _LivePos(
-    this.ltp,
-    this.currentValue,
-    this.unrealizedPnL,
-    this.unrealizedPnLPct,
-  );
-
-  factory _LivePos.of(PortfolioPosition p, double? liveLtp) {
-    final ltp = liveLtp ?? p.ltp;
-    if (ltp == null) {
-      return _LivePos(
-        null,
-        p.currentValue,
-        p.unrealizedPnL,
-        p.unrealizedPnLPct,
-      );
-    }
-    final absQty = p.quantity.abs();
-    final invested = p.invested;
-    final currentAbs = ltp * absQty;
-    final isShort = p.quantity < 0;
-    final pnl = isShort ? invested - currentAbs : currentAbs - invested;
-    final pct = invested > 0 ? (pnl / invested) * 100 : 0.0;
-    return _LivePos(ltp, currentAbs, pnl, pct);
-  }
-}
-
-/// Live-overlaid totals for the equity hero. Cost basis (invested) doesn't
-/// move; equity = cash + signed current value across all positions.
-({double totalEquity, double unrealizedPnL, double invested}) _liveSummary(
-  PortfolioSnapshot snap,
-  Map<String, Tick> ticks,
-) {
-  double currentSigned = 0;
-  double unrealized = 0;
-  for (final p in snap.positions) {
-    final live = _LivePos.of(p, ticks[_tickKeyFor(p)]?.ltp);
-    currentSigned += p.quantity < 0 ? -live.currentValue : live.currentValue;
-    unrealized += live.unrealizedPnL;
-  }
-  return (
-    totalEquity: snap.wallet.balance + currentSigned,
-    unrealizedPnL: unrealized,
-    invested: snap.summary.invested,
-  );
-}
-
 class PortfolioScreen extends ConsumerStatefulWidget {
   const PortfolioScreen({super.key});
 
@@ -91,33 +31,20 @@ class PortfolioScreen extends ConsumerStatefulWidget {
 }
 
 class _PortfolioScreenState extends ConsumerState<PortfolioScreen> {
-  // Polls the portfolio endpoint every 30s while the market is open so
-  // unrealized P&L and the equity hero track live LTP movement without a
-  // manual pull-to-refresh. The /portfolio endpoint server-side re-fetches
-  // multi-quote LTPs on each call, so this is genuinely live (not cached).
-  Timer? _autoRefresh;
-  // Live tick subscriptions for the currently-held symbols. The 30s poll
-  // reconciles fills/fees/cash; these ticks keep each holding's LTP, value and
-  // P&L moving continuously between polls while the market is open.
+  // Live tick subscriptions for the currently-held symbols. These ticks keep
+  // each holding's LTP, value and P&L (and the equity hero total) moving
+  // continuously while the market is open — no interval polling. The snapshot
+  // is reconciled on open, on pull-to-refresh, and after every order.
   List<TickSubscription> _subs = const [];
 
-  @override
-  void initState() {
-    super.initState();
-    _autoRefresh = Timer.periodic(const Duration(seconds: 30), (_) {
-      if (!mounted) return;
-      if (!isMarketOpen()) return;
-      ref.invalidate(portfolioProvider);
-    });
-  }
-
   /// Subscribe to live ticks for the held symbols, diffing against the current
-  /// set so we only add/remove the delta when holdings change.
+  /// set so we only add/remove the delta when holdings change. F&O contracts
+  /// are addressed by their tradingsymbol (see [subForPosition]).
   void _syncSubs(List<PortfolioPosition> positions) {
     final byKey = <String, TickSubscription>{};
     for (final p in positions) {
-      byKey['${p.exchange}:${p.symbol}'] =
-          TickSubscription(symbol: p.symbol, exchange: p.exchange);
+      final sub = subForPosition(p);
+      byKey['${sub.exchange}:${sub.symbol}'] = sub;
     }
     final desired = byKey.values.toList();
     final service = ref.read(ticksServiceProvider);
@@ -134,7 +61,6 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen> {
 
   @override
   void dispose() {
-    _autoRefresh?.cancel();
     if (_subs.isNotEmpty) {
       ref.read(ticksServiceProvider).unsubscribe(_subs);
     }
@@ -345,7 +271,7 @@ class _EquityHero extends ConsumerWidget {
     final scheme = Theme.of(context).colorScheme;
     // Live-overlaid totals — rebuilds only when the aggregate actually changes.
     final live =
-        ref.watch(latestTicksProvider.select((m) => _liveSummary(snap, m)));
+        ref.watch(latestTicksProvider.select((m) => liveSummaryOf(snap, m)));
     final isUp = live.unrealizedPnL >= 0;
     final color = isUp ? _upColor : _downColor;
     final pnlPct =
@@ -785,9 +711,9 @@ class _PositionTile extends ConsumerWidget {
     final scheme = Theme.of(context).colorScheme;
     // Live LTP overlay — this tile rebuilds only when its own symbol ticks.
     final liveLtp = ref.watch(
-      latestTicksProvider.select((m) => m[_tickKeyFor(position)]?.ltp),
+      latestTicksProvider.select((m) => m[tickKeyForPosition(position)]?.ltp),
     );
-    final live = _LivePos.of(position, liveLtp);
+    final live = LivePosition.of(position, liveLtp);
     final isUp = live.unrealizedPnL >= 0;
     final color = isUp ? _upColor : _downColor;
     final qty = position.quantity;

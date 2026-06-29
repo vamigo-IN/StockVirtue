@@ -82,3 +82,9 @@ Future<AuthTokens> _refresh(Dio dio, String refreshToken) async {
   );
   return AuthTokens.fromJson(res.data!);
 }
+
+/// Public access-token refresh, used outside the Dio 401 path (e.g. the
+/// live-tick socket, which must hand the server a valid token when it
+/// reconnects — its access token expires while the connection is idle).
+Future<AuthTokens> refreshAuthTokens(Dio dio, String refreshToken) =>
+    _refresh(dio, refreshToken);
