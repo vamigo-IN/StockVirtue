@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Order, OrderSide, OrderStatus, OrderProduct } from '@prisma/client';
+import { OrderSide, OrderStatus, OrderProduct } from '@prisma/client';
 import { paiseToRupees } from '../common/money';
 import { PrismaService } from '../prisma/prisma.service';
 

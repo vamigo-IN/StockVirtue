@@ -3,7 +3,6 @@ import {
   Body,
   Controller,
   Get,
-  Header,
   Param,
   Patch,
   Post,

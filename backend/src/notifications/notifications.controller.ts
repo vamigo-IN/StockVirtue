@@ -11,7 +11,6 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import {
-  AlertCondition,
   AlertStatus,
   Prisma,
   User,
@@ -154,9 +153,6 @@ export class NotificationsController {
     if (!isExchange(upper)) {
       throw new BadRequestException(`Invalid exchange "${value}"`);
     }
-    // Reference the enum so the import isn't unused if a future caller drops
-    // it; otherwise this is a no-op.
-    AlertCondition;
     return upper;
   }
 }

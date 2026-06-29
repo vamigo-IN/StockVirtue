@@ -1,12 +1,13 @@
 import {
   Injectable,
+  Logger,
   NotFoundException,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { Exchange } from '../common/exchange';
 import { computeFees } from '../common/fees';
 import { SmartApiService } from '../smartapi/smartapi.service';
-import { CandleInterval } from '../smartapi/smartapi.types';
+import { CandleInterval, CandleRow } from '../smartapi/smartapi.types';
 import {
   BrokerageEstimateRequest,
   ExpiryBucket,
@@ -39,6 +40,8 @@ function formatIst(date: Date): string {
 
 @Injectable()
 export class MarketService {
+  private readonly logger = new Logger(MarketService.name);
+
   constructor(
     private readonly smartapi: SmartApiService,
     private readonly scripMaster: ScripMasterService,
@@ -341,13 +344,46 @@ export class MarketService {
     }
     const now = new Date();
     const from = new Date(now.getTime() - effectiveHours * 60 * 60 * 1000);
-    const rows = await this.smartapi.getCandles({
-      exchange: inst.exchange,
-      symboltoken: inst.token,
-      interval: effectiveInterval,
-      fromdate: formatIst(from),
-      todate: formatIst(now),
-    });
+    let rows: CandleRow[];
+    try {
+      rows = await this.smartapi.getCandles({
+        exchange: inst.exchange,
+        symboltoken: inst.token,
+        interval: effectiveInterval,
+        fromdate: formatIst(from),
+        todate: formatIst(now),
+      });
+    } catch (err) {
+      // SmartAPI's historical feed rejects intraday candles for thin or newly
+      // listed F&O contracts (and a few BSE indices). Fall back to a daily
+      // series over a wider window so the chart still renders, and only give
+      // up — returning an empty series, which the app shows gracefully as
+      // "chart unavailable" — if the daily request fails too. This turns the
+      // 500 the app was seeing on F&O contracts into a clean degrade.
+      this.logger.warn(
+        `candles ${inst.exchange}:${inst.token} @${effectiveInterval} ` +
+          `failed (${(err as Error).message}); retrying daily`,
+      );
+      effectiveInterval = 'ONE_DAY';
+      const wideFrom = new Date(
+        now.getTime() - Math.max(effectiveHours, 24 * 90) * 60 * 60 * 1000,
+      );
+      try {
+        rows = await this.smartapi.getCandles({
+          exchange: inst.exchange,
+          symboltoken: inst.token,
+          interval: 'ONE_DAY',
+          fromdate: formatIst(wideFrom),
+          todate: formatIst(now),
+        });
+      } catch (err2) {
+        this.logger.warn(
+          `candles daily fallback ${inst.exchange}:${inst.token} ` +
+            `failed (${(err2 as Error).message}); returning empty`,
+        );
+        rows = [];
+      }
+    }
     return {
       symbol: inst.name,
       tradingsymbol: inst.symbol,
