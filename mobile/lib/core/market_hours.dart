@@ -19,7 +19,23 @@ const _istOffset = Duration(hours: 5, minutes: 30);
 
 DateTime istNow([DateTime? at]) {
   final t = at ?? DateTime.now();
-  return t.isUtc ? t.add(_istOffset) : t.toUtc().add(_istOffset);
+  // Shift to the IST instant, then REBUILD as a local-flagged DateTime whose
+  // field values ARE the IST wall-clock. Returning a UTC-flagged value here
+  // would make marketState()/todayHoliday()/upcomingHoliday() — which re-test
+  // `at.isUtc` and add the offset again — apply +5:30 a SECOND time (the
+  // "market open before 09:15" bug). Do NOT collapse this back to a plain
+  // `.add()` return.
+  final u = t.isUtc ? t.add(_istOffset) : t.toUtc().add(_istOffset);
+  return DateTime(
+    u.year,
+    u.month,
+    u.day,
+    u.hour,
+    u.minute,
+    u.second,
+    u.millisecond,
+    u.microsecond,
+  );
 }
 
 enum MarketStateKind { open, preOpen, closed, holiday }

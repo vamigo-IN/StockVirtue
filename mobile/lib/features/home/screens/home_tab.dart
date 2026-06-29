@@ -124,7 +124,7 @@ class _HomeTabState extends ConsumerState<HomeTab> {
             const SizedBox(height: 24),
             const RecentlyViewedCarousel(),
             const SizedBox(height: 8),
-            const _SectionHeader(title: 'Top movers', subtitle: 'NSE · live'),
+            const _SectionHeader(title: 'Top movers', subtitle: 'NSE'),
             const SizedBox(height: 10),
             const TopMoversSection(),
             const SizedBox(height: 24),

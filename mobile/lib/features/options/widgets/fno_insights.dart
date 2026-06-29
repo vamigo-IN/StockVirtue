@@ -69,7 +69,7 @@ class _FnoInsightsState extends ConsumerState<FnoInsights> {
           icon: Icons.local_fire_department_outlined,
           color: Color(0xFFEF4444),
           title: 'F&O movers',
-          subtitle: 'Live · NSE',
+          subtitle: 'NSE F&O',
         ),
         const SizedBox(height: 10),
         _MoverTypeTabs(

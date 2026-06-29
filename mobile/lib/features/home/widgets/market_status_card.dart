@@ -75,6 +75,12 @@ class _MarketStatusCardState extends ConsumerState<MarketStatusCard> {
                               ),
                             ),
                           ),
+                          // Real "LIVE" cue — only while the regular session
+                          // is actually open (not pre-open / closed / holiday).
+                          if (state.isOpen) ...[
+                            const SizedBox(width: 6),
+                            const _LivePill(),
+                          ],
                           const SizedBox(width: 8),
                           Flexible(
                             child: Text(
@@ -87,10 +93,10 @@ class _MarketStatusCardState extends ConsumerState<MarketStatusCard> {
                               ),
                             ),
                           ),
-                          // Tiny chip flagging where the holiday list
-                          // came from. Green "LIVE" when we successfully
-                          // pulled from NSE; amber "CACHED" when we
-                          // fell back to the bundled list.
+                          // Tiny chip flagging where the holiday list came
+                          // from — "NSE" (live API) vs "CACHED" (bundled
+                          // fallback). This is data provenance, NOT a market
+                          // live indicator (that's the _LivePill above).
                           const SizedBox(width: 6),
                           const _HolidaySourceBadge(),
                         ],
@@ -163,9 +169,9 @@ class _HolidaySourceBadge extends ConsumerWidget {
     // While the fetch is in flight we render nothing — the parent row
     // already gives meaningful info; an empty chip would just be noise.
     if (payload == null) return const SizedBox.shrink();
-    final isLive = payload.source == 'nse';
-    final color = isLive ? const Color(0xFF22C55E) : const Color(0xFFF59E0B);
-    final label = isLive ? 'LIVE' : 'CACHED';
+    final fromNse = payload.source == 'nse';
+    final color = fromNse ? const Color(0xFF22C55E) : const Color(0xFFF59E0B);
+    final label = fromNse ? 'NSE' : 'CACHED';
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
       decoration: BoxDecoration(
@@ -180,6 +186,43 @@ class _HolidaySourceBadge extends ConsumerWidget {
           fontWeight: FontWeight.w900,
           letterSpacing: 0.6,
         ),
+      ),
+    );
+  }
+}
+
+/// Small green "LIVE" pill — rendered only while the regular session is open.
+class _LivePill extends StatelessWidget {
+  const _LivePill();
+
+  @override
+  Widget build(BuildContext context) {
+    const green = Color(0xFF22C55E);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: green.withValues(alpha: 0.16),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 5,
+            height: 5,
+            decoration: const BoxDecoration(color: green, shape: BoxShape.circle),
+          ),
+          const SizedBox(width: 4),
+          const Text(
+            'LIVE',
+            style: TextStyle(
+              color: green,
+              fontSize: 8.5,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 0.6,
+            ),
+          ),
+        ],
       ),
     );
   }

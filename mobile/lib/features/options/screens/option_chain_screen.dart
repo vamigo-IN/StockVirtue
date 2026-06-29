@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/black_scholes.dart';
+import '../../../core/market_hours.dart';
 import '../../../core/money_format.dart';
 import '../../../data/models/option_chain.dart';
 import '../../../data/models/tick.dart';
@@ -326,7 +327,9 @@ class _SpotBar extends ConsumerWidget {
     const upColor = Color(0xFF22C55E);
     const downColor = Color(0xFFEF4444);
     final pctColor = isUp ? upColor : downColor;
-    final hasLiveStream = tick != null;
+    // "LIVE" only when the regular session is actually open — a lingering
+    // last/stale tick after close must not keep claiming a live feed.
+    final hasLiveStream = tick != null && ref.watch(marketOpenProvider);
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
       decoration: BoxDecoration(
