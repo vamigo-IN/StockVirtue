@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+// StateProvider moved to the legacy import in Riverpod 3.x.
+import 'package:flutter_riverpod/legacy.dart';
 
 import '../../../core/company_names.dart';
 import '../../../core/market_hours.dart';
@@ -22,6 +24,19 @@ import 'sector_heatmap_screen.dart';
 
 const _upColor = Color(0xFF22C55E);
 const _downColor = Color(0xFFEF4444);
+
+/// True for derivatives holdings (options/futures) vs cash equity.
+bool _isFnoPosition(PortfolioPosition p) =>
+    p.exchange == 'NFO' || p.exchange == 'BFO';
+
+/// Holdings segment shown on the Portfolio screen. Lets the user split their
+/// cash-equity holdings from their F&O trades at a glance.
+enum HoldingsFilter { all, stocks, fno }
+
+/// Selected holdings segment. A provider (not local state) so it survives the
+/// snapshot reloads that rebuild the list after every order.
+final holdingsFilterProvider =
+    StateProvider<HoldingsFilter>((ref) => HoldingsFilter.all);
 
 class PortfolioScreen extends ConsumerStatefulWidget {
   const PortfolioScreen({super.key});
@@ -188,6 +203,20 @@ class _Body extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final positions = snap.positions;
+    // Split holdings into cash equity vs F&O so the user can isolate either.
+    final fnoCount = positions.where(_isFnoPosition).length;
+    final stockCount = positions.length - fnoCount;
+    // Only worth showing the segmented filter once there's actually a mix to
+    // separate — a pure-stock (or pure-F&O) book needs no toggle.
+    final showFilter = fnoCount > 0 && stockCount > 0;
+    final filter =
+        showFilter ? ref.watch(holdingsFilterProvider) : HoldingsFilter.all;
+    final shown = switch (filter) {
+      HoldingsFilter.all => positions,
+      HoldingsFilter.stocks =>
+        positions.where((p) => !_isFnoPosition(p)).toList(),
+      HoldingsFilter.fno => positions.where(_isFnoPosition).toList(),
+    };
     return ListView(
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
       children: [
@@ -238,6 +267,14 @@ class _Body extends ConsumerWidget {
             ],
           ),
         ),
+        if (showFilter) ...[
+          const SizedBox(height: 12),
+          _HoldingsFilterBar(
+            all: positions.length,
+            stocks: stockCount,
+            fno: fnoCount,
+          ),
+        ],
         const SizedBox(height: 10),
         if (positions.isEmpty)
           Padding(
@@ -253,7 +290,7 @@ class _Body extends ConsumerWidget {
             ),
           )
         else
-          for (final p in positions) ...[
+          for (final p in shown) ...[
             _PositionTile(position: p),
             const SizedBox(height: 10),
           ],
@@ -871,6 +908,73 @@ class _PositionTile extends ConsumerWidget {
               ],
             ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Segmented All / Stocks / F&O toggle above the holdings list. Each segment
+/// carries its live count so the split is obvious before tapping.
+class _HoldingsFilterBar extends ConsumerWidget {
+  const _HoldingsFilterBar({
+    required this.all,
+    required this.stocks,
+    required this.fno,
+  });
+  final int all;
+  final int stocks;
+  final int fno;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final selected = ref.watch(holdingsFilterProvider);
+    return Row(
+      children: [
+        _seg(context, ref, HoldingsFilter.all, 'All', all, selected),
+        const SizedBox(width: 8),
+        _seg(context, ref, HoldingsFilter.stocks, 'Stocks', stocks, selected),
+        const SizedBox(width: 8),
+        _seg(context, ref, HoldingsFilter.fno, 'F&O', fno, selected),
+      ],
+    );
+  }
+
+  Widget _seg(
+    BuildContext context,
+    WidgetRef ref,
+    HoldingsFilter value,
+    String label,
+    int count,
+    HoldingsFilter selected,
+  ) {
+    final scheme = Theme.of(context).colorScheme;
+    final active = value == selected;
+    return GestureDetector(
+      onTap: () => ref.read(holdingsFilterProvider.notifier).state = value,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        decoration: BoxDecoration(
+          color: active
+              ? scheme.primary.withValues(alpha: 0.15)
+              : scheme.surfaceContainerHighest.withValues(alpha: 0.4),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: active
+                ? scheme.primary.withValues(alpha: 0.6)
+                : scheme.outlineVariant.withValues(alpha: 0.3),
+          ),
+        ),
+        child: Text(
+          '$label · $count',
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            color: active
+                ? scheme.primary
+                : scheme.onSurface.withValues(alpha: 0.7),
+          ),
         ),
       ),
     );
