@@ -2,6 +2,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../home/home_providers.dart';
+import '../../home/indices_universe.dart';
+import '../../home/recently_viewed_storage.dart';
+import '../../portfolio/screens/sector_heatmap_screen.dart';
 import '../../symbol/screens/symbol_detail_screen.dart';
 import '../../watchlists/watchlists_providers.dart';
 import '../../watchlists/watchlists_repository.dart';
@@ -22,9 +26,10 @@ class _StockSearchScreenState extends ConsumerState<StockSearchScreen> {
   final _controller = TextEditingController();
   Timer? _debounce;
   String _query = '';
-  String _exchange = 'NSE';
   Future<List<StockSearchResult>>? _resultsFuture;
   final _adding = <String>{};
+
+  bool get _addMode => widget.watchlistId != null;
 
   @override
   void initState() {
@@ -50,31 +55,23 @@ class _StockSearchScreenState extends ConsumerState<StockSearchScreen> {
       _query = _controller.text.trim();
       _resultsFuture = _query.isEmpty
           ? null
-          : ref
-              .read(marketRepositoryProvider)
-              .search(_query, exchange: _exchange);
+          : ref.read(marketRepositoryProvider).search(_query);
     });
   }
 
-  void _setExchange(String ex) {
-    if (ex == _exchange) return;
-    setState(() => _exchange = ex);
-    if (_query.isNotEmpty) _runSearch();
-  }
-
-  Future<void> _add(StockSearchResult r) async {
+  Future<void> _addFor(String symbol, String exchange, String token) async {
     final listId = widget.watchlistId;
     if (listId == null) return;
-    if (_adding.contains(r.symboltoken)) return;
-    setState(() => _adding.add(r.symboltoken));
+    if (_adding.contains(token)) return;
+    setState(() => _adding.add(token));
     try {
       await ref
           .read(watchlistsRepositoryProvider)
-          .addItem(listId, r.symbol, r.exchange);
+          .addItem(listId, symbol, exchange);
       ref.invalidate(watchlistsListProvider);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Added ${r.symbol}')),
+        SnackBar(content: Text('Added $symbol')),
       );
     } catch (e) {
       if (!mounted) return;
@@ -85,21 +82,40 @@ class _StockSearchScreenState extends ConsumerState<StockSearchScreen> {
         ),
       );
     } finally {
-      if (mounted) setState(() => _adding.remove(r.symboltoken));
+      if (mounted) setState(() => _adding.remove(token));
     }
   }
 
-  void _openDetail(StockSearchResult r) {
+  void _openDetailFor(
+    String symbol,
+    String tradingsymbol,
+    String token,
+    String exchange,
+  ) {
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (_) => SymbolDetailScreen(
-          symbol: r.symbol,
-          tradingsymbol: r.tradingsymbol,
-          symboltoken: r.symboltoken,
-          exchange: r.exchange,
+          symbol: symbol,
+          tradingsymbol: tradingsymbol,
+          symboltoken: token,
+          exchange: exchange,
         ),
       ),
     );
+  }
+
+  /// Add to the watchlist (add-mode) or open the detail screen otherwise.
+  void _select({
+    required String symbol,
+    required String tradingsymbol,
+    required String symboltoken,
+    required String exchange,
+  }) {
+    if (_addMode) {
+      _addFor(symbol, exchange, symboltoken);
+    } else {
+      _openDetailFor(symbol, tradingsymbol, symboltoken, exchange);
+    }
   }
 
   @override
@@ -128,22 +144,9 @@ class _StockSearchScreenState extends ConsumerState<StockSearchScreen> {
               onPressed: () => _controller.clear(),
             ),
         ],
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(56),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-            child: _ExchangeToggle(
-              selected: _exchange,
-              onChanged: _setExchange,
-            ),
-          ),
-        ),
       ),
       body: _resultsFuture == null
-          ? const _Hint(
-              icon: Icons.search,
-              text: 'Type a symbol or company name',
-            )
+          ? _buildSuggestions()
           : FutureBuilder<List<StockSearchResult>>(
               future: _resultsFuture,
               builder: (context, snapshot) {
@@ -157,7 +160,7 @@ class _StockSearchScreenState extends ConsumerState<StockSearchScreen> {
                 if (results.isEmpty) {
                   return _Hint(
                     icon: Icons.search_off,
-                    text: 'No matches for "$_query" on $_exchange',
+                    text: 'No matches for "$_query"',
                   );
                 }
                 return ListView.separated(
@@ -167,14 +170,18 @@ class _StockSearchScreenState extends ConsumerState<StockSearchScreen> {
                   itemBuilder: (context, i) {
                     final r = results[i];
                     final busy = _adding.contains(r.symboltoken);
-                    final addMode = widget.watchlistId != null;
                     return _ResultTile(
                       result: r,
                       busy: busy,
-                      addMode: addMode,
+                      addMode: _addMode,
                       onTap: busy
                           ? null
-                          : () => addMode ? _add(r) : _openDetail(r),
+                          : () => _select(
+                                symbol: r.symbol,
+                                tradingsymbol: r.tradingsymbol,
+                                symboltoken: r.symboltoken,
+                                exchange: r.exchange,
+                              ),
                     );
                   },
                 );
@@ -182,71 +189,214 @@ class _StockSearchScreenState extends ConsumerState<StockSearchScreen> {
             ),
     );
   }
+
+  /// Empty-state content shown before the user types: recent views, trending
+  /// stocks and sector shortcuts so the page is never blank.
+  Widget _buildSuggestions() {
+    final recent = ref.watch(recentlyViewedProvider).value ?? const <RecentSymbol>[];
+    final trending = ref.watch(homeTrendingProvider);
+
+    return ListView(
+      padding: const EdgeInsets.fromLTRB(8, 10, 8, 28),
+      children: [
+        if (recent.isNotEmpty) ...[
+          const _SectionLabel('Recent'),
+          for (final r in recent.take(6))
+            _SuggestionTile(
+              symbol: r.symbol,
+              sub: r.tradingsymbol,
+              exchange: r.exchange,
+              busy: _adding.contains(r.symboltoken),
+              addMode: _addMode,
+              onTap: () => _select(
+                symbol: r.symbol,
+                tradingsymbol: r.tradingsymbol,
+                symboltoken: r.symboltoken,
+                exchange: r.exchange,
+              ),
+            ),
+          const SizedBox(height: 14),
+        ],
+        const _SectionLabel('Trending'),
+        trending.when(
+          loading: () => const Padding(
+            padding: EdgeInsets.symmetric(vertical: 28),
+            child: Center(child: CircularProgressIndicator()),
+          ),
+          error: (_, _) => const SizedBox.shrink(),
+          data: (list) => Column(
+            children: [
+              for (final q in list.take(8))
+                _SuggestionTile(
+                  symbol: q.symbol,
+                  sub: q.tradingsymbol,
+                  exchange: q.exchange,
+                  ltp: q.ltp,
+                  busy: _adding.contains(q.symboltoken),
+                  addMode: _addMode,
+                  onTap: () => _select(
+                    symbol: q.symbol,
+                    tradingsymbol: q.tradingsymbol,
+                    symboltoken: q.symboltoken,
+                    exchange: q.exchange,
+                  ),
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 18),
+        const _SectionLabel('Sectors'),
+        const SizedBox(height: 6),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final s in sectoralIndices.take(10))
+                _SectorChip(
+                  label: s.fullName,
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (_) => const SectorHeatmapScreen(),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
 }
 
-class _ExchangeToggle extends StatelessWidget {
-  const _ExchangeToggle({required this.selected, required this.onChanged});
-  final String selected;
-  final ValueChanged<String> onChanged;
+class _SectionLabel extends StatelessWidget {
+  const _SectionLabel(this.text);
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 6),
+      child: Text(
+        text.toUpperCase(),
+        style: TextStyle(
+          fontSize: 11.5,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 0.6,
+          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
+        ),
+      ),
+    );
+  }
+}
+
+/// Compact tile used in the search empty-state (recent + trending lists).
+class _SuggestionTile extends StatelessWidget {
+  const _SuggestionTile({
+    required this.symbol,
+    required this.sub,
+    required this.exchange,
+    required this.onTap,
+    required this.busy,
+    required this.addMode,
+    this.ltp,
+  });
+
+  final String symbol;
+  final String sub;
+  final String exchange;
+  final double? ltp;
+  final bool busy;
+  final bool addMode;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    Widget tab(String label, IconData icon) {
-      final isActive = label == selected;
-      return Expanded(
-        child: InkWell(
+    final color = _hashColor(symbol);
+    return ListTile(
+      dense: true,
+      leading: Container(
+        width: 36,
+        height: 36,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.18),
           borderRadius: BorderRadius.circular(10),
-          onTap: () => onChanged(label),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 180),
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            decoration: BoxDecoration(
-              color: isActive
-                  ? scheme.primary
-                  : Colors.transparent,
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  icon,
-                  size: 14,
-                  color: isActive
-                      ? scheme.onPrimary
-                      : scheme.onSurface.withValues(alpha: 0.65),
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontWeight: FontWeight.w700,
-                    fontSize: 13,
-                    letterSpacing: 0.3,
-                    color: isActive
-                        ? scheme.onPrimary
-                        : scheme.onSurface.withValues(alpha: 0.65),
-                  ),
-                ),
-              ],
-            ),
+        ),
+        child: Text(
+          symbol.isNotEmpty ? symbol[0] : '?',
+          style: TextStyle(
+            color: color,
+            fontWeight: FontWeight.w800,
+            fontSize: 14,
           ),
         ),
-      );
-    }
-
-    return Container(
-      padding: const EdgeInsets.all(3),
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainerHighest.withValues(alpha: 0.55),
-        borderRadius: BorderRadius.circular(12),
       ),
-      child: Row(
-        children: [
-          tab('NSE', Icons.account_balance_outlined),
-          tab('BSE', Icons.account_balance),
-        ],
+      title: Text(
+        symbol,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+      ),
+      subtitle: Text(
+        '$exchange • $sub',
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          fontSize: 11.5,
+          color: scheme.onSurface.withValues(alpha: 0.6),
+        ),
+      ),
+      trailing: busy
+          ? const SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            )
+          : ltp != null
+              ? Text(
+                  ltp!.toStringAsFixed(2),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    fontSize: 13,
+                  ),
+                )
+              : Icon(
+                  addMode ? Icons.add_circle_outline : Icons.chevron_right,
+                  color: scheme.onSurface.withValues(alpha: 0.5),
+                  size: 20,
+                ),
+      onTap: busy ? null : onTap,
+    );
+  }
+}
+
+class _SectorChip extends StatelessWidget {
+  const _SectorChip({required this.label, required this.onTap});
+  final String label;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return InkWell(
+      borderRadius: BorderRadius.circular(999),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 8),
+        decoration: BoxDecoration(
+          color: scheme.surfaceContainerHighest.withValues(alpha: 0.5),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(
+            color: scheme.outlineVariant.withValues(alpha: 0.35),
+          ),
+        ),
+        child: Text(
+          label,
+          style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600),
+        ),
       ),
     );
   }
