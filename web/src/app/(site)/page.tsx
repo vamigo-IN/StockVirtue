@@ -9,12 +9,13 @@ export default function HomePage() {
       <section className="hero">
         <div className="container hero-grid">
           <div>
-            <span className="eyebrow">● Virtual money · Zero risk</span>
-            <h1>Practise the stock market. Build real skill.</h1>
+            <span className="eyebrow">● Virtual money · zero real risk</span>
+            <h1>Learn to trade. Without losing real money.</h1>
             <p className="lead">
-              {SITE.name} is a virtual trading simulator for the Indian markets.
-              Trade NSE &amp; BSE stocks, F&amp;O and indices with live prices
-              and real order types — using ₹ virtual money, never real funds.
+              {SITE.name} is a trading simulator for the Indian markets. You get
+              live NSE &amp; BSE prices and the same order types real traders use,
+              but you trade with virtual money &mdash; so you can figure out how
+              it all works before any of your own is on the line.
             </p>
             <div className="hero-cta">
               <a
@@ -98,10 +99,10 @@ export default function HomePage() {
       <section className="section bg-alt" id="features">
         <div className="container">
           <div className="center" style={{ marginBottom: 44 }}>
-            <h2>Everything you need to learn trading</h2>
+            <h2>A real trading setup, minus the risk</h2>
             <p className="lead">
-              A complete, realistic trading experience — without the financial
-              risk. Practise like it&apos;s real, because the market data is.
+              The data is real, so the practice counts. The money isn&apos;t,
+              so the mistakes don&apos;t.
             </p>
           </div>
           <div className="grid grid-4">
@@ -122,8 +123,8 @@ export default function HomePage() {
       <section className="section">
         <div className="container">
           <div className="center" style={{ marginBottom: 44 }}>
-            <h2>Start trading in minutes</h2>
-            <p className="lead">No paperwork, no deposits — just download and go.</p>
+            <h2>Up and running in minutes</h2>
+            <p className="lead">No paperwork, no deposits, no KYC. Download and trade.</p>
           </div>
           <div className="grid grid-4">
             {STEPS.map((s, i) => (
@@ -141,11 +142,12 @@ export default function HomePage() {
       <section className="section bg-alt">
         <div className="container grid grid-2" style={{ alignItems: 'center' }}>
           <div>
-            <h2>Learn by doing — safely</h2>
+            <h2>Learn by doing, not by losing</h2>
             <p className="muted">
-              Most people lose money learning to trade. {SITE.name} flips that:
-              you make every beginner mistake with virtual money, so the only
-              thing you lose is the habit of losing.
+              Most people pay for their trading education in blown-up accounts.
+              {' '}{SITE.name} lets you make those beginner mistakes with virtual
+              money instead, so the only thing you actually lose is the habit of
+              losing.
             </p>
             <ul style={{ listStyle: 'none', padding: 0, margin: '20px 0 0' }}>
               {[
@@ -189,10 +191,10 @@ export default function HomePage() {
       <section className="section">
         <div className="container">
           <div className="cta-band">
-            <h2>Ready to trade — risk-free?</h2>
+            <h2>Your virtual wallet is waiting</h2>
             <p>
-              Download {SITE.name} and start practising the markets today. It
-              &apos;s free, and your wallet is full of virtual money.
+              Download {SITE.name}, and you&apos;re trading the markets in a
+              couple of minutes. It&apos;s free, and the money&apos;s on us.
             </p>
             <a
               className="btn btn-ghost btn-lg"

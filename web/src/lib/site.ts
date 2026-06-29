@@ -8,7 +8,7 @@ export const SITE = {
   name: 'StockVirtue',
   tagline: 'Virtual trading. Real skills.',
   description:
-    'StockVirtue is a virtual stock-market simulator for India. Practise trading NSE & BSE stocks, F&O, and indices with ₹ virtual money — live prices, real order types, portfolios, competitions and a built-in trading academy. Zero financial risk.',
+    'Practise the Indian stock market with virtual money. Live NSE & BSE prices, real order types, F&O and indices, and not a rupee of real risk.',
   url: process.env.NEXT_PUBLIC_SITE_URL || 'https://stockvirtue.com',
   playUrl:
     process.env.NEXT_PUBLIC_PLAY_URL ||
@@ -61,91 +61,91 @@ export const FEATURES = [
   {
     icon: 'chart',
     title: 'Live market data',
-    body: 'Real-time NSE & BSE prices, interactive charts and full market depth, so every practice trade reflects the real market.',
+    body: "Live prices from the NSE and BSE, with the same charts and order-book depth a real desk watches. Your practice moves tick for tick with the actual market.",
   },
   {
     icon: 'trade',
-    title: 'Real order types',
-    body: 'Market, Limit, Stop-Loss, SL-Limit and Trailing-Stop orders — in Intraday (MIS) and Delivery (CNC), with realistic brokerage & taxes.',
+    title: 'Every order type',
+    body: "Market, limit, stop-loss, SL-limit and trailing stops, in both intraday and delivery. Brokerage and taxes are baked in, so your P&L reads like the real thing.",
   },
   {
     icon: 'fno',
     title: 'Futures & Options',
-    body: 'Trade index and stock F&O in proper lot sizes, explore option chains, and learn derivatives the safe way.',
+    body: "Trade index and stock F&O in the right lot sizes and read the full option chain. Get comfortable with derivatives before any real money is on the line.",
   },
   {
     icon: 'portfolio',
     title: 'Portfolio & P&L',
-    body: 'Track holdings, invested value, realised and unrealised P&L in real time, and square off positions in one tap.',
+    body: "Your holdings, what you paid, and what they're worth right now, all in one place. P&L updates live, and you can square off a position in a single tap.",
   },
   {
     icon: 'clock',
     title: 'After-market orders',
-    body: 'Place orders when the market is closed — they queue and execute at the next open. Holiday-aware, just like the real exchange.',
+    body: "Placed an order after hours? It waits in the queue and fills when the market reopens. It knows the weekends and trading holidays, too.",
   },
   {
     icon: 'trophy',
-    title: 'Compete & climb',
-    body: 'Join rooms and tournaments, race friends on live leaderboards, and earn achievement badges as you improve.',
+    title: 'Compete with friends',
+    body: "Join rooms and tournaments, go head-to-head on a live leaderboard, and pick up badges as your trading gets sharper.",
   },
   {
     icon: 'book',
-    title: 'Trading Academy',
-    body: 'Structured lessons, quizzes and a market glossary take you from the basics to confident, informed trading.',
+    title: 'Learn as you go',
+    body: "Short lessons, quick quizzes, and a glossary that explains the jargon in plain English. Start from scratch and move at your own pace.",
   },
   {
     icon: 'shield',
-    title: 'Zero financial risk',
-    body: 'Every rupee is virtual. Make mistakes, learn fast, and build real skill without ever risking real money.',
+    title: 'Only play money',
+    body: "Every rupee is virtual. Blow up a trade, work out what went wrong, and reset. The worst you can lose here is a bad habit.",
   },
 ] as const;
 
 export const STEPS = [
   {
-    title: 'Create your account',
-    body: 'Sign up in seconds with email, Google or phone, and get a clean virtual wallet to trade with.',
+    title: 'Sign up',
+    body: "Use email, Google, or your phone number. You'll land with a virtual wallet that's ready to trade.",
   },
   {
-    title: 'Explore the markets',
-    body: 'Search stocks, watch indices, open charts and option chains, and build your watchlist.',
+    title: 'Find your trade',
+    body: 'Search a stock, scan the indices, open a chart or an option chain, and pin what you care about to a watchlist.',
   },
   {
-    title: 'Place your trades',
-    body: 'Buy and sell with real order types, manage your portfolio, and review your P&L.',
+    title: 'Place it',
+    body: 'Buy or sell with proper order types, then watch your portfolio and P&L move in real time.',
   },
   {
-    title: 'Learn & compete',
-    body: 'Complete academy lessons, earn badges, and climb tournament leaderboards.',
+    title: 'Keep improving',
+    body: 'Work through the academy, earn a few badges, and see how you stack up on the tournament tables.',
   },
 ] as const;
 
 export const FAQS = [
   {
-    q: 'Is StockVirtue real trading?',
-    a: 'No. StockVirtue is a simulator. All trades use virtual money — you never deposit, withdraw, or risk real funds. It is built for learning and practice.',
+    q: 'Is this real trading?',
+    a: "No, it's a simulator. Every trade uses virtual money, so you never deposit, withdraw, or lose anything real. It's here for you to learn and practise.",
   },
   {
-    q: 'Does it use real market prices?',
-    a: 'Yes. Prices, charts and market depth reflect live NSE & BSE data during market hours, so your practice mirrors the real market.',
+    q: 'Are the prices real?',
+    a: "Yes. During market hours you see live NSE and BSE prices, charts and depth, so your practice lines up with what's actually happening.",
   },
   {
-    q: 'Is StockVirtue free?',
-    a: 'Yes, StockVirtue is free to download and use. You start with a virtual wallet and can trade right away.',
+    q: 'Is it free?',
+    a: "Completely. Install it, pick up your virtual wallet, and start trading. There's nothing to pay and nothing to deposit.",
   },
   {
-    q: 'Is this investment advice?',
-    a: 'No. Nothing in StockVirtue is financial, investment, or trading advice. It is an educational tool. Please consult a SEBI-registered advisor before investing real money.',
+    q: 'Is any of this investment advice?',
+    a: 'No. Nothing in the app is advice or a recommendation to buy or sell anything. It is a learning tool. For real investing, speak to a SEBI-registered adviser.',
   },
   {
-    q: 'Which markets and instruments are supported?',
-    a: 'Indian equities on NSE & BSE, major indices (Nifty 50, Sensex, Bank Nifty and more), and Futures & Options.',
+    q: 'What can I trade?',
+    a: 'Indian shares on the NSE and BSE, the major indices like Nifty 50, Sensex and Bank Nifty, and Futures & Options.',
   },
   {
-    q: 'Which platforms is it available on?',
-    a: 'StockVirtue is available on Android via the Google Play Store. More platforms are planned.',
+    q: 'Where can I get it?',
+    a: 'On Android, through the Google Play Store. Support for more platforms is on the way.',
   },
   {
-    q: 'How do I get support?',
-    a: 'Use the Contact page on this site or email our support team. We read every message.',
+    q: 'How do I reach you?',
+    a: 'Use the Contact page or email us. A real person reads every message, and we try to reply quickly.',
   },
 ] as const;

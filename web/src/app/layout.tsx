@@ -1,7 +1,14 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import './globals.css';
 import { SITE } from '@/lib/site';
 import { getSettings } from '@/lib/settings';
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  themeColor: '#16a34a',
+  colorScheme: 'light',
+};
 
 export async function generateMetadata(): Promise<Metadata> {
   const s = await getSettings();
@@ -25,6 +32,8 @@ export async function generateMetadata(): Promise<Metadata> {
     authors: [{ name: SITE.company }],
     creator: SITE.company,
     publisher: SITE.company,
+    appleWebApp: { capable: true, title: SITE.name, statusBarStyle: 'default' },
+    formatDetection: { telephone: false, address: false, email: false },
     alternates: { canonical: '/' },
     openGraph: {
       type: 'website',
