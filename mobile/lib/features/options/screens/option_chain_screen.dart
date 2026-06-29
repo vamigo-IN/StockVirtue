@@ -190,7 +190,7 @@ class _OptionChainScreenState extends ConsumerState<OptionChainScreen> {
   }
 }
 
-class _ChainBody extends StatefulWidget {
+class _ChainBody extends ConsumerStatefulWidget {
   const _ChainBody({
     required this.chain,
     required this.underlying,
@@ -204,26 +204,58 @@ class _ChainBody extends StatefulWidget {
   final ValueChanged<OptionLeg> onOpenLeg;
 
   @override
-  State<_ChainBody> createState() => _ChainBodyState();
+  ConsumerState<_ChainBody> createState() => _ChainBodyState();
 }
 
-class _ChainBodyState extends State<_ChainBody> {
+class _ChainBodyState extends ConsumerState<_ChainBody> {
   final _scroll = ScrollController();
+  // Live-tick subscriptions for every contract in the loaded chain, so each
+  // row's LTP / day-change updates in real time instead of freezing at the
+  // value it had when the chain was fetched. Refcounted server-side.
+  List<TickSubscription> _legSubs = const [];
 
   @override
   void initState() {
     super.initState();
     // Auto-scroll to the ATM strike on first paint so the user lands on
-    // the actionable rows instead of the deepest OTM tail.
-    WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToAtm());
+    // the actionable rows instead of the deepest OTM tail; and open the
+    // live feed for this expiry's contracts.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scrollToAtm();
+      _syncLegSubs();
+    });
   }
 
   @override
   void didUpdateWidget(covariant _ChainBody old) {
     super.didUpdateWidget(old);
     if (old.chain.expiry != widget.chain.expiry) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _scrollToAtm());
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _scrollToAtm();
+        _syncLegSubs();
+      });
     }
+  }
+
+  /// Subscribe every leg's contract (call + put, deduped) to the live feed
+  /// and drop the previous expiry's contracts. Server-side refcounting keeps
+  /// the churn cheap when switching expiries.
+  void _syncLegSubs() {
+    final next = <TickSubscription>[];
+    final seen = <String>{};
+    for (final row in widget.chain.strikes) {
+      for (final leg in [row.call, row.put]) {
+        if (leg == null) continue;
+        if (!seen.add(leg.tradingsymbol)) continue;
+        next.add(
+          TickSubscription(symbol: leg.tradingsymbol, exchange: leg.exchange),
+        );
+      }
+    }
+    final service = ref.read(ticksServiceProvider);
+    if (_legSubs.isNotEmpty) service.unsubscribe(_legSubs);
+    if (next.isNotEmpty) service.subscribe(next);
+    _legSubs = next;
   }
 
   void _scrollToAtm() {
@@ -244,6 +276,9 @@ class _ChainBodyState extends State<_ChainBody> {
 
   @override
   void dispose() {
+    if (_legSubs.isNotEmpty) {
+      ref.read(ticksServiceProvider).unsubscribe(_legSubs);
+    }
     _scroll.dispose();
     super.dispose();
   }
@@ -611,7 +646,7 @@ class _ChainRow extends StatelessWidget {
   }
 }
 
-class _LegCell extends StatelessWidget {
+class _LegCell extends ConsumerWidget {
   const _LegCell({
     required this.leg,
     required this.isCall,
@@ -630,7 +665,7 @@ class _LegCell extends StatelessWidget {
   final ValueChanged<OptionLeg> onTap;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
     if (leg == null) {
       return SizedBox(
@@ -647,7 +682,17 @@ class _LegCell extends StatelessWidget {
     }
     final oi = leg!.opnInterest ?? 0;
     final oiBarWidth = peakOI > 0 ? (oi / peakOI).clamp(0.0, 1.0) : 0.0;
-    final pct = leg!.changePct;
+    // Live overlay: prefer the latest streamed tick for this contract; fall
+    // back to the chain-fetch LTP until the first tick lands (or when the
+    // market is shut). Day-change recomputed from the tick's own prev-close
+    // when present so it tracks the live price, else the fetched change%.
+    final tickKey = '${leg!.exchange}:${leg!.symboltoken}';
+    final tick = ref.watch(latestTicksProvider.select<Tick?>((m) => m[tickKey]));
+    final ltp = tick?.ltp ?? leg!.ltp;
+    final tClose = tick?.close;
+    final pct = (tick != null && tClose != null && tClose > 0)
+        ? ((tick.ltp - tClose) / tClose) * 100
+        : leg!.changePct;
     final isUp = (pct ?? 0) >= 0;
     final pctColor = isUp ? _upColor : _downColor;
     // OI bar sits behind the cell, aligned to the outer edge:
@@ -706,9 +751,7 @@ class _LegCell extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
                           Text(
-                            leg!.ltp != null
-                                ? leg!.ltp!.toStringAsFixed(2)
-                                : '—',
+                            ltp != null ? ltp.toStringAsFixed(2) : '—',
                             style: const TextStyle(
                               fontWeight: FontWeight.w700,
                               fontSize: 13,
@@ -733,9 +776,7 @@ class _LegCell extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            leg!.ltp != null
-                                ? leg!.ltp!.toStringAsFixed(2)
-                                : '—',
+                            ltp != null ? ltp.toStringAsFixed(2) : '—',
                             style: const TextStyle(
                               fontWeight: FontWeight.w700,
                               fontSize: 13,

@@ -73,6 +73,12 @@ class _SymbolDetailScreenState extends ConsumerState<SymbolDetailScreen> {
   bool _swapping = false;
 
   bool get _isFno => _exchange == 'NFO' || _exchange == 'BFO';
+
+  /// The symbol to use for market data + trading. For F&O the underlying name
+  /// (e.g. "NIFTY") doesn't exist on NFO/BFO — the exchange only knows the
+  /// contract — so we must address quotes, ticks and orders by the contract
+  /// tradingsymbol. For cash equity the two are equivalent.
+  String get _quoteSymbol => _isFno ? _tradingsymbol : widget.symbol;
   bool get _isEquityExchange => _exchange == 'NSE' || _exchange == 'BSE';
   // SmartAPI assigns indices a token in the 99926000 (NSE) / 99919000
   // (BSE) range — the prefix identifies most of them without a backend
@@ -113,14 +119,14 @@ class _SymbolDetailScreenState extends ConsumerState<SymbolDetailScreen> {
   /// pair and kicks off the REST quote + snapshot fetches whose results
   /// populate the OHLC strip / depth book / 52w extremes.
   void _attachToCurrentSymbol() {
-    final sub = TickSubscription(symbol: widget.symbol, exchange: _exchange);
+    final sub = TickSubscription(symbol: _quoteSymbol, exchange: _exchange);
     _sub = sub;
     _quoteFuture = ref
         .read(marketRepositoryProvider)
-        .getRawQuote(widget.symbol, _exchange);
+        .getRawQuote(_quoteSymbol, _exchange);
     ref
         .read(marketRepositoryProvider)
-        .getSnapshot(widget.symbol, _exchange)
+        .getSnapshot(_quoteSymbol, _exchange)
         .then((snap) {
           if (mounted) _applySnapshot(snap);
         })
@@ -235,7 +241,7 @@ class _SymbolDetailScreenState extends ConsumerState<SymbolDetailScreen> {
     final order = await showTradeSheet(
       context,
       side: side,
-      symbol: widget.symbol,
+      symbol: _quoteSymbol,
       exchange: _exchange,
       symboltoken: _symboltoken,
       referencePrice: price,
@@ -353,7 +359,7 @@ class _SymbolDetailScreenState extends ConsumerState<SymbolDetailScreen> {
             onRefresh: () async {
               ref.invalidate(portfolioProvider);
               final args = PriceChartArgs(
-                symbol: widget.symbol,
+                symbol: _quoteSymbol,
                 exchange: _exchange,
                 range: ChartRange.m1,
               );
@@ -361,7 +367,7 @@ class _SymbolDetailScreenState extends ConsumerState<SymbolDetailScreen> {
               setState(() {
                 _quoteFuture = ref
                     .read(marketRepositoryProvider)
-                    .getRawQuote(widget.symbol, _exchange);
+                    .getRawQuote(_quoteSymbol, _exchange);
               });
               await _quoteFuture;
               await ref.read(portfolioProvider.future);
@@ -385,7 +391,7 @@ class _SymbolDetailScreenState extends ConsumerState<SymbolDetailScreen> {
                 ),
                 const SizedBox(height: 18),
                 PriceChart(
-                  symbol: widget.symbol,
+                  symbol: _quoteSymbol,
                   exchange: _exchange,
                 ),
                 const SizedBox(height: 24),
