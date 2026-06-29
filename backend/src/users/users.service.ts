@@ -145,11 +145,17 @@ export class UsersService {
       const trimmed = patch.displayName.trim();
       if (trimmed.length > 0) data.displayName = trimmed;
     }
-    if (patch.email !== undefined && current.emailAlias == null) {
+    // Identity locking: the credential used to sign in cannot be changed.
+    // Email/password + Google users authenticate by email (emailVerified) → the
+    // email is locked and the phone is editable. Phone users authenticate by
+    // phone → the phone is locked and the email is editable. The non-login
+    // field stays fully editable (set OR change), not first-set-only.
+    const emailIsLogin = current.emailVerified;
+    if (patch.email !== undefined && !emailIsLogin) {
       const email = patch.email.trim().toLowerCase();
       if (email.length > 0) data.emailAlias = email;
     }
-    if (patch.phone !== undefined && current.phone == null) {
+    if (patch.phone !== undefined && emailIsLogin) {
       const phone = patch.phone.trim();
       if (phone.length > 0) data.phone = this.normalizePhone(phone);
     }

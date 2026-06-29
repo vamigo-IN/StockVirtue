@@ -440,6 +440,15 @@ export class AuthService {
       tradeEmailsOptIn: user.tradeEmailsOptIn,
       status: user.status,
       profileComplete: this.users.isProfileComplete(user),
+      // How this account signs in. Drives which identity field the client locks
+      // in profile editing: 'email'/'google' → email is the login (locked),
+      // 'phone' → phone is the login (locked). The OTHER field stays editable.
+      authProvider:
+        user.passwordHash != null
+          ? 'email'
+          : user.emailVerified
+            ? 'google'
+            : 'phone',
       createdAt: user.createdAt,
       lastLoginAt: user.lastLoginAt,
       referralCode: user.referralCode,

@@ -613,14 +613,22 @@ class _EditProfileSheetState extends ConsumerState<_EditProfileSheet> {
       TextEditingController(text: widget.user.displayName ?? '');
   late final TextEditingController _emailC =
       TextEditingController(text: widget.user.email ?? '');
+  late final TextEditingController _phoneC =
+      TextEditingController(text: widget.user.phone ?? '');
   final _formKey = GlobalKey<FormState>();
   bool _saving = false;
   String? _error;
+
+  /// Email/password & Google accounts sign in with their email, so the email
+  /// is the locked identity and the mobile number is editable. Phone accounts
+  /// are the reverse: the number is locked, the email is editable.
+  bool get _emailIsLogin => widget.user.authProvider != 'phone';
 
   @override
   void dispose() {
     _nameC.dispose();
     _emailC.dispose();
+    _phoneC.dispose();
     super.dispose();
   }
 
@@ -631,9 +639,12 @@ class _EditProfileSheetState extends ConsumerState<_EditProfileSheet> {
       _error = null;
     });
     try {
+      // Only send the field the user is allowed to change. The backend enforces
+      // the same rule, so the locked identity can never be overwritten.
       await ref.read(authControllerProvider.notifier).updateProfile(
             displayName: _nameC.text.trim(),
-            email: _emailC.text.trim(),
+            email: _emailIsLogin ? null : _emailC.text.trim(),
+            phone: _emailIsLogin ? _phoneC.text.trim() : null,
           );
       if (mounted) Navigator.of(context).pop(true);
     } catch (e) {
@@ -680,18 +691,51 @@ class _EditProfileSheetState extends ConsumerState<_EditProfileSheet> {
             const SizedBox(height: 14),
             TextFormField(
               controller: _emailC,
-              decoration: const InputDecoration(
+              enabled: !_emailIsLogin,
+              decoration: InputDecoration(
                 labelText: 'Email',
                 hintText: 'name@example.com',
-                prefixIcon: Icon(Icons.mail_outline),
+                prefixIcon: const Icon(Icons.mail_outline),
+                suffixIcon: _emailIsLogin
+                    ? const Icon(Icons.lock_outline, size: 18)
+                    : null,
+                helperText: _emailIsLogin
+                    ? 'You sign in with this email, so it can\'t be changed.'
+                    : null,
               ),
               keyboardType: TextInputType.emailAddress,
               validator: (v) {
+                if (_emailIsLogin) return null;
                 final t = (v ?? '').trim();
                 if (t.isEmpty) return null;
                 final ok =
                     RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$').hasMatch(t);
                 return ok ? null : 'Invalid email';
+              },
+            ),
+            const SizedBox(height: 14),
+            TextFormField(
+              controller: _phoneC,
+              enabled: _emailIsLogin,
+              decoration: InputDecoration(
+                labelText: 'Mobile number',
+                hintText: '+91 98765 43210',
+                prefixIcon: const Icon(Icons.phone_outlined),
+                suffixIcon: _emailIsLogin
+                    ? null
+                    : const Icon(Icons.lock_outline, size: 18),
+                helperText: _emailIsLogin
+                    ? null
+                    : 'You sign in with this number, so it can\'t be changed.',
+              ),
+              keyboardType: TextInputType.phone,
+              validator: (v) {
+                if (!_emailIsLogin) return null;
+                final t = (v ?? '').trim();
+                if (t.isEmpty) return null;
+                final digits = t.replaceAll(RegExp(r'[\s-]'), '');
+                final ok = RegExp(r'^\+?\d{10,15}$').hasMatch(digits);
+                return ok ? null : 'Enter a valid mobile number';
               },
             ),
             if (_error != null) ...[

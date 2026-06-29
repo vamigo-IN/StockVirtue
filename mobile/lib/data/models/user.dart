@@ -9,6 +9,9 @@ class AppUser {
   final bool tradeEmailsOptIn;
   final String status;
   final bool profileComplete;
+  /// How the account signs in: 'email', 'google', or 'phone'. Determines which
+  /// identity field is locked in profile editing (the login credential).
+  final String authProvider;
   final DateTime? createdAt;
   final DateTime? lastLoginAt;
   /// Server-issued invite code, format "SV-XXXXXX". The client used to
@@ -28,6 +31,7 @@ class AppUser {
     required this.tradeEmailsOptIn,
     required this.status,
     required this.profileComplete,
+    required this.authProvider,
     required this.createdAt,
     required this.lastLoginAt,
     required this.referralCode,
@@ -51,6 +55,7 @@ class AppUser {
         tradeEmailsOptIn: tradeEmailsOptIn ?? this.tradeEmailsOptIn,
         status: status,
         profileComplete: profileComplete ?? this.profileComplete,
+        authProvider: authProvider,
         createdAt: createdAt,
         lastLoginAt: lastLoginAt,
         referralCode: referralCode,
@@ -66,6 +71,7 @@ class AppUser {
         tradeEmailsOptIn: json['tradeEmailsOptIn'] as bool? ?? false,
         status: json['status'] as String? ?? 'ACTIVE',
         profileComplete: json['profileComplete'] as bool? ?? false,
+        authProvider: json['authProvider'] as String? ?? 'phone',
         createdAt: _parseDate(json['createdAt']),
         lastLoginAt: _parseDate(json['lastLoginAt']),
         referralCode: json['referralCode'] as String?,
