@@ -226,6 +226,19 @@ export class MarketController {
     return this.market.getOptionChain(underlying, expiry);
   }
 
+  // Official option greeks + IV per strike (delta/gamma/theta/vega/IV) for the
+  // option chain's IV column and the per-leg greeks sheet.
+  @Get('option-greeks/:underlying')
+  optionGreeks(
+    @Param('underlying') underlying: string,
+    @Query('expiry') expiry: string,
+  ) {
+    if (!expiry) {
+      throw new BadRequestException('expiry query param is required');
+    }
+    return this.market.getOptionGreeks(underlying, expiry);
+  }
+
   @Get('snapshot/:symbol')
   snapshot(
     @Param('symbol') symbol: string,

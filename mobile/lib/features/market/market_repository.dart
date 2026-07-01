@@ -202,6 +202,44 @@ class PcrRow {
       );
 }
 
+/// One strike's official greeks from /market/option-greeks. [iv] is a
+/// percentage (e.g. 14.5 = 14.5%); [optionType] is 'CE' or 'PE'.
+class OptionGreekRow {
+  final double strike;
+  final String optionType;
+  final double delta;
+  final double gamma;
+  final double theta;
+  final double vega;
+  final double iv;
+  final double tradeVolume;
+
+  const OptionGreekRow({
+    required this.strike,
+    required this.optionType,
+    required this.delta,
+    required this.gamma,
+    required this.theta,
+    required this.vega,
+    required this.iv,
+    required this.tradeVolume,
+  });
+
+  /// Stable key for merging into an option-chain row: `strike:CE` / `strike:PE`.
+  String get key => '${strike.toStringAsFixed(2)}:${optionType.toUpperCase()}';
+
+  factory OptionGreekRow.fromJson(Map<String, dynamic> json) => OptionGreekRow(
+        strike: (json['strikePrice'] as num?)?.toDouble() ?? 0,
+        optionType: json['optionType']?.toString() ?? '',
+        delta: (json['delta'] as num?)?.toDouble() ?? 0,
+        gamma: (json['gamma'] as num?)?.toDouble() ?? 0,
+        theta: (json['theta'] as num?)?.toDouble() ?? 0,
+        vega: (json['vega'] as num?)?.toDouble() ?? 0,
+        iv: (json['iv'] as num?)?.toDouble() ?? 0,
+        tradeVolume: (json['tradeVolume'] as num?)?.toDouble() ?? 0,
+      );
+}
+
 /// Backend's `/market/holidays` response. `source` flags whether the
 /// list came from NSE's live API or our curated fallback.
 class MarketHolidayEntry {
@@ -481,6 +519,21 @@ class MarketRepository {
     final raw =
         (res.data!['results'] as List).cast<Map<String, dynamic>>();
     return raw.map(PcrRow.fromJson).toList();
+  }
+
+  /// Official delta/gamma/theta/vega + IV per strike for an underlying at one
+  /// expiry ("DDMMMYYYY"). Empty when SmartAPI has no live greeks for it.
+  Future<List<OptionGreekRow>> getOptionGreeks(
+    String underlying,
+    String expiry,
+  ) async {
+    final res = await _dio.get<Map<String, dynamic>>(
+      '/market/option-greeks/$underlying',
+      queryParameters: {'expiry': expiry},
+    );
+    final raw = (res.data!['results'] as List?)?.cast<Map<String, dynamic>>() ??
+        const [];
+    return raw.map(OptionGreekRow.fromJson).toList();
   }
 
   Future<List<CandleOI>> getCandlesWithOI(

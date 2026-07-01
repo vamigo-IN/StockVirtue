@@ -19,6 +19,38 @@ const _downColor = Color(0xFFEF4444);
 const _callTint = Color(0xFF22C55E);
 const _putTint = Color(0xFFEF4444);
 
+class _GreeksArgs {
+  final String underlying;
+  final String expiry;
+  const _GreeksArgs(this.underlying, this.expiry);
+  @override
+  bool operator ==(Object other) =>
+      other is _GreeksArgs &&
+      other.underlying == underlying &&
+      other.expiry == expiry;
+  @override
+  int get hashCode => Object.hash(underlying, expiry);
+}
+
+/// Official delta/gamma/theta/vega + IV for the visible expiry, keyed
+/// `strike:CE` / `strike:PE`. Best-effort — an empty map (no live greeks)
+/// just hides the IV column and the sheet falls back to Black-Scholes.
+final _optionGreeksProvider = FutureProvider.family
+    .autoDispose<Map<String, OptionGreekRow>, _GreeksArgs>((ref, args) async {
+  final rows = await ref
+      .watch(marketRepositoryProvider)
+      .getOptionGreeks(args.underlying, args.expiry);
+  return {for (final r in rows) r.key: r};
+});
+
+/// Look up a leg's greeks by strike + right from the expiry's greeks map.
+OptionGreekRow? _greekFor(
+  Map<String, OptionGreekRow> greeks,
+  double strike,
+  bool isCall,
+) =>
+    greeks['${strike.toStringAsFixed(2)}:${isCall ? 'CE' : 'PE'}'];
+
 class OptionChainScreen extends ConsumerStatefulWidget {
   const OptionChainScreen({super.key, required this.underlying});
   final String underlying;
@@ -292,6 +324,13 @@ class _ChainBodyState extends ConsumerState<_ChainBody> {
     final chain = widget.chain;
     final atm = chain.atmStrike;
     final peakOI = chain.peakOI;
+    // Official greeks + IV for this expiry (empty until they load / if none).
+    final greeks = ref
+            .watch(_optionGreeksProvider(
+              _GreeksArgs(chain.underlying, chain.expiry),
+            ))
+            .value ??
+        const <String, OptionGreekRow>{};
     return Column(
       children: [
         if (chain.spot != null)
@@ -319,6 +358,8 @@ class _ChainBodyState extends ConsumerState<_ChainBody> {
                 peakOI: peakOI,
                 spot: spot,
                 expiry: widget.chain.expiry,
+                callGreek: _greekFor(greeks, row.strike, true),
+                putGreek: _greekFor(greeks, row.strike, false),
                 onTap: widget.onOpenLeg,
               );
             },
@@ -533,6 +574,8 @@ class _ChainRow extends StatelessWidget {
     required this.spot,
     required this.expiry,
     required this.onTap,
+    this.callGreek,
+    this.putGreek,
   });
 
   final OptionChainRow row;
@@ -543,6 +586,8 @@ class _ChainRow extends StatelessWidget {
   final double? spot;
   final String expiry;
   final ValueChanged<OptionLeg> onTap;
+  final OptionGreekRow? callGreek;
+  final OptionGreekRow? putGreek;
 
   @override
   Widget build(BuildContext context) {
@@ -576,6 +621,7 @@ class _ChainRow extends StatelessWidget {
                 strike: row.strike,
                 spot: spot,
                 expiry: expiry,
+                greek: callGreek,
                 onTap: onTap,
               ),
             ),
@@ -640,6 +686,7 @@ class _ChainRow extends StatelessWidget {
                 strike: row.strike,
                 spot: spot,
                 expiry: expiry,
+                greek: putGreek,
                 onTap: onTap,
               ),
             ),
@@ -659,6 +706,7 @@ class _LegCell extends ConsumerWidget {
     required this.spot,
     required this.expiry,
     required this.onTap,
+    this.greek,
   });
   final OptionLeg? leg;
   final bool isCall;
@@ -667,6 +715,7 @@ class _LegCell extends ConsumerWidget {
   final double? spot;
   final String expiry;
   final ValueChanged<OptionLeg> onTap;
+  final OptionGreekRow? greek;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -699,6 +748,10 @@ class _LegCell extends ConsumerWidget {
         : leg!.changePct;
     final isUp = (pct ?? 0) >= 0;
     final pctColor = isUp ? _upColor : _downColor;
+    // Official implied volatility for this leg, when the greeks feed has it.
+    final ivText = (greek != null && greek!.iv > 0)
+        ? 'IV ${greek!.iv.toStringAsFixed(1)}%'
+        : null;
     // OI bar sits behind the cell, aligned to the outer edge:
     //   - Call cell → bar grows from the LEFT (toward the centre/strike)
     //   - Put cell  → bar grows from the RIGHT (toward the centre/strike)
@@ -714,6 +767,7 @@ class _LegCell extends ConsumerWidget {
                 spot: spot!,
                 expiry: expiry,
                 right: isCall ? OptionRight.call : OptionRight.put,
+                official: greek,
               ),
       child: SizedBox(
         height: 56,
@@ -770,6 +824,15 @@ class _LegCell extends ConsumerWidget {
                                 fontWeight: FontWeight.w700,
                               ),
                             ),
+                          if (ivText != null)
+                            Text(
+                              ivText,
+                              style: TextStyle(
+                                color: scheme.onSurface.withValues(alpha: 0.5),
+                                fontSize: 9,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
                         ],
                       ),
                     ),
@@ -793,6 +856,15 @@ class _LegCell extends ConsumerWidget {
                                 color: pctColor,
                                 fontSize: 10,
                                 fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          if (ivText != null)
+                            Text(
+                              ivText,
+                              style: TextStyle(
+                                color: scheme.onSurface.withValues(alpha: 0.5),
+                                fontSize: 9,
+                                fontWeight: FontWeight.w600,
                               ),
                             ),
                         ],

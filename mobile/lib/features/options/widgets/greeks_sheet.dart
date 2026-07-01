@@ -2,14 +2,15 @@ import 'package:flutter/material.dart';
 
 import '../../../core/black_scholes.dart';
 import '../../../data/models/option_chain.dart';
+import '../../market/market_repository.dart';
 
 const double _riskFreeRate = 0.065; // RBI repo as the default
 const double _dividendYield = 0.0; // Indices have ~0; stocks closer to 0.015
 
-/// Bottom sheet that shows Black-Scholes greeks for a single option leg.
-/// Inputs come from the option chain itself — spot, strike, expiry, and
-/// LTP (used by the IV solver). The display deliberately mirrors what a
-/// trader sees on a real broker's "Greeks" panel: Δ Γ Θ V Rho + IV.
+/// Bottom sheet showing greeks for a single option leg. Prefers SmartAPI's
+/// official option-greeks ([official]) — accurate delta/gamma/theta/vega + IV
+/// straight from the exchange feed — and falls back to a local Black-Scholes
+/// estimate (solving IV from the LTP) when the live greeks aren't available.
 Future<void> showGreeksSheet(
   BuildContext context, {
   required OptionLeg leg,
@@ -17,6 +18,7 @@ Future<void> showGreeksSheet(
   required double spot,
   required String expiry,
   required OptionRight right,
+  OptionGreekRow? official,
 }) {
   return showModalBottomSheet<void>(
     context: context,
@@ -27,6 +29,7 @@ Future<void> showGreeksSheet(
       spot: spot,
       expiry: expiry,
       right: right,
+      official: official,
     ),
   );
 }
@@ -38,6 +41,7 @@ class _GreeksSheet extends StatelessWidget {
     required this.spot,
     required this.expiry,
     required this.right,
+    this.official,
   });
 
   final OptionLeg leg;
@@ -45,6 +49,8 @@ class _GreeksSheet extends StatelessWidget {
   final double spot;
   final String expiry;
   final OptionRight right;
+  /// Live greeks from SmartAPI; when present they override the BSM estimate.
+  final OptionGreekRow? official;
 
   @override
   Widget build(BuildContext context) {
@@ -52,7 +58,7 @@ class _GreeksSheet extends StatelessWidget {
     final daysToExpiry = _daysToExpiry(expiry);
     final T = daysToExpiry > 0 ? daysToExpiry / 365.0 : 0.0;
     final ltp = leg.ltp;
-    final greeks = ltp != null && ltp > 0 && T > 0
+    final bsm = ltp != null && ltp > 0 && T > 0
         ? BlackScholes.greeks(
             right: right,
             S: spot,
@@ -63,8 +69,12 @@ class _GreeksSheet extends StatelessWidget {
             marketPrice: ltp,
           )
         : null;
-    final ivPct =
-        (greeks?.iv != null && !greeks!.iv.isNaN) ? greeks.iv * 100 : null;
+    // Prefer SmartAPI's live greeks; fall back to the local BSM estimate.
+    final hasOfficial = official != null && official!.iv > 0;
+    final ivPct = hasOfficial
+        ? official!.iv
+        : (bsm?.iv != null && !bsm!.iv.isNaN ? bsm.iv * 100 : null);
+    final showGreeks = hasOfficial || bsm != null;
 
     return SafeArea(
       child: Padding(
@@ -127,7 +137,7 @@ class _GreeksSheet extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 16),
-            if (greeks == null)
+            if (!showGreeks)
               Padding(
                 padding: const EdgeInsets.symmetric(vertical: 16),
                 child: Center(
@@ -210,35 +220,43 @@ class _GreeksSheet extends StatelessWidget {
               _GreekRow(
                 symbol: 'Δ',
                 name: 'Delta',
-                value: greeks.delta.toStringAsFixed(3),
+                value: (hasOfficial ? official!.delta : bsm!.delta)
+                    .toStringAsFixed(3),
                 hint: '₹ change per ₹1 of spot',
               ),
               _GreekRow(
                 symbol: 'Γ',
                 name: 'Gamma',
-                value: greeks.gamma.toStringAsFixed(4),
+                value: (hasOfficial ? official!.gamma : bsm!.gamma)
+                    .toStringAsFixed(4),
                 hint: 'Δ change per ₹1 of spot',
               ),
               _GreekRow(
                 symbol: 'Θ',
                 name: 'Theta',
-                value:
-                    '${greeks.theta >= 0 ? '+' : ''}${greeks.theta.toStringAsFixed(2)} / day',
+                value: () {
+                  final t = hasOfficial ? official!.theta : bsm!.theta;
+                  return '${t >= 0 ? '+' : ''}${t.toStringAsFixed(2)} / day';
+                }(),
                 hint: 'time decay per calendar day',
               ),
               _GreekRow(
                 symbol: 'V',
                 name: 'Vega',
-                value: greeks.vega.toStringAsFixed(2),
+                value: (hasOfficial ? official!.vega : bsm!.vega)
+                    .toStringAsFixed(2),
                 hint: '₹ change per 1% IV move',
+                // Rho isn't in the live feed — only show it for the BSM model.
+                last: bsm == null,
               ),
-              _GreekRow(
-                symbol: 'ρ',
-                name: 'Rho',
-                value: greeks.rho.toStringAsFixed(3),
-                hint: '₹ change per 1% rate move',
-                last: true,
-              ),
+              if (bsm != null)
+                _GreekRow(
+                  symbol: 'ρ',
+                  name: 'Rho',
+                  value: bsm.rho.toStringAsFixed(3),
+                  hint: '₹ change per 1% rate move',
+                  last: true,
+                ),
               const SizedBox(height: 14),
               Container(
                 padding:
@@ -257,8 +275,12 @@ class _GreeksSheet extends StatelessWidget {
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        'Black-Scholes-Merton. r = 6.5%, q = 0. Stock '
-                        'options are American so these are approximations.',
+                        hasOfficial
+                            ? 'Live greeks & IV from Angel One'
+                              '${bsm != null ? '; Rho from Black-Scholes' : ''}.'
+                            : 'Black-Scholes-Merton. r = 6.5%, q = 0. Stock '
+                                'options are American so these are '
+                                'approximations.',
                         style: TextStyle(
                           fontSize: 10.5,
                           color: scheme.onSurface.withValues(alpha: 0.6),

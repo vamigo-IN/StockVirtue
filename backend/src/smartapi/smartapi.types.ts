@@ -165,6 +165,24 @@ export interface PutCallRatioRow {
   pcr: number;
 }
 
+// ── Option Greeks ──────────────────────────────────────────────────────
+// https://smartapi.angelbroking.com/docs/OptionGreeks — official delta /
+// gamma / theta / vega + implied volatility per live contract. SmartAPI
+// returns every numeric field as a string.
+
+export interface OptionGreekRow {
+  name: string;
+  expiry: string;
+  strikePrice: string;
+  optionType: string; // 'CE' | 'PE'
+  delta: string;
+  gamma: string;
+  theta: string;
+  vega: string;
+  impliedVolatility: string;
+  tradeVolume: string;
+}
+
 // ── Margin Calculator ──────────────────────────────────────────────────
 
 export interface MarginPosition {

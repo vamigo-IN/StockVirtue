@@ -27,6 +27,7 @@ import {
   MultiQuoteFetched,
   OIBuildupRow,
   OIBuildupType,
+  OptionGreekRow,
   PutCallRatioRow,
   QuoteMode,
   SessionStatus,
@@ -269,6 +270,29 @@ export class SmartApiService implements OnModuleInit {
       if (!data.status) {
         throw new Error(
           `SmartAPI PCR error: ${data.message} (${data.errorcode})`,
+        );
+      }
+      return data.data ?? [];
+    });
+  }
+
+  /** Official option greeks + IV for every live contract of an underlying at
+   *  one expiry (expirydate as "DDMMMYYYY", e.g. "25JAN2025"). */
+  async getOptionGreeks(
+    name: string,
+    expirydate: string,
+  ): Promise<OptionGreekRow[]> {
+    return this.callAuthed('marketData', async (jwt) => {
+      const { data } = await this.client.http.post<
+        SmartApiResponse<OptionGreekRow[]>
+      >(
+        '/rest/secure/angelbroking/marketData/v1/optionGreek',
+        { name, expirydate },
+        { headers: { Authorization: `Bearer ${jwt}` } },
+      );
+      if (!data.status) {
+        throw new Error(
+          `SmartAPI option-greeks error: ${data.message} (${data.errorcode})`,
         );
       }
       return data.data ?? [];

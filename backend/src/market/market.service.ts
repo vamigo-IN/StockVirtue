@@ -514,6 +514,42 @@ export class MarketService {
     };
   }
 
+  /**
+   * Official option greeks + IV per strike for an underlying at one expiry
+   * (expiry as "DDMMMYYYY", matching the scrip-master expiry strings). Powers
+   * the option-chain IV column and the per-leg greeks sheet. Best-effort:
+   * greeks exist only for live contracts, so an empty/failed response degrades
+   * to "no greeks" in the app rather than erroring the screen.
+   */
+  async getOptionGreeks(name: string, expiry: string) {
+    const upperName = name.toUpperCase();
+    const upperExpiry = expiry.toUpperCase();
+    let rows: Awaited<ReturnType<typeof this.smartapi.getOptionGreeks>> = [];
+    try {
+      rows = await this.smartapi.getOptionGreeks(upperName, upperExpiry);
+    } catch (err) {
+      this.logger.warn(
+        `option-greeks ${upperName} ${upperExpiry} failed: ` +
+          `${(err as Error).message}`,
+      );
+    }
+    return {
+      name: upperName,
+      expiry: upperExpiry,
+      results: rows.map((r) => ({
+        strikePrice: Number(r.strikePrice),
+        optionType: r.optionType,
+        delta: Number(r.delta),
+        gamma: Number(r.gamma),
+        theta: Number(r.theta),
+        vega: Number(r.vega),
+        iv: Number(r.impliedVolatility),
+        tradeVolume: Number(r.tradeVolume),
+      })),
+      fetchedAt: new Date().toISOString(),
+    };
+  }
+
   /** Put-Call Ratio for F&O underlyings. */
   async getPutCallRatio() {
     const rows = await this.smartapi.getPutCallRatio();
