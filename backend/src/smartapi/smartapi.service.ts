@@ -38,6 +38,16 @@ const SESSION_KEY = 'smartapi:session';
 // Refresh well before the ~28h jwt lifetime.
 const SESSION_TTL_SECONDS = 4 * 60 * 60;
 
+// In-process TTLs (ms) for the read-only caches. Kept short so data stays
+// fresh — the live tick feed (WebSocket) is the real-time path; these caches
+// only front the REST calls used for initial paint / analytics, whose job is
+// to keep us well under the shared account's rate limit.
+const QUOTE_CACHE_MS = 2_000;
+const CANDLE_CACHE_MS = 15_000;
+const MARKETDATA_CACHE_MS = 5_000;
+const PCR_CACHE_MS = 10_000;
+const SESSION_CACHE_MS = 60_000;
+
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 @Injectable()
@@ -45,6 +55,12 @@ export class SmartApiService implements OnModuleInit {
   private readonly logger = new Logger(SmartApiService.name);
   private readonly cfg: SmartApiConfig;
   private loginInFlight: Promise<LoginData> | null = null;
+  // In-memory mirror of the Redis session so the hot path doesn't do a Redis
+  // round-trip on every SmartAPI call.
+  private sessionCache: { data: LoginData; at: number } | null = null;
+  // Response micro-cache + in-flight coalescing map (see `cached`).
+  private readonly cache = new Map<string, { at: number; value: unknown }>();
+  private readonly inflight = new Map<string, Promise<unknown>>();
 
   constructor(
     config: ConfigService<AppConfig, true>,
@@ -87,9 +103,47 @@ export class SmartApiService implements OnModuleInit {
   }
 
   async getValidSession(): Promise<LoginData> {
+    const c = this.sessionCache;
+    if (c && Date.now() - c.at < SESSION_CACHE_MS) return c.data;
     const cached = await this.redis.client.get(SESSION_KEY);
-    if (cached) return JSON.parse(cached) as LoginData;
+    if (cached) {
+      const data = JSON.parse(cached) as LoginData;
+      this.sessionCache = { data, at: Date.now() };
+      return data;
+    }
     return this.login();
+  }
+
+  /** TTL micro-cache + in-flight coalescing: repeated OR concurrent calls for
+   *  the same key share a single upstream request. This is the main lever for
+   *  keeping the shared SmartAPI account under its rate limit — shared reads
+   *  (indices, movers, greeks, a chart everyone opens) collapse to one call
+   *  instead of one-per-user, so the limiter almost never has to queue. */
+  private async cached<T>(
+    key: string,
+    ttlMs: number,
+    fn: () => Promise<T>,
+  ): Promise<T> {
+    const hit = this.cache.get(key);
+    if (hit && Date.now() - hit.at < ttlMs) return hit.value as T;
+    const pending = this.inflight.get(key);
+    if (pending) return pending as Promise<T>;
+    const p = fn()
+      .then((value) => {
+        this.cache.set(key, { at: Date.now(), value });
+        if (this.cache.size > 5000) this.pruneCache();
+        return value;
+      })
+      .finally(() => this.inflight.delete(key));
+    this.inflight.set(key, p);
+    return p as Promise<T>;
+  }
+
+  private pruneCache(): void {
+    const cutoff = Date.now() - 60_000;
+    for (const [k, v] of this.cache) {
+      if (v.at < cutoff) this.cache.delete(k);
+    }
   }
 
   private login(): Promise<LoginData> {
@@ -126,6 +180,7 @@ export class SmartApiService implements OnModuleInit {
         'EX',
         SESSION_TTL_SECONDS,
       );
+      this.sessionCache = { data: data.data, at: Date.now() };
       this.logger.log('SmartAPI login succeeded');
       return data.data;
     } catch (err) {
@@ -152,66 +207,90 @@ export class SmartApiService implements OnModuleInit {
   }
 
   async getCandles(req: CandleRequest): Promise<CandleRow[]> {
-    return this.callAuthed('candles', async (jwt) => {
-      const { data } = await this.client.http.post<
-        SmartApiResponse<CandleRow[]>
-      >(
-        '/rest/secure/angelbroking/historical/v1/getCandleData',
-        req,
-        { headers: { Authorization: `Bearer ${jwt}` } },
-      );
-      if (!data.status) {
-        throw new Error(
-          `SmartAPI candles error: ${data.message} (${data.errorcode})`,
+    const sig =
+      `c:${req.exchange}:${req.symboltoken}:${req.interval}` +
+      `:${req.fromdate}:${req.todate}`;
+    return this.cached(sig, CANDLE_CACHE_MS, () =>
+      this.callAuthed('candles', async (jwt) => {
+        const { data } = await this.client.http.post<
+          SmartApiResponse<CandleRow[]>
+        >(
+          '/rest/secure/angelbroking/historical/v1/getCandleData',
+          req,
+          { headers: { Authorization: `Bearer ${jwt}` } },
         );
-      }
-      return data.data ?? [];
-    });
+        if (!data.status) {
+          throw new Error(
+            `SmartAPI candles error: ${data.message} (${data.errorcode})`,
+          );
+        }
+        return data.data ?? [];
+      }),
+    );
   }
 
-  // Bulk quote — up to ~50 tokens per call, grouped by exchange.
+  // Bulk quote — up to ~50 tokens per call, grouped by exchange. `cache`
+  // defaults on; pass false where a fresh price matters (e.g. an order fill).
   async getMultiQuote(
     exchangeTokens: Record<string, string[]>,
     mode: QuoteMode = 'OHLC',
+    cache = true,
   ): Promise<MultiQuoteFetched[]> {
     const nonEmpty = Object.fromEntries(
       Object.entries(exchangeTokens).filter(([, v]) => v.length > 0),
     );
     if (Object.keys(nonEmpty).length === 0) return [];
-    return this.callAuthed('quote', async (jwt) => {
-      const { data } = await this.client.http.post<
-        SmartApiResponse<MultiQuoteData>
-      >(
-        '/rest/secure/angelbroking/market/v1/quote/',
-        { mode, exchangeTokens: nonEmpty },
-        { headers: { Authorization: `Bearer ${jwt}` } },
-      );
-      if (!data.status) {
-        throw new Error(
-          `SmartAPI multi-quote error: ${data.message} (${data.errorcode})`,
+    const run = () =>
+      this.callAuthed('quote', async (jwt) => {
+        const { data } = await this.client.http.post<
+          SmartApiResponse<MultiQuoteData>
+        >(
+          '/rest/secure/angelbroking/market/v1/quote/',
+          { mode, exchangeTokens: nonEmpty },
+          { headers: { Authorization: `Bearer ${jwt}` } },
         );
-      }
-      return data.data.fetched;
-    });
+        if (!data.status) {
+          throw new Error(
+            `SmartAPI multi-quote error: ${data.message} (${data.errorcode})`,
+          );
+        }
+        return data.data.fetched;
+      });
+    if (!cache) return run();
+    // Cache/coalesce by (mode + exact token set): identical requests — which
+    // is exactly what many users loading the same indices/movers/chain do —
+    // share one upstream call within the TTL window.
+    const sig =
+      `mq:${mode}|` +
+      Object.keys(nonEmpty)
+        .sort()
+        .map((e) => `${e}:${[...nonEmpty[e]].sort().join(',')}`)
+        .join('|');
+    return this.cached(sig, QUOTE_CACHE_MS, run);
   }
 
   /** Candles with open-interest column appended — F&O only. */
   async getCandlesWithOI(req: CandleRequest): Promise<CandleOIRow[]> {
-    return this.callAuthed('candles', async (jwt) => {
-      const { data } = await this.client.http.post<
-        SmartApiResponse<CandleOIRow[]>
-      >(
-        '/rest/secure/angelbroking/historical/v1/getCandleData',
-        { ...req, oi: true },
-        { headers: { Authorization: `Bearer ${jwt}` } },
-      );
-      if (!data.status) {
-        throw new Error(
-          `SmartAPI candles-OI error: ${data.message} (${data.errorcode})`,
+    const sig =
+      `coi:${req.exchange}:${req.symboltoken}:${req.interval}` +
+      `:${req.fromdate}:${req.todate}`;
+    return this.cached(sig, CANDLE_CACHE_MS, () =>
+      this.callAuthed('candles', async (jwt) => {
+        const { data } = await this.client.http.post<
+          SmartApiResponse<CandleOIRow[]>
+        >(
+          '/rest/secure/angelbroking/historical/v1/getCandleData',
+          { ...req, oi: true },
+          { headers: { Authorization: `Bearer ${jwt}` } },
         );
-      }
-      return data.data ?? [];
-    });
+        if (!data.status) {
+          throw new Error(
+            `SmartAPI candles-OI error: ${data.message} (${data.errorcode})`,
+          );
+        }
+        return data.data ?? [];
+      }),
+    );
   }
 
   /** Top % price / OI gainers or losers, segmented by expiry bucket. */
@@ -219,21 +298,23 @@ export class SmartApiService implements OnModuleInit {
     datatype: GainersLosersType,
     expirytype: ExpiryBucket = 'NEAR',
   ): Promise<GainersLosersRow[]> {
-    return this.callAuthed('marketData', async (jwt) => {
-      const { data } = await this.client.http.post<
-        SmartApiResponse<GainersLosersRow[]>
-      >(
-        '/rest/secure/angelbroking/marketData/v1/gainersLosers',
-        { datatype, expirytype },
-        { headers: { Authorization: `Bearer ${jwt}` } },
-      );
-      if (!data.status) {
-        throw new Error(
-          `SmartAPI gainers-losers error: ${data.message} (${data.errorcode})`,
+    return this.cached(`gl:${datatype}:${expirytype}`, MARKETDATA_CACHE_MS, () =>
+      this.callAuthed('marketData', async (jwt) => {
+        const { data } = await this.client.http.post<
+          SmartApiResponse<GainersLosersRow[]>
+        >(
+          '/rest/secure/angelbroking/marketData/v1/gainersLosers',
+          { datatype, expirytype },
+          { headers: { Authorization: `Bearer ${jwt}` } },
         );
-      }
-      return data.data ?? [];
-    });
+        if (!data.status) {
+          throw new Error(
+            `SmartAPI gainers-losers error: ${data.message} (${data.errorcode})`,
+          );
+        }
+        return data.data ?? [];
+      }),
+    );
   }
 
   /** OI buildup classification (Long Built Up, Short Covering, etc.). */
@@ -241,39 +322,46 @@ export class SmartApiService implements OnModuleInit {
     datatype: OIBuildupType,
     expirytype: ExpiryBucket = 'NEAR',
   ): Promise<OIBuildupRow[]> {
-    return this.callAuthed('marketData', async (jwt) => {
-      const { data } = await this.client.http.post<
-        SmartApiResponse<OIBuildupRow[]>
-      >(
-        '/rest/secure/angelbroking/marketData/v1/OIBuildup',
-        { datatype, expirytype },
-        { headers: { Authorization: `Bearer ${jwt}` } },
-      );
-      if (!data.status) {
-        throw new Error(
-          `SmartAPI OI-buildup error: ${data.message} (${data.errorcode})`,
-        );
-      }
-      return data.data ?? [];
-    });
+    return this.cached(
+      `oib:${datatype}:${expirytype}`,
+      MARKETDATA_CACHE_MS,
+      () =>
+        this.callAuthed('marketData', async (jwt) => {
+          const { data } = await this.client.http.post<
+            SmartApiResponse<OIBuildupRow[]>
+          >(
+            '/rest/secure/angelbroking/marketData/v1/OIBuildup',
+            { datatype, expirytype },
+            { headers: { Authorization: `Bearer ${jwt}` } },
+          );
+          if (!data.status) {
+            throw new Error(
+              `SmartAPI OI-buildup error: ${data.message} (${data.errorcode})`,
+            );
+          }
+          return data.data ?? [];
+        }),
+    );
   }
 
   /** Put-Call Ratio across F&O underlyings. */
   async getPutCallRatio(): Promise<PutCallRatioRow[]> {
-    return this.callAuthed('marketData', async (jwt) => {
-      const { data } = await this.client.http.get<
-        SmartApiResponse<PutCallRatioRow[]>
-      >(
-        '/rest/secure/angelbroking/marketData/v1/putCallRatio',
-        { headers: { Authorization: `Bearer ${jwt}` } },
-      );
-      if (!data.status) {
-        throw new Error(
-          `SmartAPI PCR error: ${data.message} (${data.errorcode})`,
+    return this.cached('pcr', PCR_CACHE_MS, () =>
+      this.callAuthed('marketData', async (jwt) => {
+        const { data } = await this.client.http.get<
+          SmartApiResponse<PutCallRatioRow[]>
+        >(
+          '/rest/secure/angelbroking/marketData/v1/putCallRatio',
+          { headers: { Authorization: `Bearer ${jwt}` } },
         );
-      }
-      return data.data ?? [];
-    });
+        if (!data.status) {
+          throw new Error(
+            `SmartAPI PCR error: ${data.message} (${data.errorcode})`,
+          );
+        }
+        return data.data ?? [];
+      }),
+    );
   }
 
   /** Official option greeks + IV for every live contract of an underlying at
@@ -282,21 +370,26 @@ export class SmartApiService implements OnModuleInit {
     name: string,
     expirydate: string,
   ): Promise<OptionGreekRow[]> {
-    return this.callAuthed('marketData', async (jwt) => {
-      const { data } = await this.client.http.post<
-        SmartApiResponse<OptionGreekRow[]>
-      >(
-        '/rest/secure/angelbroking/marketData/v1/optionGreek',
-        { name, expirydate },
-        { headers: { Authorization: `Bearer ${jwt}` } },
-      );
-      if (!data.status) {
-        throw new Error(
-          `SmartAPI option-greeks error: ${data.message} (${data.errorcode})`,
-        );
-      }
-      return data.data ?? [];
-    });
+    return this.cached(
+      `greek:${name}:${expirydate}`,
+      MARKETDATA_CACHE_MS,
+      () =>
+        this.callAuthed('marketData', async (jwt) => {
+          const { data } = await this.client.http.post<
+            SmartApiResponse<OptionGreekRow[]>
+          >(
+            '/rest/secure/angelbroking/marketData/v1/optionGreek',
+            { name, expirydate },
+            { headers: { Authorization: `Bearer ${jwt}` } },
+          );
+          if (!data.status) {
+            throw new Error(
+              `SmartAPI option-greeks error: ${data.message} (${data.errorcode})`,
+            );
+          }
+          return data.data ?? [];
+        }),
+    );
   }
 
   /** SPAN + exposure margin preview for a basket of positions. */
@@ -341,6 +434,7 @@ export class SmartApiService implements OnModuleInit {
           this.logger.warn(
             'SmartAPI 401 — clearing cached session and retrying',
           );
+          this.sessionCache = null;
           await this.redis.client.del(SESSION_KEY);
           await this.login();
           continue;

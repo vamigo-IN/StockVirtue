@@ -189,9 +189,12 @@ export class OrdersService {
       inst.exchange === 'CDS' ||
       inst.exchange === 'NCO';
     if (fno) {
+      // cache: false — an order fills at this price, so it must be fresh, not
+      // a value up to a couple of seconds old from the shared quote cache.
       const rows = await this.smartapi.getMultiQuote(
         { [inst.exchange]: [inst.token] },
         'LTP',
+        false,
       );
       const ltp = rows[0]?.ltp;
       return ltp && ltp > 0 ? ltp : null;
