@@ -10,6 +10,7 @@ import { AxiosError } from 'axios';
 import { AppConfig, SmartApiConfig } from '../config/configuration';
 import { RedisService } from '../redis/redis.service';
 import { SmartApiClient } from './smartapi.client';
+import { RateBucket, SmartApiRateLimiter } from './smartapi.rate-limiter';
 import {
   CandleOIRow,
   CandleRequest,
@@ -36,6 +37,8 @@ const SESSION_KEY = 'smartapi:session';
 // Refresh well before the ~28h jwt lifetime.
 const SESSION_TTL_SECONDS = 4 * 60 * 60;
 
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
 @Injectable()
 export class SmartApiService implements OnModuleInit {
   private readonly logger = new Logger(SmartApiService.name);
@@ -46,6 +49,7 @@ export class SmartApiService implements OnModuleInit {
     config: ConfigService<AppConfig, true>,
     private readonly redis: RedisService,
     private readonly client: SmartApiClient,
+    private readonly limiter: SmartApiRateLimiter,
   ) {
     this.cfg = config.get('smartapi', { infer: true });
   }
@@ -100,6 +104,7 @@ export class SmartApiService implements OnModuleInit {
 
   private async doLogin(): Promise<LoginData> {
     const totp = this.generateTotp();
+    await this.limiter.acquire('login');
     try {
       const { data } = await this.client.http.post<SmartApiResponse<LoginData>>(
         '/rest/auth/angelbroking/user/v1/loginByPassword',
@@ -132,7 +137,7 @@ export class SmartApiService implements OnModuleInit {
   }
 
   async getLtp(req: LtpRequest): Promise<LtpData> {
-    return this.callAuthed(async (jwt) => {
+    return this.callAuthed('ltp', async (jwt) => {
       const { data } = await this.client.http.post<SmartApiResponse<LtpData>>(
         '/rest/secure/angelbroking/order/v1/getLtpData',
         req,
@@ -146,7 +151,7 @@ export class SmartApiService implements OnModuleInit {
   }
 
   async getCandles(req: CandleRequest): Promise<CandleRow[]> {
-    return this.callAuthed(async (jwt) => {
+    return this.callAuthed('candles', async (jwt) => {
       const { data } = await this.client.http.post<
         SmartApiResponse<CandleRow[]>
       >(
@@ -172,7 +177,7 @@ export class SmartApiService implements OnModuleInit {
       Object.entries(exchangeTokens).filter(([, v]) => v.length > 0),
     );
     if (Object.keys(nonEmpty).length === 0) return [];
-    return this.callAuthed(async (jwt) => {
+    return this.callAuthed('quote', async (jwt) => {
       const { data } = await this.client.http.post<
         SmartApiResponse<MultiQuoteData>
       >(
@@ -191,7 +196,7 @@ export class SmartApiService implements OnModuleInit {
 
   /** Candles with open-interest column appended — F&O only. */
   async getCandlesWithOI(req: CandleRequest): Promise<CandleOIRow[]> {
-    return this.callAuthed(async (jwt) => {
+    return this.callAuthed('candles', async (jwt) => {
       const { data } = await this.client.http.post<
         SmartApiResponse<CandleOIRow[]>
       >(
@@ -213,7 +218,7 @@ export class SmartApiService implements OnModuleInit {
     datatype: GainersLosersType,
     expirytype: ExpiryBucket = 'NEAR',
   ): Promise<GainersLosersRow[]> {
-    return this.callAuthed(async (jwt) => {
+    return this.callAuthed('marketData', async (jwt) => {
       const { data } = await this.client.http.post<
         SmartApiResponse<GainersLosersRow[]>
       >(
@@ -235,7 +240,7 @@ export class SmartApiService implements OnModuleInit {
     datatype: OIBuildupType,
     expirytype: ExpiryBucket = 'NEAR',
   ): Promise<OIBuildupRow[]> {
-    return this.callAuthed(async (jwt) => {
+    return this.callAuthed('marketData', async (jwt) => {
       const { data } = await this.client.http.post<
         SmartApiResponse<OIBuildupRow[]>
       >(
@@ -254,7 +259,7 @@ export class SmartApiService implements OnModuleInit {
 
   /** Put-Call Ratio across F&O underlyings. */
   async getPutCallRatio(): Promise<PutCallRatioRow[]> {
-    return this.callAuthed(async (jwt) => {
+    return this.callAuthed('marketData', async (jwt) => {
       const { data } = await this.client.http.get<
         SmartApiResponse<PutCallRatioRow[]>
       >(
@@ -272,7 +277,7 @@ export class SmartApiService implements OnModuleInit {
 
   /** SPAN + exposure margin preview for a basket of positions. */
   async getMarginBatch(positions: MarginPosition[]): Promise<MarginPreview> {
-    return this.callAuthed(async (jwt) => {
+    return this.callAuthed('margin', async (jwt) => {
       const { data } = await this.client.http.post<
         SmartApiResponse<MarginPreview>
       >(
@@ -289,23 +294,74 @@ export class SmartApiService implements OnModuleInit {
     });
   }
 
-  private async callAuthed<T>(fn: (jwt: string) => Promise<T>): Promise<T> {
-    const session = await this.getValidSession();
-    try {
-      return await fn(session.jwtToken);
-    } catch (err) {
-      if (err instanceof AxiosError && err.response?.status === 401) {
-        this.logger.warn('SmartAPI 401 — clearing cached session and retrying');
-        await this.redis.client.del(SESSION_KEY);
-        const fresh = await this.login();
-        return fn(fresh.jwtToken);
+  private async callAuthed<T>(
+    bucket: RateBucket,
+    fn: (jwt: string) => Promise<T>,
+  ): Promise<T> {
+    // Up to 4 tries: one 401 session-refresh + up to 3 rate-limit backoffs.
+    let refreshed401 = false;
+    for (let attempt = 0; ; attempt++) {
+      const session = await this.getValidSession();
+      // Proactively pace to stay under SmartAPI's per-account limits.
+      await this.limiter.acquire(bucket);
+      try {
+        return await fn(session.jwtToken);
+      } catch (err) {
+        // Expired session — drop the cache, re-login, retry once.
+        if (
+          err instanceof AxiosError &&
+          err.response?.status === 401 &&
+          !refreshed401
+        ) {
+          refreshed401 = true;
+          this.logger.warn(
+            'SmartAPI 401 — clearing cached session and retrying',
+          );
+          await this.redis.client.del(SESSION_KEY);
+          await this.login();
+          continue;
+        }
+        // Rate limited despite pacing (e.g. a transient burst) — the limiter
+        // already prevents this in the common case; back off and retry so a
+        // rare overrun degrades to slower, not failed.
+        if (this.isRateLimitError(err) && attempt < 3) {
+          const backoff = 500 * 2 ** attempt; // 0.5s, 1s, 2s
+          this.logger.warn(
+            `SmartAPI rate-limited on ${bucket}; retrying in ${backoff}ms`,
+          );
+          await sleep(backoff);
+          continue;
+        }
+        if (err instanceof AxiosError) {
+          const body = err.response?.data
+            ? JSON.stringify(err.response.data)
+            : err.message;
+          this.logger.error(
+            `SmartAPI HTTP ${err.response?.status ?? '?'}: ${body}`,
+          );
+          throw new Error(
+            `SmartAPI HTTP ${err.response?.status ?? '?'}: ${body}`,
+          );
+        }
+        throw err;
       }
-      if (err instanceof AxiosError) {
-        const body = err.response?.data ? JSON.stringify(err.response.data) : err.message;
-        this.logger.error(`SmartAPI HTTP ${err.response?.status ?? '?'}: ${body}`);
-        throw new Error(`SmartAPI HTTP ${err.response?.status ?? '?'}: ${body}`);
-      }
-      throw err;
     }
+  }
+
+  /** SmartAPI signals "access rate exceeded" via HTTP 429, or 403 / a
+   *  status:false body carrying errorcode AB1004. Detect either shape. */
+  private isRateLimitError(err: unknown): boolean {
+    if (err instanceof AxiosError) {
+      const status = err.response?.status;
+      if (status === 429) return true;
+      if (status === 403) {
+        const body = JSON.stringify(err.response?.data ?? '');
+        return /rate|AB1004|access denied/i.test(body);
+      }
+    }
+    if (err instanceof Error) {
+      return /exceeding access rate|AB1004|rate limit/i.test(err.message);
+    }
+    return false;
   }
 }
