@@ -8,7 +8,6 @@ import '../../../core/market_hours.dart';
 import '../../../data/models/candle.dart';
 import '../../chart/screens/chart_screen.dart';
 import '../../market/market_repository.dart';
-import '../chart_drawings_storage.dart';
 
 /// Time range chips supported on the symbol detail screen. Each maps to the
 /// best (interval, hours) tuple the SmartAPI historical-data endpoint accepts:
@@ -129,8 +128,6 @@ class _PriceChartState extends ConsumerState<PriceChart> {
   // to % change from its first sample. Line-mode only — comparing candles
   // is ambiguous in a single chart.
   StockSearchResult? _compare;
-  ChartDrawingKind? _drawMode;
-  Offset? _pendingPoint;
   // Index of the candle under the user's pointer when they're scrubbing.
   // Drives the crosshair + tooltip in the chart overlay.
   int? _hoverIndex;
@@ -163,43 +160,6 @@ class _PriceChartState extends ConsumerState<PriceChart> {
   void dispose() {
     _autoRefresh?.cancel();
     super.dispose();
-  }
-
-  ChartDrawingsArgs get _drawArgs => ChartDrawingsArgs(
-        symbol: widget.symbol,
-        exchange: widget.exchange,
-      );
-
-  /// First tap of a trendline stores the anchor; the second tap closes it.
-  /// Horizontal lines complete on a single tap. Coordinates are normalised
-  /// to the chart's local rect (`Offset(x/w, y/h)` ∈ [0,1]).
-  Future<void> _onChartTap(Offset normalized) async {
-    final mode = _drawMode;
-    if (mode == null) return;
-    if (mode == ChartDrawingKind.horizontal) {
-      await ref.read(chartDrawingsProvider(_drawArgs).notifier).add(
-            ChartDrawing(
-              a: normalized,
-              b: normalized,
-              kind: ChartDrawingKind.horizontal,
-              createdAtMs: DateTime.now().millisecondsSinceEpoch,
-            ),
-          );
-      return;
-    }
-    if (_pendingPoint == null) {
-      setState(() => _pendingPoint = normalized);
-      return;
-    }
-    await ref.read(chartDrawingsProvider(_drawArgs).notifier).add(
-          ChartDrawing(
-            a: _pendingPoint!,
-            b: normalized,
-            kind: ChartDrawingKind.trendline,
-            createdAtMs: DateTime.now().millisecondsSinceEpoch,
-          ),
-        );
-    setState(() => _pendingPoint = null);
   }
 
   Future<void> _pickCompareSymbol() async {
@@ -277,25 +237,17 @@ class _PriceChartState extends ConsumerState<PriceChart> {
                 );
               }
               final compareCandles = compareAsync?.value;
-              final drawings = ref
-                      .watch(chartDrawingsProvider(_drawArgs))
-                      .value ??
-                  const <ChartDrawing>[];
               final canvas = _ChartCanvas(
                 candles: candles,
                 style: _style,
                 indicators: _indicators,
                 compareCandles: compareCandles,
                 compareLabel: _compare?.symbol,
-                drawings: drawings,
-                pendingDrawingStart: _pendingPoint,
                 range: _range,
                 hoverIndex: _hoverIndex,
               );
-              // Two gesture modes coexist on the same canvas. Drawing mode
-              // converts taps into trendline anchors; the default mode lets
-              // the user scrub a finger across the chart to read off the
-              // candle under the pointer (crosshair + tooltip).
+              // Scrub a finger across the chart to read off the candle under
+              // the pointer (crosshair + tooltip).
               return LayoutBuilder(
                 builder: (context, constraints) {
                   void hoverFromDx(double dx) {
@@ -308,39 +260,21 @@ class _PriceChartState extends ConsumerState<PriceChart> {
                     }
                   }
 
+                  void clearHover() {
+                    if (_hoverIndex != null) {
+                      setState(() => _hoverIndex = null);
+                    }
+                  }
+
                   return GestureDetector(
                     behavior: HitTestBehavior.opaque,
-                    onTapDown: (d) {
-                      if (_drawMode != null) {
-                        final dx = (d.localPosition.dx / constraints.maxWidth)
-                            .clamp(0.0, 1.0);
-                        final dy = (d.localPosition.dy / constraints.maxHeight)
-                            .clamp(0.0, 1.0);
-                        _onChartTap(Offset(dx, dy));
-                        return;
-                      }
-                      hoverFromDx(d.localPosition.dx);
-                    },
-                    onHorizontalDragStart: _drawMode != null
-                        ? null
-                        : (d) => hoverFromDx(d.localPosition.dx),
-                    onHorizontalDragUpdate: _drawMode != null
-                        ? null
-                        : (d) => hoverFromDx(d.localPosition.dx),
-                    onHorizontalDragEnd: _drawMode != null
-                        ? null
-                        : (_) {
-                            if (_hoverIndex != null) {
-                              setState(() => _hoverIndex = null);
-                            }
-                          },
-                    onTapUp: _drawMode != null
-                        ? null
-                        : (_) {
-                            if (_hoverIndex != null) {
-                              setState(() => _hoverIndex = null);
-                            }
-                          },
+                    onTapDown: (d) => hoverFromDx(d.localPosition.dx),
+                    onHorizontalDragStart: (d) =>
+                        hoverFromDx(d.localPosition.dx),
+                    onHorizontalDragUpdate: (d) =>
+                        hoverFromDx(d.localPosition.dx),
+                    onHorizontalDragEnd: (_) => clearHover(),
+                    onTapUp: (_) => clearHover(),
                     child: canvas,
                   );
                 },
@@ -388,21 +322,6 @@ class _PriceChartState extends ConsumerState<PriceChart> {
               onRemove: () => setState(() => _compare = null),
             ),
           ],
-        ),
-        const SizedBox(height: 8),
-        _DrawingToolbar(
-          mode: _drawMode,
-          hasDrawings:
-              (ref.watch(chartDrawingsProvider(_drawArgs)).value ??
-                      const [])
-                  .isNotEmpty,
-          onModeChanged: (m) => setState(() {
-            _drawMode = m;
-            _pendingPoint = null;
-          }),
-          onClear: () {
-            ref.read(chartDrawingsProvider(_drawArgs).notifier).clear();
-          },
         ),
         // SmartAPI's getCandleData-with-OI endpoint is F&O only. We render
         // an OI bar panel below the price line for NFO / BFO instruments,
@@ -677,8 +596,6 @@ class _ChartCanvas extends StatelessWidget {
     required this.range,
     this.compareCandles,
     this.compareLabel,
-    this.drawings = const [],
-    this.pendingDrawingStart,
     this.hoverIndex,
   });
   final List<Candle> candles;
@@ -690,11 +607,6 @@ class _ChartCanvas extends StatelessWidget {
   /// % change from their first sample and rendered on a shared axis.
   final List<Candle>? compareCandles;
   final String? compareLabel;
-  /// User-drawn trendlines and horizontal levels (already persisted).
-  final List<ChartDrawing> drawings;
-  /// First tap of an in-progress trendline; preview as a faint anchor
-  /// dot so the user knows the line will close from there.
-  final Offset? pendingDrawingStart;
   /// Candle index under the user's finger when scrubbing. Drives the
   /// crosshair + tooltip overlay; null = pointer not active.
   final int? hoverIndex;
@@ -754,17 +666,6 @@ class _ChartCanvas extends StatelessWidget {
               left: 10,
               child: _CompareLegend(label: compareLabel!),
             ),
-          if (drawings.isNotEmpty || pendingDrawingStart != null)
-            Positioned.fill(
-              child: IgnorePointer(
-                child: CustomPaint(
-                  painter: _DrawingsPainter(
-                    drawings: drawings,
-                    pendingStart: pendingDrawingStart,
-                  ),
-                ),
-              ),
-            ),
           // Crosshair + price/time tooltip — only rendered while a finger
           // is on the chart. Compare mode skips this since the tooltip
           // would need two prices and the chart is already an overlay.
@@ -785,53 +686,6 @@ class _ChartCanvas extends StatelessWidget {
       ),
     );
   }
-}
-
-/// Renders persisted trendlines + horizontal levels in normalised
-/// coordinates. Two solid colours so trendlines and horizontals can be
-/// distinguished without a legend.
-class _DrawingsPainter extends CustomPainter {
-  _DrawingsPainter({required this.drawings, this.pendingStart});
-  final List<ChartDrawing> drawings;
-  final Offset? pendingStart;
-
-  static const _trendColor = Color(0xFFF59E0B);
-  static const _horizColor = Color(0xFFEC4899);
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    Offset toPx(Offset n) => Offset(n.dx * size.width, n.dy * size.height);
-    final trendPaint = Paint()
-      ..color = _trendColor
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.6
-      ..strokeCap = StrokeCap.round;
-    final horizPaint = Paint()
-      ..color = _horizColor
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.4;
-    for (final d in drawings) {
-      if (d.kind == ChartDrawingKind.trendline) {
-        canvas.drawLine(toPx(d.a), toPx(d.b), trendPaint);
-      } else {
-        final y = d.a.dy * size.height;
-        canvas.drawLine(Offset(0, y), Offset(size.width, y), horizPaint);
-      }
-    }
-    if (pendingStart != null) {
-      final p = toPx(pendingStart!);
-      canvas.drawCircle(
-        p,
-        4,
-        Paint()..color = _trendColor.withValues(alpha: 0.35),
-      );
-      canvas.drawCircle(p, 2.2, Paint()..color = _trendColor);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _DrawingsPainter old) =>
-      old.drawings != drawings || old.pendingStart != pendingStart;
 }
 
 /// Bottom-axis time labels. The granularity flips based on the active
@@ -2038,97 +1892,3 @@ class _CompareSearchSheetState extends ConsumerState<_CompareSearchSheet> {
   }
 }
 
-/// Tiny toolbar row below the chart for the drawing tools. Off / Trend /
-/// Horizontal segmented toggle plus a clear-all icon when drawings exist.
-class _DrawingToolbar extends StatelessWidget {
-  const _DrawingToolbar({
-    required this.mode,
-    required this.hasDrawings,
-    required this.onModeChanged,
-    required this.onClear,
-  });
-
-  final ChartDrawingKind? mode;
-  final bool hasDrawings;
-  final ValueChanged<ChartDrawingKind?> onModeChanged;
-  final VoidCallback onClear;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    Widget seg(ChartDrawingKind? value, IconData icon, String label) {
-      final active = value == mode;
-      const tint = Color(0xFFF59E0B);
-      return InkWell(
-        borderRadius: BorderRadius.circular(8),
-        onTap: () => onModeChanged(value),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 120),
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-          decoration: BoxDecoration(
-            color:
-                active ? tint.withValues(alpha: 0.2) : Colors.transparent,
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                icon,
-                size: 13,
-                color: active
-                    ? tint
-                    : scheme.onSurface.withValues(alpha: 0.65),
-              ),
-              const SizedBox(width: 4),
-              Text(
-                label,
-                style: TextStyle(
-                  color: active
-                      ? tint
-                      : scheme.onSurface.withValues(alpha: 0.65),
-                  fontWeight: FontWeight.w700,
-                  fontSize: 11,
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-
-    return Row(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(3),
-          decoration: BoxDecoration(
-            color: scheme.surfaceContainerHighest.withValues(alpha: 0.5),
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              seg(null, Icons.pan_tool_outlined, 'Off'),
-              seg(ChartDrawingKind.trendline,
-                  Icons.timeline, 'Trend'),
-              seg(ChartDrawingKind.horizontal,
-                  Icons.horizontal_rule, 'Horiz'),
-            ],
-          ),
-        ),
-        const Spacer(),
-        if (hasDrawings)
-          IconButton(
-            icon: Icon(
-              Icons.delete_outline,
-              size: 18,
-              color: scheme.onSurface.withValues(alpha: 0.65),
-            ),
-            tooltip: 'Clear all drawings',
-            onPressed: onClear,
-            visualDensity: VisualDensity.compact,
-          ),
-      ],
-    );
-  }
-}

@@ -452,10 +452,12 @@ export class MarketService {
       expirytype,
       results: rows.map((r) => ({
         tradingsymbol: r.tradingSymbol,
-        symboltoken: r.symbolToken,
-        percentChange: r.percentChange,
-        opnInterest: r.opnInterest,
-        netChangeOpnInterest: r.netChangeOpnInterest,
+        // SmartAPI returns symbolToken as a number — send it as a string so
+        // the app's `as String` parsing can't crash.
+        symboltoken: String(r.symbolToken),
+        percentChange: Number(r.percentChange),
+        opnInterest: Number(r.opnInterest),
+        netChangeOpnInterest: Number(r.netChangeOpnInterest),
       })),
       fetchedAt: new Date().toISOString(),
     };
@@ -469,7 +471,7 @@ export class MarketService {
       expirytype,
       results: rows.map((r) => ({
         tradingsymbol: r.tradingSymbol,
-        symboltoken: r.symbolToken,
+        symboltoken: String(r.symbolToken),
         ltp: Number(r.ltp),
         netChange: Number(r.netChange),
         percentChange: Number(r.percentChange),

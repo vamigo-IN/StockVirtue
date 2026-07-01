@@ -9,6 +9,7 @@ import '../../../core/money_format.dart';
 import '../../../data/models/order.dart';
 import '../../../data/models/portfolio.dart';
 import '../../../widgets/empty_state.dart';
+import '../../../widgets/fno_badge.dart';
 import '../../home/screens/shell_screen.dart';
 import '../../orders/widgets/trade_sheet.dart';
 import '../../share/share_trade.dart';
@@ -26,8 +27,7 @@ const _upColor = Color(0xFF22C55E);
 const _downColor = Color(0xFFEF4444);
 
 /// True for derivatives holdings (options/futures) vs cash equity.
-bool _isFnoPosition(PortfolioPosition p) =>
-    p.exchange == 'NFO' || p.exchange == 'BFO';
+bool _isFnoPosition(PortfolioPosition p) => isFnoExchange(p.exchange);
 
 /// Holdings segment shown on the Portfolio screen. Lets the user split their
 /// cash-equity holdings from their F&O trades at a glance.
@@ -755,12 +755,12 @@ class _PositionTile extends ConsumerWidget {
     final color = isUp ? _upColor : _downColor;
     final qty = position.quantity;
     final isShort = qty < 0;
-    final isFno = position.exchange == 'NFO' || position.exchange == 'BFO';
+    final isFno = isFnoExchange(position.exchange);
     // For derivatives show the actual contract (…CE / …PE / …FUT) instead of
     // the bare underlying, so a Call/Put holding reads clearly at a glance.
     final name =
         isFno ? position.tradingsymbol : companyNameFor(position.symbol);
-    final fnoKind = isFno ? _fnoKind(position.tradingsymbol) : null;
+    final kind = isFno ? fnoKind(position.tradingsymbol) : null;
     final ltp = live.ltp;
     return InkWell(
       borderRadius: BorderRadius.circular(14),
@@ -811,11 +811,8 @@ class _PositionTile extends ConsumerWidget {
                             ),
                           ),
                           const SizedBox(width: 6),
-                          if (fnoKind != null) ...[
-                            _FnoBadge(
-                              label: fnoKind.label,
-                              color: fnoKind.color,
-                            ),
+                          if (kind != null) ...[
+                            FnoBadge(label: kind.label, color: kind.color),
                             const SizedBox(width: 4),
                           ],
                           _ProductBadge(intraday: position.isIntraday),
@@ -975,43 +972,6 @@ class _HoldingsFilterBar extends ConsumerWidget {
                 ? scheme.primary
                 : scheme.onSurface.withValues(alpha: 0.7),
           ),
-        ),
-      ),
-    );
-  }
-}
-
-/// Parses the option/future kind from an F&O tradingsymbol suffix, with the
-/// colour to render its badge in. Null for anything that isn't an option or
-/// future (e.g. a malformed/unexpected symbol).
-({String label, Color color})? _fnoKind(String tradingsymbol) {
-  final s = tradingsymbol.toUpperCase();
-  if (s.endsWith('CE')) return (label: 'CALL', color: _upColor);
-  if (s.endsWith('PE')) return (label: 'PUT', color: _downColor);
-  if (s.endsWith('FUT')) return (label: 'FUT', color: const Color(0xFF8B5CF6));
-  return null;
-}
-
-class _FnoBadge extends StatelessWidget {
-  const _FnoBadge({required this.label, required this.color});
-  final String label;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.18),
-        borderRadius: BorderRadius.circular(4),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: color,
-          fontSize: 9.5,
-          fontWeight: FontWeight.w800,
-          letterSpacing: 0.4,
         ),
       ),
     );

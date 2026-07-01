@@ -6,9 +6,11 @@ import '../../../core/error_mapper.dart';
 import '../../../core/money_format.dart';
 import '../../../data/models/order.dart';
 import '../../../widgets/empty_state.dart';
+import '../../../widgets/fno_badge.dart';
 import '../../home/screens/shell_screen.dart';
 import '../../notifications/notifications_provider.dart';
 import '../../portfolio/portfolio_providers.dart';
+import '../../symbol/screens/symbol_detail_screen.dart';
 import '../orders_providers.dart';
 import '../orders_repository.dart';
 import '../trade_notes_storage.dart';
@@ -273,18 +275,34 @@ class _OrderTileState extends ConsumerState<_OrderTile> {
     final showCancel = order.isPending;
     final priceShown =
         order.fillPrice ?? order.limitPrice ?? order.triggerPrice;
-    final name = companyNameFor(order.symbol);
+    // For F&O show the actual contract (…CE / …PE / …FUT) instead of the bare
+    // underlying, and colour-code Call/Put/Future.
+    final isFno = isFnoExchange(order.exchange);
+    final name = isFno ? order.tradingsymbol : companyNameFor(order.symbol);
+    final kind = isFno ? fnoKind(order.tradingsymbol) : null;
 
-    return Container(
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-      decoration: BoxDecoration(
-        color: scheme.surfaceContainerHighest.withValues(alpha: 0.4),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: scheme.outlineVariant.withValues(alpha: 0.3),
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => SymbolDetailScreen(
+            symbol: order.symbol,
+            tradingsymbol: order.tradingsymbol,
+            symboltoken: order.symboltoken,
+            exchange: order.exchange,
+          ),
         ),
       ),
-      child: Column(
+      child: Ink(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+        decoration: BoxDecoration(
+          color: scheme.surfaceContainerHighest.withValues(alpha: 0.4),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: scheme.outlineVariant.withValues(alpha: 0.3),
+          ),
+        ),
+        child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
@@ -323,6 +341,10 @@ class _OrderTileState extends ConsumerState<_OrderTile> {
                           ),
                         ),
                         const SizedBox(width: 6),
+                        if (kind != null) ...[
+                          FnoBadge(label: kind.label, color: kind.color),
+                          const SizedBox(width: 4),
+                        ],
                         _StatusBadge(status: order.status),
                         if (_isGtcOrder(order)) ...[
                           const SizedBox(width: 4),
@@ -476,6 +498,7 @@ class _OrderTileState extends ConsumerState<_OrderTile> {
           ],
           _NoteRow(orderId: order.id),
         ],
+        ),
       ),
     );
   }

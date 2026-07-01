@@ -149,12 +149,14 @@ class FnoMover {
   });
 
   factory FnoMover.fromJson(Map<String, dynamic> json) => FnoMover(
-        tradingsymbol: json['tradingsymbol'] as String,
-        symboltoken: json['symboltoken'] as String,
-        percentChange: (json['percentChange'] as num).toDouble(),
-        opnInterest: (json['opnInterest'] as num).toDouble(),
+        // SmartAPI returns symbolToken as a number; coerce so the cast can't
+        // blow up ("int is not a subtype of String").
+        tradingsymbol: json['tradingsymbol']?.toString() ?? '',
+        symboltoken: json['symboltoken']?.toString() ?? '',
+        percentChange: (json['percentChange'] as num?)?.toDouble() ?? 0,
+        opnInterest: (json['opnInterest'] as num?)?.toDouble() ?? 0,
         netChangeOpnInterest:
-            (json['netChangeOpnInterest'] as num).toDouble(),
+            (json['netChangeOpnInterest'] as num?)?.toDouble() ?? 0,
       );
 }
 
@@ -179,14 +181,14 @@ class OIBuildupRow {
   });
 
   factory OIBuildupRow.fromJson(Map<String, dynamic> json) => OIBuildupRow(
-        tradingsymbol: json['tradingsymbol'] as String,
-        symboltoken: json['symboltoken'] as String,
-        ltp: (json['ltp'] as num).toDouble(),
-        netChange: (json['netChange'] as num).toDouble(),
-        percentChange: (json['percentChange'] as num).toDouble(),
-        opnInterest: (json['opnInterest'] as num).toDouble(),
+        tradingsymbol: json['tradingsymbol']?.toString() ?? '',
+        symboltoken: json['symboltoken']?.toString() ?? '',
+        ltp: (json['ltp'] as num?)?.toDouble() ?? 0,
+        netChange: (json['netChange'] as num?)?.toDouble() ?? 0,
+        percentChange: (json['percentChange'] as num?)?.toDouble() ?? 0,
+        opnInterest: (json['opnInterest'] as num?)?.toDouble() ?? 0,
         netChangeOpnInterest:
-            (json['netChangeOpnInterest'] as num).toDouble(),
+            (json['netChangeOpnInterest'] as num?)?.toDouble() ?? 0,
       );
 }
 
@@ -195,8 +197,8 @@ class PcrRow {
   final double pcr;
   const PcrRow({required this.tradingsymbol, required this.pcr});
   factory PcrRow.fromJson(Map<String, dynamic> json) => PcrRow(
-        tradingsymbol: json['tradingsymbol'] as String,
-        pcr: (json['pcr'] as num).toDouble(),
+        tradingsymbol: json['tradingsymbol']?.toString() ?? '',
+        pcr: (json['pcr'] as num?)?.toDouble() ?? 0,
       );
 }
 

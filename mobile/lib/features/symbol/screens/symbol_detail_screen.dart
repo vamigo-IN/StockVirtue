@@ -409,7 +409,9 @@ class _SymbolDetailScreenState extends ConsumerState<SymbolDetailScreen> {
                 Builder(builder: (context) {
                   final showBids = tick?.bids ?? _initialBids;
                   final showAsks = tick?.asks ?? _initialAsks;
-                  if (showBids == null || showAsks == null) {
+                  // Indices have no order book — the feed returns an all-zero
+                  // depth ladder, so skip the section entirely for them.
+                  if (_isIndex || showBids == null || showAsks == null) {
                     return const SizedBox.shrink();
                   }
                   return Column(
