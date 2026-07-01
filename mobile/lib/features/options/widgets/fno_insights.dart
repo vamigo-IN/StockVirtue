@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../market/market_repository.dart';
+import '../../symbol/screens/symbol_detail_screen.dart';
 
 const _upColor = Color(0xFF22C55E);
 const _downColor = Color(0xFFEF4444);
@@ -369,6 +370,7 @@ class _MoversList extends ConsumerWidget {
             for (final r in top)
               _MoverRow(
                 tradingsymbol: r.tradingsymbol,
+                symboltoken: r.symboltoken,
                 percentChange: r.percentChange,
                 opnInterest: r.opnInterest,
                 isOI: isOI,
@@ -383,11 +385,13 @@ class _MoversList extends ConsumerWidget {
 class _MoverRow extends StatelessWidget {
   const _MoverRow({
     required this.tradingsymbol,
+    required this.symboltoken,
     required this.percentChange,
     required this.opnInterest,
     required this.isOI,
   });
   final String tradingsymbol;
+  final String symboltoken;
   final double percentChange;
   final double opnInterest;
   final bool isOI;
@@ -397,7 +401,10 @@ class _MoverRow extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     final isUp = percentChange >= 0;
     final color = isUp ? _upColor : _downColor;
-    return Container(
+    return _TappableContract(
+      tradingsymbol: tradingsymbol,
+      symboltoken: symboltoken,
+      child: Container(
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
       decoration: BoxDecoration(
@@ -453,6 +460,38 @@ class _MoverRow extends StatelessWidget {
           ),
         ],
       ),
+      ),
+    );
+  }
+}
+
+/// Wraps an F&O insights row so tapping opens the contract's detail screen.
+/// Movers/OI-buildup are all NSE F&O (NFO) contracts.
+class _TappableContract extends StatelessWidget {
+  const _TappableContract({
+    required this.tradingsymbol,
+    required this.symboltoken,
+    required this.child,
+  });
+  final String tradingsymbol;
+  final String symboltoken;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(10),
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => SymbolDetailScreen(
+            symbol: tradingsymbol,
+            tradingsymbol: tradingsymbol,
+            symboltoken: symboltoken,
+            exchange: 'NFO',
+          ),
+        ),
+      ),
+      child: child,
     );
   }
 }
@@ -496,7 +535,10 @@ class _OIList extends ConsumerWidget {
         return Column(
           children: [
             for (final r in top)
-              Container(
+              _TappableContract(
+                tradingsymbol: r.tradingsymbol,
+                symboltoken: r.symboltoken,
+                child: Container(
                 margin: const EdgeInsets.only(bottom: 8),
                 padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
                 decoration: BoxDecoration(
@@ -560,6 +602,7 @@ class _OIList extends ConsumerWidget {
                   ],
                 ),
               ),
+            ),
           ],
         );
       },

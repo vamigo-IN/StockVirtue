@@ -51,6 +51,18 @@ OptionGreekRow? _greekFor(
 ) =>
     greeks['${strike.toStringAsFixed(2)}:${isCall ? 'CE' : 'PE'}'];
 
+/// At-the-money implied volatility — the average of the CE and PE IV at the
+/// ATM strike. Null when greeks aren't loaded or the strike has no IV.
+double? _atmIv(Map<String, OptionGreekRow> greeks, double? atm) {
+  if (atm == null) return null;
+  final vals = <double>[
+    for (final g in [_greekFor(greeks, atm, true), _greekFor(greeks, atm, false)])
+      if (g != null && g.iv > 0) g.iv,
+  ];
+  if (vals.isEmpty) return null;
+  return vals.reduce((a, b) => a + b) / vals.length;
+}
+
 class OptionChainScreen extends ConsumerStatefulWidget {
   const OptionChainScreen({super.key, required this.underlying});
   final String underlying;
@@ -331,12 +343,16 @@ class _ChainBodyState extends ConsumerState<_ChainBody> {
             ))
             .value ??
         const <String, OptionGreekRow>{};
+    // ATM implied volatility — the CE/PE average IV at the ATM strike, a
+    // one-glance read on how expensive options are right now.
+    final atmIv = _atmIv(greeks, atm);
     return Column(
       children: [
         if (chain.spot != null)
           _SpotBar(
             fallbackSpot: chain.spot!,
             underlying: widget.underlying,
+            atmIv: atmIv,
           ),
         const _ChainHeader(),
         Expanded(
@@ -382,9 +398,12 @@ class _SpotBar extends ConsumerWidget {
   const _SpotBar({
     required this.fallbackSpot,
     required this.underlying,
+    this.atmIv,
   });
   final double fallbackSpot;
   final FeedQuote? underlying;
+  /// At-the-money implied volatility (percent) for the visible expiry.
+  final double? atmIv;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -453,6 +472,25 @@ class _SpotBar extends ConsumerWidget {
                 '(${changePct.toStringAsFixed(2)}%)',
                 style: TextStyle(
                   color: pctColor,
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 0.2,
+                ),
+              ),
+            ),
+          ],
+          if (atmIv != null) ...[
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: scheme.tertiary.withValues(alpha: 0.16),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                'ATM IV ${atmIv!.toStringAsFixed(1)}%',
+                style: TextStyle(
+                  color: scheme.tertiary,
                   fontSize: 10.5,
                   fontWeight: FontWeight.w800,
                   letterSpacing: 0.2,

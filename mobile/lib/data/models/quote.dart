@@ -4,6 +4,12 @@ class Quote {
   final double? high;
   final double? low;
   final double? close;
+  // FULL-mode extras (null on LTP/OHLC-only responses).
+  final double? vwap; // average traded price
+  final double? volume; // total traded quantity
+  final double? opnInterest; // open interest (F&O / commodities)
+  final double? totBuyQuan; // total bid quantity across the book
+  final double? totSellQuan; // total ask quantity across the book
 
   const Quote({
     required this.ltp,
@@ -11,6 +17,11 @@ class Quote {
     required this.high,
     required this.low,
     required this.close,
+    this.vwap,
+    this.volume,
+    this.opnInterest,
+    this.totBuyQuan,
+    this.totSellQuan,
   });
 
   double? get changePct {
@@ -31,6 +42,11 @@ class Quote {
       high: (json['high'] as num?)?.toDouble(),
       low: (json['low'] as num?)?.toDouble(),
       close: (json['close'] as num?)?.toDouble(),
+      vwap: (json['vwap'] as num?)?.toDouble(),
+      volume: (json['volume'] as num?)?.toDouble(),
+      opnInterest: (json['opnInterest'] as num?)?.toDouble(),
+      totBuyQuan: (json['totBuyQuan'] as num?)?.toDouble(),
+      totSellQuan: (json['totSellQuan'] as num?)?.toDouble(),
     );
   }
 
@@ -40,5 +56,10 @@ class Quote {
         high: high,
         low: low,
         close: close,
+        vwap: vwap,
+        volume: volume,
+        opnInterest: opnInterest,
+        totBuyQuan: totBuyQuan,
+        totSellQuan: totSellQuan,
       );
 }

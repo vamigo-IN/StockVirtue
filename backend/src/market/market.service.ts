@@ -113,25 +113,74 @@ export class MarketService {
         `Symbol "${symbol}" not found on ${exchange}`,
       );
     }
-    const ltp = await this.smartapi.getLtp({
-      exchange: inst.exchange,
-      tradingsymbol: inst.symbol,
-      symboltoken: inst.token,
-    });
-    return {
+    const base = {
       symbol: inst.name,
       tradingsymbol: inst.symbol,
       exchange: inst.exchange,
       symboltoken: inst.token,
       lotSize: inst.lotSize,
       tickSize: inst.tickSize,
-      ltp: ltp.ltp,
-      open: ltp.open,
-      high: ltp.high,
-      low: ltp.low,
-      close: ltp.close,
-      fetchedAt: new Date().toISOString(),
     };
+    // FULL multi-quote works across ALL exchanges (getLtp is cash-only) and
+    // carries the richer stats — VWAP, traded volume, OI, and total buy/sell
+    // quantity — that the detail screen surfaces below the price.
+    try {
+      const fetched = await this.smartapi.getMultiQuote(
+        { [inst.exchange]: [inst.token] },
+        'FULL',
+      );
+      const q = fetched[0];
+      if (q && q.ltp > 0) {
+        return {
+          ...base,
+          ltp: q.ltp,
+          open: q.open,
+          high: q.high,
+          low: q.low,
+          close: q.close,
+          netChange: q.netChange,
+          percentChange: q.percentChange,
+          vwap: q.avgPrice,
+          volume: q.tradeVolume,
+          opnInterest: q.opnInterest,
+          totBuyQuan: q.totBuyQuan,
+          totSellQuan: q.totSellQuan,
+          fetchedAt: new Date().toISOString(),
+        };
+      }
+    } catch (err) {
+      this.logger.warn(
+        `quote FULL ${inst.exchange}:${inst.token} failed: ` +
+          `${(err as Error).message}; falling back to LTP`,
+      );
+    }
+    // Fallback: the cash LTP endpoint (equity only) still gives us OHLC.
+    try {
+      const ltp = await this.smartapi.getLtp({
+        exchange: inst.exchange,
+        tradingsymbol: inst.symbol,
+        symboltoken: inst.token,
+      });
+      return {
+        ...base,
+        ltp: ltp.ltp,
+        open: ltp.open,
+        high: ltp.high,
+        low: ltp.low,
+        close: ltp.close,
+        fetchedAt: new Date().toISOString(),
+      };
+    } catch {
+      return {
+        ...base,
+        ltp: 0,
+        open: 0,
+        high: 0,
+        low: 0,
+        close: 0,
+        fetchedAt: new Date().toISOString(),
+      };
+    }
   }
 
   /**

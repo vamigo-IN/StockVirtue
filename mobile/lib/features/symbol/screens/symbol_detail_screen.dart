@@ -398,6 +398,8 @@ class _SymbolDetailScreenState extends ConsumerState<SymbolDetailScreen> {
                 const SizedBox(height: 24),
                 _StatsGrid(quote: quote),
                 const SizedBox(height: 16),
+                _ActivityGrid(quote: quote),
+                _spacingIfActivity(quote),
                 _ExtremesGrid(
                   yearHigh: tick?.yearHigh ?? _initialYearHigh,
                   yearLow: tick?.yearLow ?? _initialYearLow,
@@ -774,6 +776,50 @@ class _StatsGrid extends StatelessWidget {
   }
 }
 
+/// Trade-activity board from the FULL quote — VWAP, traded volume, open
+/// interest (F&O / commodities), and total book buy/sell quantity. Hidden
+/// until at least two of these are present so cash equity without depth data
+/// doesn't show an empty card.
+class _ActivityGrid extends StatelessWidget {
+  const _ActivityGrid({required this.quote});
+  final Quote? quote;
+
+  @override
+  Widget build(BuildContext context) {
+    final items = _activityItems(quote);
+    if (items.length < 2) return const SizedBox.shrink();
+    return _StatBoard(title: 'Activity', items: items);
+  }
+}
+
+List<_StatItem> _activityItems(Quote? q) {
+  if (q == null) return const [];
+  return <_StatItem>[
+    if (q.vwap != null && q.vwap! > 0) _StatItem('VWAP', q.vwap),
+    if (q.volume != null && q.volume! > 0)
+      _StatItem('Volume', null, display: _compactQty(q.volume!)),
+    if (q.opnInterest != null && q.opnInterest! > 0)
+      _StatItem('Open interest', null, display: _compactQty(q.opnInterest!)),
+    if (q.totBuyQuan != null && q.totBuyQuan! > 0)
+      _StatItem('Total buy qty', null, display: _compactQty(q.totBuyQuan!)),
+    if (q.totSellQuan != null && q.totSellQuan! > 0)
+      _StatItem('Total sell qty', null, display: _compactQty(q.totSellQuan!)),
+  ];
+}
+
+/// 16px gap before the Range board, but only when the Activity board renders.
+Widget _spacingIfActivity(Quote? q) => _activityItems(q).length >= 2
+    ? const SizedBox(height: 16)
+    : const SizedBox.shrink();
+
+String _compactQty(double n) {
+  final a = n.abs();
+  if (a >= 10000000) return '${(n / 10000000).toStringAsFixed(2)} Cr';
+  if (a >= 100000) return '${(n / 100000).toStringAsFixed(2)} L';
+  if (a >= 1000) return '${(n / 1000).toStringAsFixed(1)} K';
+  return n.toStringAsFixed(0);
+}
+
 class _ExtremesGrid extends StatelessWidget {
   const _ExtremesGrid({
     required this.yearHigh,
@@ -810,7 +856,10 @@ class _ExtremesGrid extends StatelessWidget {
 class _StatItem {
   final String label;
   final double? value;
-  const _StatItem(this.label, this.value);
+  /// Preformatted display (e.g. compact volume "1.2 Cr"); overrides the
+  /// default INR formatting of [value] when set.
+  final String? display;
+  const _StatItem(this.label, this.value, {this.display});
 }
 
 class _StatBoard extends StatelessWidget {
@@ -843,23 +892,25 @@ class _StatBoard extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 8),
-          Row(
-            children: [
-              _StatCell(item: items[0]),
-              _StatCell(item: items[1]),
-            ],
-          ),
-          Container(
-            height: 1,
-            margin: const EdgeInsets.symmetric(vertical: 8),
-            color: scheme.outlineVariant.withValues(alpha: 0.2),
-          ),
-          Row(
-            children: [
-              _StatCell(item: items[2]),
-              _StatCell(item: items[3]),
-            ],
-          ),
+          // Render the items two-per-row, with a hairline divider between
+          // rows. Handles any count (4 for OHLC/Range, 4–5 for Activity).
+          for (var i = 0; i < items.length; i += 2) ...[
+            if (i > 0)
+              Container(
+                height: 1,
+                margin: const EdgeInsets.symmetric(vertical: 8),
+                color: scheme.outlineVariant.withValues(alpha: 0.2),
+              ),
+            Row(
+              children: [
+                _StatCell(item: items[i]),
+                if (i + 1 < items.length)
+                  _StatCell(item: items[i + 1])
+                else
+                  const Spacer(),
+              ],
+            ),
+          ],
           const SizedBox(height: 6),
         ],
       ),
@@ -887,7 +938,8 @@ class _StatCell extends StatelessWidget {
           ),
           const SizedBox(height: 3),
           Text(
-            item.value != null ? formatInr(item.value!) : '—',
+            item.display ??
+                (item.value != null ? formatInr(item.value!) : '—'),
             style: const TextStyle(
               fontWeight: FontWeight.w600,
               fontSize: 14,
