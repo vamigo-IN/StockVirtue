@@ -8,6 +8,7 @@ import '../../../core/market_hours.dart';
 import '../../../data/models/candle.dart';
 import '../../chart/screens/chart_screen.dart';
 import '../../market/market_repository.dart';
+import '../../ticks/ticks_providers.dart';
 
 /// Time range chips supported on the symbol detail screen. Each maps to the
 /// best (interval, hours) tuple the SmartAPI historical-data endpoint accepts:
@@ -97,12 +98,16 @@ class PriceChart extends ConsumerStatefulWidget {
     super.key,
     required this.symbol,
     required this.exchange,
+    this.symboltoken,
     this.initialRange,
     this.height = 220,
   });
 
   final String symbol;
   final String exchange;
+  /// Instrument token, used to look up the live tick for this symbol so the
+  /// last (forming) candle tracks the live price. Null → no live overlay.
+  final String? symboltoken;
   /// Explicit starting range. If null, the chart picks `1D` while the
   /// market is open (so users see today's intraday by default) and `1M`
   /// otherwise (a stable, populated view outside trading hours).
@@ -162,6 +167,24 @@ class _PriceChartState extends ConsumerState<PriceChart> {
     super.dispose();
   }
 
+  /// Folds the live LTP into the last (still-forming) candle so the chart's
+  /// right edge tracks the live price between reconcile polls. Only while the
+  /// market is open — a lingering last tick after close must not mutate the
+  /// settled candle. Returns the list unchanged when there's nothing live.
+  List<Candle> _withLiveTick(List<Candle> candles, double? liveLtp) {
+    if (liveLtp == null || candles.isEmpty || !isMarketOpen()) return candles;
+    final last = candles.last;
+    final live = Candle(
+      time: last.time,
+      open: last.open,
+      high: liveLtp > last.high ? liveLtp : last.high,
+      low: liveLtp < last.low ? liveLtp : last.low,
+      close: liveLtp,
+      volume: last.volume,
+    );
+    return [...candles.take(candles.length - 1), live];
+  }
+
   Future<void> _pickCompareSymbol() async {
     final picked = await showModalBottomSheet<StockSearchResult>(
       context: context,
@@ -196,6 +219,16 @@ class _PriceChartState extends ConsumerState<PriceChart> {
             ),
           );
     final scheme = Theme.of(context).colorScheme;
+    // Live overlay: while the market is open, fold the latest tick into the
+    // last (forming) candle so the chart's right edge moves in real time —
+    // between the 30s reconcile polls the bar's close/high/low track live LTP.
+    final liveLtp = widget.symboltoken == null
+        ? null
+        : ref.watch(
+            latestTicksProvider.select<double?>(
+              (m) => m['${widget.exchange}:${widget.symboltoken}']?.ltp,
+            ),
+          );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -224,8 +257,8 @@ class _PriceChartState extends ConsumerState<PriceChart> {
                 ),
               ),
             ),
-            data: (candles) {
-              if (candles.length < 2) {
+            data: (rawCandles) {
+              if (rawCandles.length < 2) {
                 // SmartAPI's historical-data endpoint returns empty rows for
                 // a handful of BSE indices (BSE 100/500/MIDCAP/SMLCAP and a
                 // few others) even though their LTP feed works. Rather than
@@ -236,6 +269,7 @@ class _PriceChartState extends ConsumerState<PriceChart> {
                   exchange: widget.exchange,
                 );
               }
+              final candles = _withLiveTick(rawCandles, liveLtp);
               final compareCandles = compareAsync?.value;
               final canvas = _ChartCanvas(
                 candles: candles,

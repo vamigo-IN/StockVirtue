@@ -38,6 +38,29 @@ function formatIst(date: Date): string {
   return `${y}-${m}-${d} ${h}:${mm}`;
 }
 
+/**
+ * SmartAPI caps how far back a single historical request may reach, per
+ * interval (https://smartapi.angelbroking.com/docs/Historical). Asking for
+ * more returns an error instead of truncating, so a "5Y"/"ALL" daily request
+ * (≈3650 days) would fail. We clamp every request to these ceilings so long
+ * ranges return the maximum available history rather than nothing.
+ */
+const MAX_HISTORY_DAYS: Record<CandleInterval, number> = {
+  ONE_MINUTE: 30,
+  THREE_MINUTE: 60,
+  FIVE_MINUTE: 100,
+  TEN_MINUTE: 100,
+  FIFTEEN_MINUTE: 200,
+  THIRTY_MINUTE: 200,
+  ONE_HOUR: 400,
+  ONE_DAY: 2000,
+};
+
+/** Clamp a requested look-back (in hours) to the interval's SmartAPI ceiling. */
+function clampHours(interval: CandleInterval, hours: number): number {
+  return Math.min(hours, MAX_HISTORY_DAYS[interval] * 24);
+}
+
 @Injectable()
 export class MarketService {
   private readonly logger = new Logger(MarketService.name);
@@ -342,6 +365,9 @@ export class MarketService {
       // has enough points to draw a meaningful line.
       effectiveHours = Math.max(hours, 24 * 90);
     }
+    // Never ask for more than SmartAPI serves per interval, or the whole
+    // request errors (this is why "5Y"/"ALL" used to come back empty).
+    effectiveHours = clampHours(effectiveInterval, effectiveHours);
     const now = new Date();
     const from = new Date(now.getTime() - effectiveHours * 60 * 60 * 1000);
     let rows: CandleRow[];
@@ -366,7 +392,11 @@ export class MarketService {
       );
       effectiveInterval = 'ONE_DAY';
       const wideFrom = new Date(
-        now.getTime() - Math.max(effectiveHours, 24 * 90) * 60 * 60 * 1000,
+        now.getTime() -
+          clampHours('ONE_DAY', Math.max(effectiveHours, 24 * 90)) *
+            60 *
+            60 *
+            1000,
       );
       try {
         rows = await this.smartapi.getCandles({
@@ -418,7 +448,9 @@ export class MarketService {
       );
     }
     const now = new Date();
-    const from = new Date(now.getTime() - hours * 60 * 60 * 1000);
+    const from = new Date(
+      now.getTime() - clampHours(interval, hours) * 60 * 60 * 1000,
+    );
     const rows = await this.smartapi.getCandlesWithOI({
       exchange: inst.exchange,
       symboltoken: inst.token,

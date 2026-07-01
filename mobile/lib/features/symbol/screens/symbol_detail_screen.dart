@@ -393,6 +393,7 @@ class _SymbolDetailScreenState extends ConsumerState<SymbolDetailScreen> {
                 PriceChart(
                   symbol: _quoteSymbol,
                   exchange: _exchange,
+                  symboltoken: _symboltoken,
                 ),
                 const SizedBox(height: 24),
                 _StatsGrid(quote: quote),
