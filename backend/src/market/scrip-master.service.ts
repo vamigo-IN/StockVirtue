@@ -82,6 +82,26 @@ export class ScripMasterService implements OnModuleInit {
   }
 
   /**
+   * Front-month (nearest non-expired) future contract for an underlying,
+   * optionally constrained to an exchange (e.g. 'MCX' for commodities).
+   * Falls back to the whole list's first entry if none look unexpired
+   * (keeps the commodities screen populated over weekends / holidays).
+   */
+  getNearestFuture(underlying: string, exchange?: Exchange): Instrument | null {
+    const list = this.futuresByUnderlying.get(underlying.toUpperCase()) ?? [];
+    const scoped = exchange
+      ? list.filter((i) => i.exchange === exchange)
+      : list;
+    if (scoped.length === 0) return null;
+    // Yesterday cutoff so an expiry-day contract still counts as tradeable.
+    const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+    const live = scoped
+      .filter((i) => i.expiry && parseExpiryToMs(i.expiry) >= cutoff)
+      .sort((a, b) => parseExpiryToMs(a.expiry!) - parseExpiryToMs(b.expiry!));
+    return live[0] ?? scoped[0];
+  }
+
+  /**
    * Returns the option chain at a specific expiry as an array of strikes,
    * each carrying optional `call` (CE) and `put` (PE) instruments.
    */

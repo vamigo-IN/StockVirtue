@@ -62,8 +62,12 @@ export class OrdersService {
   /// isMarketOpen() only knows weekends + time-of-day, so it treats a weekday
   /// holiday (e.g. Muharram) as open — which would let orders fill on a day
   /// the exchange is shut. Always route market-hours decisions through here.
-  private isTradingOpen(): boolean {
-    return isMarketOpen(new Date(), this.holidays.getCachedHolidayDates());
+  private isTradingOpen(exchange?: string): boolean {
+    return isMarketOpen(
+      new Date(),
+      this.holidays.getCachedHolidayDates(),
+      exchange,
+    );
   }
 
   private fireOrderFilled(order: Order | null) {
@@ -146,7 +150,7 @@ export class OrdersService {
     // When it's CLOSED, we queue an after-market order (AMO): it sits PENDING
     // and the tick-watcher fills it at the open price on the first live tick
     // when the market next opens. (Users wanting a specific price use a LIMIT.)
-    if (!this.isTradingOpen()) {
+    if (!this.isTradingOpen(inst.exchange)) {
       return this.placePendingMarket({ ...input, type, inst });
     }
     return this.placeMarket({ ...input, type, inst });
@@ -179,7 +183,11 @@ export class OrdersService {
     const fno =
       isFnoInstrumentType(inst.instrumentType) ||
       inst.exchange === 'NFO' ||
-      inst.exchange === 'BFO';
+      inst.exchange === 'BFO' ||
+      // MCX/CDS commodity & currency contracts also aren't served by getLtp.
+      inst.exchange === 'MCX' ||
+      inst.exchange === 'CDS' ||
+      inst.exchange === 'NCO';
     if (fno) {
       const rows = await this.smartapi.getMultiQuote(
         { [inst.exchange]: [inst.token] },

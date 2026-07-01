@@ -240,6 +240,64 @@ class OptionGreekRow {
       );
 }
 
+/// One MCX commodity, resolved to its front-month future, with live rate.
+class CommodityQuote {
+  final String name; // e.g. GOLD (the underlying / display key)
+  final String label; // e.g. Gold
+  final String unit; // e.g. 10 g
+  final String tradingsymbol; // the actual front-month contract
+  final String symboltoken;
+  final String exchange; // MCX
+  final int lotSize;
+  final String? expiry;
+  final double ltp;
+  final double open;
+  final double high;
+  final double low;
+  final double close;
+  final double change;
+  final double changePct;
+
+  const CommodityQuote({
+    required this.name,
+    required this.label,
+    required this.unit,
+    required this.tradingsymbol,
+    required this.symboltoken,
+    required this.exchange,
+    required this.lotSize,
+    required this.expiry,
+    required this.ltp,
+    required this.open,
+    required this.high,
+    required this.low,
+    required this.close,
+    required this.change,
+    required this.changePct,
+  });
+
+  /// Tick-map key (`exchange:token`) for the live LTP overlay.
+  String get tickKey => '$exchange:$symboltoken';
+
+  factory CommodityQuote.fromJson(Map<String, dynamic> json) => CommodityQuote(
+        name: json['name']?.toString() ?? '',
+        label: json['label']?.toString() ?? '',
+        unit: json['unit']?.toString() ?? '',
+        tradingsymbol: json['tradingsymbol']?.toString() ?? '',
+        symboltoken: json['symboltoken']?.toString() ?? '',
+        exchange: json['exchange']?.toString() ?? 'MCX',
+        lotSize: (json['lotSize'] as num?)?.toInt() ?? 1,
+        expiry: json['expiry']?.toString(),
+        ltp: (json['ltp'] as num?)?.toDouble() ?? 0,
+        open: (json['open'] as num?)?.toDouble() ?? 0,
+        high: (json['high'] as num?)?.toDouble() ?? 0,
+        low: (json['low'] as num?)?.toDouble() ?? 0,
+        close: (json['close'] as num?)?.toDouble() ?? 0,
+        change: (json['change'] as num?)?.toDouble() ?? 0,
+        changePct: (json['changePct'] as num?)?.toDouble() ?? 0,
+      );
+}
+
 /// Backend's `/market/holidays` response. `source` flags whether the
 /// list came from NSE's live API or our curated fallback.
 class MarketHolidayEntry {
@@ -519,6 +577,14 @@ class MarketRepository {
     final raw =
         (res.data!['results'] as List).cast<Map<String, dynamic>>();
     return raw.map(PcrRow.fromJson).toList();
+  }
+
+  /// Major MCX commodities, each as its front-month future with a live rate.
+  Future<List<CommodityQuote>> getCommodities() async {
+    final res = await _dio.get<Map<String, dynamic>>('/market/commodities');
+    final raw = (res.data!['results'] as List?)?.cast<Map<String, dynamic>>() ??
+        const [];
+    return raw.map(CommodityQuote.fromJson).toList();
   }
 
   /// Official delta/gamma/theta/vega + IV per strike for an underlying at one

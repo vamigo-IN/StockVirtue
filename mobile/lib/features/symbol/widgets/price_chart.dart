@@ -148,7 +148,7 @@ class _PriceChartState extends ConsumerState<PriceChart> {
         widget.initialRange ?? (isMarketOpen() ? ChartRange.d1 : ChartRange.m1);
     _autoRefresh = Timer.periodic(const Duration(seconds: 30), (_) {
       if (!mounted) return;
-      if (!isMarketOpen()) return;
+      if (!isMarketOpen(null, widget.exchange)) return;
       ref.invalidate(
         priceChartCandlesProvider(
           PriceChartArgs(
@@ -172,7 +172,11 @@ class _PriceChartState extends ConsumerState<PriceChart> {
   /// market is open — a lingering last tick after close must not mutate the
   /// settled candle. Returns the list unchanged when there's nothing live.
   List<Candle> _withLiveTick(List<Candle> candles, double? liveLtp) {
-    if (liveLtp == null || candles.isEmpty || !isMarketOpen()) return candles;
+    if (liveLtp == null ||
+        candles.isEmpty ||
+        !isMarketOpen(null, widget.exchange)) {
+      return candles;
+    }
     final last = candles.last;
     final live = Candle(
       time: last.time,

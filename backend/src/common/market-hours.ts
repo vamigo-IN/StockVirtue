@@ -31,12 +31,20 @@ export function istNow(at?: Date): Date {
   return new Date(t.getTime() + IST_OFFSET_MS);
 }
 
-/// Decides the current trading session. `holidayDates` is an optional
-/// set of YYYY-MM-DD strings (IST) — pass the cached list when calling
-/// from a service that already has it.
+/// Commodity exchanges (MCX/NCO) trade a much longer session than equities —
+/// ~09:00 to 23:30 IST for the popular non-agri contracts. The simulator uses
+/// one broad window rather than modelling per-commodity agri cut-offs.
+function isCommodityExchange(exchange?: string): boolean {
+  return exchange === 'MCX' || exchange === 'NCO';
+}
+
+/// Decides the current trading session for `exchange` (defaults to equities —
+/// NSE/BSE/NFO/BFO). `holidayDates` is an optional set of YYYY-MM-DD strings
+/// (IST) — pass the cached list when calling from a service that has it.
 export function marketSession(
   at: Date = new Date(),
   holidayDates?: Set<string>,
+  exchange?: string,
 ): MarketSession {
   const ist = istNow(at);
   const ymd = `${ist.getUTCFullYear()}-${pad(ist.getUTCMonth() + 1)}-${pad(
@@ -51,6 +59,18 @@ export function marketSession(
     return { kind: 'closed', reason: 'Market is closed on weekends' };
   }
   const mins = ist.getUTCHours() * 60 + ist.getUTCMinutes();
+  if (isCommodityExchange(exchange)) {
+    const START = 9 * 60; // 09:00
+    const END = 23 * 60 + 30; // 23:30
+    if (mins >= START && mins < END) {
+      return { kind: 'open', reason: '' };
+    }
+    return {
+      kind: 'closed',
+      reason:
+        'MCX is closed. Commodities trade 09:00–23:30 IST, Monday–Friday. Place a LIMIT order to queue at your target price.',
+    };
+  }
   const PRE_OPEN_START = 9 * 60;
   const REGULAR_START = 9 * 60 + 15;
   const REGULAR_END = 15 * 60 + 30;
@@ -74,8 +94,9 @@ export function marketSession(
 export function isMarketOpen(
   at: Date = new Date(),
   holidayDates?: Set<string>,
+  exchange?: string,
 ): boolean {
-  return marketSession(at, holidayDates).kind === 'open';
+  return marketSession(at, holidayDates, exchange).kind === 'open';
 }
 
 function pad(n: number): string {

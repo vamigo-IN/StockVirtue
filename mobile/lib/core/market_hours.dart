@@ -50,7 +50,12 @@ class MarketState {
   bool get isActive => isOpen || isPreOpen;
 }
 
-MarketState marketState([DateTime? at]) {
+/// Commodity exchanges (MCX/NCO) trade ~09:00–23:30 IST — much longer than
+/// the equity session. Mirrors the backend `market-hours.ts` window.
+bool _isCommodityExchange(String? exchange) =>
+    exchange == 'MCX' || exchange == 'NCO';
+
+MarketState marketState([DateTime? at, String? exchange]) {
   final ist = at == null ? istNow() : (at.isUtc ? at.add(_istOffset) : at);
   if (_isHoliday(ist)) {
     return const MarketState(MarketStateKind.holiday, 'CLOSED · HOLIDAY');
@@ -59,6 +64,14 @@ MarketState marketState([DateTime? at]) {
     return const MarketState(MarketStateKind.closed, 'CLOSED · WEEKEND');
   }
   final mins = ist.hour * 60 + ist.minute;
+  if (_isCommodityExchange(exchange)) {
+    const start = 9 * 60; // 09:00
+    const end = 23 * 60 + 30; // 23:30
+    if (mins >= start && mins < end) {
+      return const MarketState(MarketStateKind.open, 'MARKET OPEN');
+    }
+    return const MarketState(MarketStateKind.closed, 'CLOSED');
+  }
   const preOpenStart = 9 * 60;
   const openStart = 9 * 60 + 15;
   const openEnd = 15 * 60 + 30;
@@ -71,9 +84,11 @@ MarketState marketState([DateTime? at]) {
   return const MarketState(MarketStateKind.closed, 'CLOSED');
 }
 
-bool isMarketOpen([DateTime? at]) => marketState(at).isOpen;
+bool isMarketOpen([DateTime? at, String? exchange]) =>
+    marketState(at, exchange).isOpen;
 
-bool isMarketActive([DateTime? at]) => marketState(at).isActive;
+bool isMarketActive([DateTime? at, String? exchange]) =>
+    marketState(at, exchange).isActive;
 
 class MarketHoliday {
   final DateTime date;

@@ -61,6 +61,30 @@ function clampHours(interval: CandleInterval, hours: number): number {
   return Math.min(hours, MAX_HISTORY_DAYS[interval] * 24);
 }
 
+/**
+ * Major MCX commodities shown on the Commodities screen. `name` matches the
+ * Angel scrip-master `name` field for the commodity's futures; `unit` is the
+ * quote unit shown in the UI. Ordered roughly by retail popularity.
+ */
+const COMMODITIES: ReadonlyArray<{
+  name: string;
+  label: string;
+  unit: string;
+}> = [
+  { name: 'GOLD', label: 'Gold', unit: '10 g' },
+  { name: 'SILVER', label: 'Silver', unit: '1 kg' },
+  { name: 'CRUDEOIL', label: 'Crude Oil', unit: 'bbl' },
+  { name: 'NATURALGAS', label: 'Natural Gas', unit: 'mmBtu' },
+  { name: 'COPPER', label: 'Copper', unit: '1 kg' },
+  { name: 'GOLDM', label: 'Gold Mini', unit: '1 g' },
+  { name: 'SILVERM', label: 'Silver Mini', unit: '1 kg' },
+  { name: 'CRUDEOILM', label: 'Crude Oil Mini', unit: 'bbl' },
+  { name: 'ZINC', label: 'Zinc', unit: '1 kg' },
+  { name: 'ALUMINIUM', label: 'Aluminium', unit: '1 kg' },
+  { name: 'LEAD', label: 'Lead', unit: '1 kg' },
+  { name: 'NICKEL', label: 'Nickel', unit: '1 kg' },
+];
+
 @Injectable()
 export class MarketService {
   private readonly logger = new Logger(MarketService.name);
@@ -474,6 +498,66 @@ export class MarketService {
         oi: r[6],
       })),
     };
+  }
+
+  /**
+   * Live rates for the major MCX commodities, each resolved to its
+   * front-month future so users see one tradeable contract per commodity.
+   * Powers the Commodities screen; tapping a row opens the contract's detail
+   * screen where it can be traded like any other derivative.
+   */
+  async getCommodities() {
+    if (!this.scripMaster.isReady()) {
+      throw new ServiceUnavailableException('Scrip master not loaded yet');
+    }
+    const entries: { meta: (typeof COMMODITIES)[number]; inst: Instrument }[] =
+      [];
+    const tokens: string[] = [];
+    for (const meta of COMMODITIES) {
+      const inst = this.scripMaster.getNearestFuture(meta.name, 'MCX');
+      if (!inst) continue;
+      entries.push({ meta, inst });
+      tokens.push(inst.token);
+    }
+    const quoteByToken = new Map<string, MultiQuoteFetchedLike>();
+    const BATCH = 50;
+    for (let i = 0; i < tokens.length; i += BATCH) {
+      try {
+        const fetched = await this.smartapi.getMultiQuote(
+          { MCX: tokens.slice(i, i + BATCH) },
+          'FULL',
+        );
+        for (const q of fetched) quoteByToken.set(q.symbolToken, q);
+      } catch {
+        // best-effort — a missing batch just shows dashes for those rows
+      }
+    }
+    const results = entries.map(({ meta, inst }) => {
+      const q = quoteByToken.get(inst.token);
+      const ltp = q?.ltp ?? 0;
+      const close = q?.close ?? 0;
+      const change = q?.netChange ?? (close > 0 ? ltp - close : 0);
+      const changePct =
+        q?.percentChange ?? (close > 0 ? (change / close) * 100 : 0);
+      return {
+        name: meta.name,
+        label: meta.label,
+        unit: meta.unit,
+        tradingsymbol: inst.symbol,
+        symboltoken: inst.token,
+        exchange: inst.exchange,
+        lotSize: inst.lotSize,
+        expiry: inst.expiry,
+        ltp,
+        open: q?.open ?? 0,
+        high: q?.high ?? 0,
+        low: q?.low ?? 0,
+        close,
+        change,
+        changePct,
+      };
+    });
+    return { results, fetchedAt: new Date().toISOString() };
   }
 
   /** F&O gainers / losers (price or OI) via the SmartAPI marketData feed. */

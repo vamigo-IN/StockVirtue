@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../market/screens/commodities_screen.dart';
 import '../../market/screens/indices_screen.dart';
 import '../../market/screens/scanners_screen.dart';
 import '../../market/screens/stock_search_screen.dart';
@@ -37,6 +38,14 @@ class QuickActions extends StatelessWidget {
         ),
       ),
       _QuickAction(
+        icon: Icons.diamond_outlined,
+        label: 'Commodities',
+        color: const Color(0xFFEAB308),
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const CommoditiesScreen()),
+        ),
+      ),
+      _QuickAction(
         icon: Icons.radar,
         label: 'Scanners',
         color: const Color(0xFFEC4899),
@@ -53,15 +62,19 @@ class QuickActions extends StatelessWidget {
         ),
       ),
     ];
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Row(
-        children: [
-          for (final a in actions) ...[
-            Expanded(child: _ActionTile(action: a)),
-            if (a != actions.last) const SizedBox(width: 8),
-          ],
-        ],
+    // Horizontally scrollable so the row scales past the ~5 that fit on a
+    // phone width without cramping labels like "Commodities".
+    return SizedBox(
+      height: 78,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        itemCount: actions.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 8),
+        itemBuilder: (_, i) => SizedBox(
+          width: 78,
+          child: _ActionTile(action: actions[i]),
+        ),
       ),
     );
   }
@@ -114,8 +127,11 @@ class _ActionTile extends StatelessWidget {
             const SizedBox(height: 6),
             Text(
               action.label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
               style: const TextStyle(
-                fontSize: 11.5,
+                fontSize: 11,
                 fontWeight: FontWeight.w600,
               ),
             ),

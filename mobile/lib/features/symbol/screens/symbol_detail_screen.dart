@@ -72,14 +72,14 @@ class _SymbolDetailScreenState extends ConsumerState<SymbolDetailScreen> {
   StockSearchResult? _counterpart;
   bool _swapping = false;
 
-  bool get _isFno => _exchange == 'NFO' || _exchange == 'BFO';
-
-  /// The symbol to use for market data + trading. For F&O the underlying name
-  /// (e.g. "NIFTY") doesn't exist on NFO/BFO — the exchange only knows the
-  /// contract — so we must address quotes, ticks and orders by the contract
-  /// tradingsymbol. For cash equity the two are equivalent.
-  String get _quoteSymbol => _isFno ? _tradingsymbol : widget.symbol;
   bool get _isEquityExchange => _exchange == 'NSE' || _exchange == 'BSE';
+
+  /// The symbol to use for market data + trading. On the derivatives/commodity
+  /// exchanges (NFO/BFO/MCX/CDS/NCO) the underlying name (e.g. "NIFTY",
+  /// "CRUDEOIL") doesn't exist — the exchange only knows the contract — so we
+  /// must address quotes, ticks and orders by the contract tradingsymbol. For
+  /// cash equity the two are equivalent.
+  String get _quoteSymbol => _isEquityExchange ? widget.symbol : _tradingsymbol;
   // SmartAPI assigns indices a token in the 99926000 (NSE) / 99919000
   // (BSE) range — the prefix identifies most of them without a backend
   // roundtrip. But the prefix isn't reliable for every index (e.g. SENSEX),
@@ -305,7 +305,7 @@ class _SymbolDetailScreenState extends ConsumerState<SymbolDetailScreen> {
             symboltoken: _symboltoken,
             exchange: _exchange,
           ),
-          if (!_isFno)
+          if (_isEquityExchange)
             IconButton(
               icon: const Icon(Icons.account_tree_outlined),
               tooltip: 'Options chain',

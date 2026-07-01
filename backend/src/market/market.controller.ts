@@ -215,6 +215,12 @@ export class MarketController {
     return this.market.getExpiries(underlying);
   }
 
+  // Major MCX commodities with live rates (front-month future per commodity).
+  @Get('commodities')
+  commodities() {
+    return this.market.getCommodities();
+  }
+
   @Get('option-chain/:underlying')
   optionChain(
     @Param('underlying') underlying: string,

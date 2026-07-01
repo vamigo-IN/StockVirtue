@@ -180,7 +180,15 @@ export class LimitWatcherService implements OnModuleInit {
     // opens. The check is HOLIDAY-AWARE: it consults the cached NSE/curated
     // calendar, so trades are also blocked on a weekday trading holiday (a
     // bare isMarketOpen() with no calendar would treat a holiday as open).
-    if (!isMarketOpen(new Date(), this.holidays.getCachedHolidayDates())) {
+    // Gate by the TICK's exchange so commodity (MCX, 09:00–23:30) orders fill
+    // in the evening session while equity orders stay bound to 09:15–15:30.
+    if (
+      !isMarketOpen(
+        new Date(),
+        this.holidays.getCachedHolidayDates(),
+        tick.exchange,
+      )
+    ) {
       return;
     }
     const key = `${tick.exchange}:${tick.token}`;
