@@ -1807,6 +1807,18 @@ p {
     gap: 24px;
   }
 }
+/* Copyright / legal bar reads centred once it wraps on tablet & mobile. */
+@media (max-width: 860px) {
+  .footer-bottom {
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+  }
+  .footer-bottom > span {
+    justify-content: center;
+  }
+}
 
 /* ── Admin (kept simple, unchanged look) ────────────────────────────────── */
 .admin-wrap {
@@ -1909,6 +1921,54 @@ p {
 @media (max-width: 400px) {
   .stats {
     grid-template-columns: 1fr;
+  }
+}
+
+/* ── Mobile / tablet: centre content when multi-column layouts stack ─────────
+   When the desktop columns collapse on phones and tablets, left-aligned step
+   badges, icon tiles and copy look unbalanced beneath their already-centred
+   section headings. Two opt-in helpers restore that balance:
+     .center-stack — step / simple-card grids: centre each cell's content while
+                     keeping the grid's own responsive column count.
+     .stack-center — editorial two-column bands (copy | visual): collapse to a
+                     single column and centre the .stack-copy side.             */
+.check-list {
+  margin: 22px 0 0;
+}
+@media (max-width: 980px) {
+  .center-stack > * {
+    text-align: center;
+  }
+  .center-stack .step-num,
+  .center-stack .icon {
+    margin-inline: auto;
+  }
+  .center-stack .chips {
+    justify-content: center;
+  }
+
+  .stack-center {
+    grid-template-columns: 1fr;
+  }
+  .stack-center .stack-copy {
+    text-align: center;
+    max-width: 620px;
+    margin-inline: auto;
+  }
+  .stack-center .stack-copy .hero-sub,
+  .stack-center .stack-copy > p {
+    margin-inline: auto;
+  }
+  .stack-center .stack-copy .hero-cta {
+    justify-content: center;
+  }
+  /* Checklist centres as a shrink-wrapped group; its item text stays
+     left-aligned so wrapped lines don't go ragged beside the fixed tick. */
+  .stack-center .stack-copy .check-list {
+    width: max-content;
+    max-width: 100%;
+    margin: 22px auto 0;
+    text-align: left;
   }
 }
 

@@ -21,8 +21,11 @@ export default function DownloadPage() {
         <div className="floor" aria-hidden="true" />
         <div className="grid-bg" aria-hidden="true" />
         <div className="container" style={{ position: 'relative', zIndex: 2 }}>
-          <div className="grid grid-2" style={{ alignItems: 'center', gap: 48 }}>
-            <div>
+          <div
+            className="grid grid-2 stack-center"
+            style={{ alignItems: 'center', gap: 48 }}
+          >
+            <div className="stack-copy">
               <Reveal>
                 <span className="eyebrow">
                   <span className="dot" /> Free on Android
@@ -87,7 +90,7 @@ export default function DownloadPage() {
             </div>
           </Reveal>
           <RevealGroup
-            className="grid grid-3"
+            className="grid grid-3 center-stack"
             stagger={0.1}
             style={{ marginBottom: 56 }}
           >
@@ -106,7 +109,7 @@ export default function DownloadPage() {
             ))}
           </RevealGroup>
 
-          <RevealGroup className="grid grid-3">
+          <RevealGroup className="grid grid-3 center-stack">
             {[
               ['shield', '100% virtual money', 'You never deposit or withdraw real funds. Practise freely.'],
               ['chart', 'Real market data', 'Live NSE & BSE prices so your practice mirrors reality.'],

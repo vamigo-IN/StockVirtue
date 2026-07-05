@@ -360,7 +360,7 @@ export default function HomePage() {
           </div>
 
           <RevealGroup
-            className="grid grid-4"
+            className="grid grid-4 center-stack"
             stagger={0.08}
             style={{ marginTop: 56 }}
           >
@@ -394,9 +394,12 @@ export default function HomePage() {
       {/* ── ACADEMY — light zone ─────────────────────────────── */}
       <section className="section">
         <div className="container">
-          <div className="grid grid-2" style={{ alignItems: 'center', gap: 48 }}>
+          <div
+            className="grid grid-2 stack-center"
+            style={{ alignItems: 'center', gap: 48 }}
+          >
             <Reveal>
-              <div>
+              <div className="stack-copy">
                 <span className="eyebrow">
                   <span className="dot" /> Learn by doing
                 </span>
@@ -410,7 +413,8 @@ export default function HomePage() {
                   habit of losing.
                 </p>
                 <ul
-                  style={{ listStyle: 'none', padding: 0, margin: '22px 0 0' }}
+                  className="check-list"
+                  style={{ listStyle: 'none', padding: 0 }}
                 >
                   {[
                     'Structured Trading Academy — lessons & quizzes',
@@ -432,7 +436,7 @@ export default function HomePage() {
               </div>
             </Reveal>
 
-            <RevealGroup className="grid grid-2" stagger={0.09}>
+            <RevealGroup className="grid grid-2 center-stack" stagger={0.09}>
               {[
                 { icon: 'book', k: 'Academy', v: 'Lessons & quizzes' },
                 { icon: 'trophy', k: 'Badges', v: 'Earn as you learn' },

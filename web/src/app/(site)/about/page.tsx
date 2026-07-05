@@ -112,7 +112,7 @@ export default function AboutPage() {
         </div>
 
         <div className="container" style={{ marginTop: 12 }}>
-          <RevealGroup className="grid grid-4">
+          <RevealGroup className="grid grid-4 center-stack">
             {[
               ['chart', 'Trade with live data', 'Real NSE & BSE prices, charts and depth.'],
               ['fno', 'Master derivatives', 'Practise F&O and option chains safely.'],
@@ -138,9 +138,12 @@ export default function AboutPage() {
         <div className="floor" aria-hidden="true" />
         <div className="grid-bg" aria-hidden="true" />
         <div className="container" style={{ position: 'relative', zIndex: 2 }}>
-          <div className="grid grid-2" style={{ alignItems: 'center', gap: 48 }}>
+          <div
+            className="grid grid-2 stack-center"
+            style={{ alignItems: 'center', gap: 48 }}
+          >
             <Reveal>
-              <div>
+              <div className="stack-copy">
                 <span className="eyebrow">
                   <span className="dot" /> The real thing
                 </span>
