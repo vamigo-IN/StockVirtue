@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { SITE } from '@/lib/site';
+import { GlowField } from '@/components/motion/GlowField';
 
 export const metadata: Metadata = {
   title: 'Risk Disclaimer',
@@ -13,6 +14,7 @@ export default function DisclaimerPage() {
   return (
     <>
       <div className="page-head">
+        <GlowField />
         <div className="container">
           <h1>Risk Disclaimer</h1>
           <p className="updated">Last updated: {UPDATED}</p>

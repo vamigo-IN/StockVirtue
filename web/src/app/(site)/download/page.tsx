@@ -6,6 +6,7 @@ import { TiltCard } from '@/components/motion/TiltCard';
 import { MagneticButton } from '@/components/motion/MagneticButton';
 import { CandleChart } from '@/components/motion/CandleChart';
 import { SimChip } from '@/components/motion/Glass';
+import { GlowField } from '@/components/motion/GlowField';
 
 export const metadata: Metadata = {
   title: 'Download',
@@ -75,7 +76,36 @@ export default function DownloadPage() {
       </section>
 
       <section className="section">
-        <div className="container">
+        <GlowField />
+        <div className="container" style={{ position: 'relative', zIndex: 1 }}>
+          <Reveal>
+            <div className="center" style={{ marginBottom: 44 }}>
+              <span className="eyebrow">
+                <span className="dot" /> Three steps
+              </span>
+              <h2 style={{ marginTop: 16 }}>Trading in minutes</h2>
+            </div>
+          </Reveal>
+          <RevealGroup
+            className="grid grid-3"
+            stagger={0.1}
+            style={{ marginBottom: 56 }}
+          >
+            {[
+              ['Install free', 'Grab it from the Google Play Store — no card, no KYC.'],
+              ['Claim ₹10L', 'You land with a virtual ₹10-lakh wallet, ready to trade.'],
+              ['Place your first order', 'Search a stock, pick an order type, and watch your P&L move.'],
+            ].map(([t, d], i) => (
+              <RevealItem key={t}>
+                <div className="card" style={{ height: '100%' }}>
+                  <div className="step-num mono">{i + 1}</div>
+                  <h3>{t}</h3>
+                  <p>{d}</p>
+                </div>
+              </RevealItem>
+            ))}
+          </RevealGroup>
+
           <RevealGroup className="grid grid-3">
             {[
               ['shield', '100% virtual money', 'You never deposit or withdraw real funds. Practise freely.'],

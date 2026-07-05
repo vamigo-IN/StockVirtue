@@ -1,6 +1,9 @@
 import type { Metadata } from 'next';
 import { FAQS, SITE } from '@/lib/site';
+import { Icon } from '@/components/Icon';
 import { Reveal, RevealGroup, RevealItem } from '@/components/motion/Reveal';
+import { GlowField } from '@/components/motion/GlowField';
+import { MagneticButton } from '@/components/motion/MagneticButton';
 
 export const metadata: Metadata = {
   title: 'FAQ',
@@ -25,6 +28,7 @@ export default function FaqPage() {
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
       <div className="page-head">
+        <GlowField />
         <div className="container">
           <Reveal>
             <span className="eyebrow">
@@ -55,13 +59,28 @@ export default function FaqPage() {
             ))}
           </RevealGroup>
           <Reveal>
-            <p className="muted center" style={{ marginTop: 30 }}>
-              Still have a question?{' '}
-              <a href="/contact" style={{ color: 'var(--green-600)', fontWeight: 600 }}>
-                Contact us
-              </a>
-              .
-            </p>
+            <div
+              className="cta-band glass"
+              style={{ marginTop: 36, padding: '36px 28px' }}
+            >
+              <div className="grid-bg" aria-hidden="true" />
+              <div className="cta-inner">
+                <div className="icon" style={{ margin: '0 auto 14px' }}>
+                  <Icon name="mail" />
+                </div>
+                <h3 style={{ fontSize: '1.5rem' }}>Still have a question?</h3>
+                <p className="muted" style={{ margin: '0 auto 20px', maxWidth: 420 }}>
+                  We&apos;re happy to help — a real person reads every message.
+                </p>
+                <MagneticButton
+                  href="/contact"
+                  external={false}
+                  className="btn btn-primary"
+                >
+                  <Icon name="mail" size={16} /> Contact us
+                </MagneticButton>
+              </div>
+            </div>
           </Reveal>
         </div>
       </section>

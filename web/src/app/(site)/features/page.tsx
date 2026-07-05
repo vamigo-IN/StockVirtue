@@ -5,6 +5,7 @@ import { Icon } from '@/components/Icon';
 import { Reveal, RevealGroup, RevealItem } from '@/components/motion/Reveal';
 import { TiltCard } from '@/components/motion/TiltCard';
 import { MagneticButton } from '@/components/motion/MagneticButton';
+import { GlowField } from '@/components/motion/GlowField';
 
 export const metadata: Metadata = {
   title: 'Features',
@@ -65,6 +66,7 @@ export default function FeaturesPage() {
   return (
     <>
       <div className="page-head">
+        <GlowField />
         <div className="container">
           <Reveal>
             <span className="eyebrow">

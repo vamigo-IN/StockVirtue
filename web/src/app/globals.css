@@ -432,12 +432,17 @@ p {
   height: 62px;
 }
 .brand-logo {
-  height: 44px;
+  height: 38px;
   width: auto;
+  transition: height 0.3s ease;
 }
 .header.scrolled .brand-logo {
-  height: 40px;
-  transition: height 0.3s ease;
+  height: 34px;
+}
+@media (max-width: 480px) {
+  .brand-logo {
+    height: 32px;
+  }
 }
 .nav-desktop {
   display: flex;
@@ -674,6 +679,76 @@ p {
   50% {
     transform: translate(-50%, 8px);
     opacity: 1;
+  }
+}
+
+/* ── Decorative glow field (drifting aurora orbs) ───────────────────────── */
+.glow-field {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
+}
+.glow-orb {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(70px);
+  opacity: 0.55;
+  will-change: transform;
+}
+.glow-orb.a {
+  width: 360px;
+  height: 360px;
+  top: -120px;
+  left: -80px;
+  background: radial-gradient(circle, rgba(34, 197, 94, 0.4), transparent 68%);
+  animation: orbDrift1 20s ease-in-out infinite;
+}
+.glow-orb.b {
+  width: 300px;
+  height: 300px;
+  top: -60px;
+  right: -60px;
+  background: radial-gradient(circle, rgba(74, 222, 128, 0.32), transparent 68%);
+  animation: orbDrift2 26s ease-in-out infinite;
+}
+.glow-orb.c {
+  width: 280px;
+  height: 280px;
+  bottom: -120px;
+  left: 40%;
+  background: radial-gradient(circle, rgba(22, 163, 74, 0.28), transparent 68%);
+  animation: orbDrift3 30s ease-in-out infinite;
+}
+.terminal .glow-orb {
+  opacity: 0.7;
+}
+@keyframes orbDrift1 {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(60px, 40px) scale(1.15);
+  }
+}
+@keyframes orbDrift2 {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(-50px, 50px) scale(1.1);
+  }
+}
+@keyframes orbDrift3 {
+  0%,
+  100% {
+    transform: translate(0, 0) scale(1);
+  }
+  50% {
+    transform: translate(40px, -40px) scale(1.2);
   }
 }
 
@@ -1688,7 +1763,8 @@ p {
   .ob-row .bar,
   .eyebrow .dot,
   .scroll-cue,
-  .btn-sheen::before {
+  .glow-orb,
+  .btn-sheen::after {
     animation: none !important;
   }
   .caret {

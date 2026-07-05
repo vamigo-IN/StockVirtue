@@ -4,6 +4,8 @@ import { getSettings } from '@/lib/settings';
 import { Icon } from '@/components/Icon';
 import { ContactForm } from './ContactForm';
 import { Reveal } from '@/components/motion/Reveal';
+import { GlowField } from '@/components/motion/GlowField';
+import { Sparkline } from '@/components/motion/Sparkline';
 
 export const metadata: Metadata = {
   title: 'Contact',
@@ -17,6 +19,7 @@ export default async function ContactPage() {
   return (
     <>
       <div className="page-head">
+        <GlowField />
         <div className="container">
           <Reveal>
             <span className="eyebrow">
@@ -24,11 +27,14 @@ export default async function ContactPage() {
             </span>
           </Reveal>
           <Reveal delay={0.06}>
-            <h1>Contact us</h1>
+            <h1>
+              Let&apos;s <span className="accent">talk</span>
+            </h1>
           </Reveal>
           <Reveal delay={0.12}>
             <p className="lead">
-              Questions, feedback, or just want to say hi? A real person replies.
+              Questions, feedback, or just want to say hi? A real person reads
+              every message and replies.
             </p>
           </Reveal>
         </div>
@@ -44,22 +50,34 @@ export default async function ContactPage() {
               <ContactForm />
             </div>
           </Reveal>
+
           <Reveal delay={0.08} direction="left">
-            <div>
-              <h3>Other ways to reach us</h3>
-              <p className="muted">
-                Prefer email? Write to us directly and we&apos;ll respond as
-                soon as we can.
-              </p>
-              <a
-                href={`mailto:${email}`}
-                className="btn btn-ghost"
-                style={{ marginTop: 8 }}
-              >
-                <Icon name="mail" size={18} /> {email}
-              </a>
-              <div style={{ marginTop: 28 }}>
-                <h3>Looking for help?</h3>
+            <div style={{ display: 'grid', gap: 18 }}>
+              <div className="card" style={{ position: 'relative', overflow: 'hidden' }}>
+                <span
+                  className="eyebrow"
+                  style={{ marginBottom: 12 }}
+                >
+                  <span className="dot" /> Usually replies within a day
+                </span>
+                <h3>Email us directly</h3>
+                <p className="muted" style={{ marginBottom: 14 }}>
+                  Prefer email? Write to us and we&apos;ll get back as soon as we
+                  can.
+                </p>
+                <a href={`mailto:${email}`} className="btn btn-primary">
+                  <Icon name="mail" size={18} /> {email}
+                </a>
+                <div style={{ marginTop: 18, opacity: 0.7 }}>
+                  <Sparkline points={[6, 8, 7, 11, 10, 14, 13, 17]} height={30} />
+                </div>
+              </div>
+
+              <div className="card">
+                <div className="icon">
+                  <Icon name="book" />
+                </div>
+                <h3 style={{ marginBottom: 4 }}>Looking for help?</h3>
                 <p className="muted">
                   Many common questions are answered on our{' '}
                   <a
@@ -71,9 +89,15 @@ export default async function ContactPage() {
                   .
                 </p>
               </div>
-              <div style={{ marginTop: 28 }}>
-                <h3>Operated by</h3>
-                <p className="muted">{SITE.company}</p>
+
+              <div className="card">
+                <div className="icon">
+                  <Icon name="shield" />
+                </div>
+                <h3 style={{ marginBottom: 4 }}>Operated by</h3>
+                <p className="muted">
+                  {SITE.company} · Made in India 🇮🇳
+                </p>
               </div>
             </div>
           </Reveal>

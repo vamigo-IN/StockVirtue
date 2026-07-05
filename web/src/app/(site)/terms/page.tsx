@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { SITE } from '@/lib/site';
+import { GlowField } from '@/components/motion/GlowField';
 
 export const metadata: Metadata = {
   title: 'Terms & Conditions',
@@ -13,6 +14,7 @@ export default function TermsPage() {
   return (
     <>
       <div className="page-head">
+        <GlowField />
         <div className="container">
           <h1>Terms &amp; Conditions</h1>
           <p className="updated">Last updated: {UPDATED}</p>
