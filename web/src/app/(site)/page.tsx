@@ -170,7 +170,23 @@ export default function HomePage() {
           </Reveal>
 
           {/* Live micro-widget cards */}
-          <RevealGroup className="grid grid-3" stagger={0.07}>
+          <RevealGroup className="grid grid-4" stagger={0.07}>
+            <RevealItem>
+              <TiltCard>
+                <div className="icon">
+                  <Icon name="chart" />
+                </div>
+                <h3>Live market data</h3>
+                <p>
+                  Real-time NSE &amp; BSE prices, charts and full depth — your
+                  practice moves tick for tick with the market.
+                </p>
+                <div style={{ marginTop: 16 }}>
+                  <Sparkline points={[12, 11, 14, 13, 16, 15, 19, 18, 22]} />
+                </div>
+              </TiltCard>
+            </RevealItem>
+
             <RevealItem>
               <TiltCard>
                 <div className="icon">
@@ -235,8 +251,14 @@ export default function HomePage() {
             </RevealItem>
           </RevealGroup>
 
-          <RevealGroup className="grid grid-4" stagger={0.06}>
-            {FEATURES.slice(3).map((f) => (
+          <RevealGroup
+            className="grid grid-4"
+            stagger={0.06}
+            style={{ marginTop: 22 }}
+          >
+            {FEATURES.filter((f) =>
+              ['clock', 'trophy', 'book', 'shield'].includes(f.icon),
+            ).map((f) => (
               <RevealItem key={f.title}>
                 <TiltCard>
                   <div className="icon">

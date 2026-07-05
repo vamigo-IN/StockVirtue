@@ -292,31 +292,41 @@ p {
 .btn-primary:active {
   transform: translateY(0);
 }
-/* Conic sheen sweep on the magnetic CTA */
-.btn-sheen::before {
+/* Diagonal light sweep on the magnetic CTA — clipped inside the button so it
+   can never leak a stray wedge (the old conic+mask trick did on some engines). */
+.btn-sheen {
+  overflow: hidden;
+}
+.btn-sheen > * {
+  position: relative;
+  z-index: 1;
+}
+.btn-sheen::after {
   content: "";
   position: absolute;
-  inset: -1px;
-  border-radius: inherit;
-  padding: 1px;
-  background: conic-gradient(
-    from 0deg,
-    transparent 0deg,
-    rgba(255, 255, 255, 0.75) 40deg,
-    transparent 80deg,
-    transparent 360deg
+  top: 0;
+  bottom: 0;
+  left: -60%;
+  width: 40%;
+  background: linear-gradient(
+    100deg,
+    transparent,
+    rgba(255, 255, 255, 0.35),
+    transparent
   );
-  -webkit-mask: linear-gradient(#000 0 0) content-box,
-    linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-  mask-composite: exclude;
-  animation: sheenSpin 6s linear infinite;
-  z-index: -1;
-  opacity: 0.8;
+  transform: skewX(-18deg);
+  animation: sheenSweep 4.5s ease-in-out infinite;
+  z-index: 0;
+  pointer-events: none;
 }
-@keyframes sheenSpin {
-  to {
-    transform: rotate(1turn);
+@keyframes sheenSweep {
+  0%,
+  100% {
+    left: -60%;
+  }
+  55%,
+  70% {
+    left: 130%;
   }
 }
 .btn-ghost {
@@ -365,18 +375,21 @@ p {
   content: "";
   position: absolute;
   inset: 0;
-  background: color-mix(in srgb, var(--paper) 72%, transparent);
-  backdrop-filter: saturate(160%) blur(14px);
-  opacity: 0;
-  transition: opacity 0.3s ease;
+  /* Crisp light bar (not a muddy 72% translucent) so the dark-text logo and
+     nav read cleanly whether the hero behind is dark or a light page-head. */
+  background: color-mix(in srgb, var(--paper) 86%, transparent);
+  backdrop-filter: saturate(170%) blur(16px);
+  -webkit-backdrop-filter: saturate(170%) blur(16px);
+  opacity: 1;
+  transition: background 0.3s ease;
   z-index: -1;
 }
 .header.scrolled::before {
-  opacity: 1;
+  background: color-mix(in srgb, var(--paper) 96%, transparent);
 }
 .header.scrolled {
   border-bottom-color: var(--line);
-  box-shadow: 0 1px 20px rgba(6, 24, 14, 0.06);
+  box-shadow: 0 2px 24px rgba(6, 24, 14, 0.08);
 }
 .header-inner {
   display: flex;
@@ -1243,12 +1256,16 @@ p {
   display: inline-flex;
   align-items: center;
   gap: 9px;
-  color: var(--fg-muted);
+  color: var(--fg);
   font-weight: 600;
-  font-size: 0.92rem;
+  font-size: 0.95rem;
+}
+.terminal .trust-item {
+  color: #e7f3ec;
 }
 .trust-item svg {
   color: var(--green-500);
+  flex: none;
 }
 
 /* ── Prose (legal / long form) ──────────────────────────────────────────── */
@@ -1285,7 +1302,30 @@ p {
 .page-head {
   position: relative;
   overflow: hidden;
-  padding-block: clamp(3rem, 8vh, 5.5rem) clamp(2rem, 5vh, 3rem);
+  padding-block: clamp(3.5rem, 9vh, 6rem) clamp(2rem, 5vh, 3rem);
+  border-bottom: 1px solid var(--line);
+  background: linear-gradient(180deg, var(--panel-2), var(--paper));
+}
+.page-head::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: radial-gradient(
+      760px 320px at 82% -30%,
+      rgba(34, 197, 94, 0.12),
+      transparent 70%
+    ),
+    radial-gradient(
+      520px 240px at 0% 120%,
+      rgba(34, 197, 94, 0.06),
+      transparent 70%
+    );
+}
+.page-head .container {
+  position: relative;
+  z-index: 1;
 }
 .page-head .eyebrow {
   margin-bottom: 16px;
