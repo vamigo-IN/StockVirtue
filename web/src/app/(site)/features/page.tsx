@@ -108,31 +108,35 @@ export default function FeaturesPage() {
             ))}
           </RevealGroup>
 
-          {GROUPS.map((g) => (
-            <Reveal key={g.title} className="fgroup" as="section">
-              <div style={{ marginBottom: 44 }}>
-                <h2 style={{ fontSize: '1.6rem' }}>{g.title}</h2>
-                <div className="grid grid-2" style={{ marginTop: 18 }}>
-                  {g.items.map(([t, d]) => (
-                    <div
-                      key={t}
-                      style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}
-                    >
-                      <span style={{ color: 'var(--green-600)', marginTop: 2, flex: 'none' }}>
-                        <Icon name="check" size={20} />
-                      </span>
-                      <div>
-                        <strong>{t}</strong>
-                        <p className="muted" style={{ margin: '2px 0 0' }}>
-                          {d}
-                        </p>
+          <div className="spec-stack">
+            {GROUPS.map((g, gi) => (
+              <Reveal key={g.title}>
+                <div className="spec-group">
+                  <div className="spec-head">
+                    <span className="spec-index mono">
+                      {String(gi + 1).padStart(2, '0')}
+                    </span>
+                    <h2>{g.title}</h2>
+                  </div>
+                  <div className="grid grid-2 spec-items">
+                    {g.items.map(([t, d]) => (
+                      <div key={t} className="spec-item">
+                        <span className="spec-check">
+                          <Icon name="check" size={16} />
+                        </span>
+                        <div>
+                          <strong>{t}</strong>
+                          <p className="muted" style={{ margin: '2px 0 0' }}>
+                            {d}
+                          </p>
+                        </div>
                       </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
-              </div>
-            </Reveal>
-          ))}
+              </Reveal>
+            ))}
+          </div>
         </div>
       </section>
 

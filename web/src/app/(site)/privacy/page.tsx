@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { SITE } from '@/lib/site';
-import { GlowField } from '@/components/motion/GlowField';
+import { LegalShell } from '@/components/motion/LegalShell';
 
 export const metadata: Metadata = {
   title: 'Privacy Policy',
@@ -12,18 +12,12 @@ const UPDATED = 'June 27, 2026';
 
 export default function PrivacyPage() {
   return (
-    <>
-      <div className="page-head">
-        <GlowField />
-        <div className="container">
-          <h1>Privacy Policy</h1>
-          <p className="updated">Last updated: {UPDATED}</p>
-        </div>
-      </div>
-
-      <section className="section">
-        <div className="container prose">
-          <p>
+    <LegalShell
+      title="Privacy Policy"
+      updated={UPDATED}
+      summary={`How ${SITE.name} collects, uses and protects your information — and what we deliberately never collect.`}
+    >
+      <p>
             This Privacy Policy explains how {SITE.company} (&quot;we&quot;,
             &quot;us&quot;) collects, uses, and protects your information when you
             use the {SITE.name} app and website (the &quot;Service&quot;). We
@@ -160,14 +154,12 @@ export default function PrivacyPage() {
             <a href="/contact">contact page</a>. Operated by {SITE.company}.
           </p>
 
-          <p className="muted" style={{ fontSize: '0.85rem', marginTop: 32 }}>
-            This document is a general template provided for convenience and does
-            not constitute legal advice. Please have it reviewed by a qualified
-            lawyer and tailored to your data practices and the Google Play Data
-            Safety requirements.
-          </p>
-        </div>
-      </section>
-    </>
+      <p className="muted" style={{ fontSize: '0.85rem', marginTop: 32 }}>
+        This document is a general template provided for convenience and does
+        not constitute legal advice. Please have it reviewed by a qualified
+        lawyer and tailored to your data practices and the Google Play Data
+        Safety requirements.
+      </p>
+    </LegalShell>
   );
 }

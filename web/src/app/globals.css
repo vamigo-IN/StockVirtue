@@ -1182,6 +1182,71 @@ p {
   height: 24px;
 }
 
+/* ── Feature spec groups ────────────────────────────────────────────────── */
+.spec-stack {
+  display: grid;
+  gap: 18px;
+  margin-top: 8px;
+}
+.spec-group {
+  position: relative;
+  overflow: hidden;
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 28px 28px 24px;
+  box-shadow: var(--shadow);
+}
+.spec-group::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: linear-gradient(180deg, var(--green-500), transparent);
+}
+.spec-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.spec-index {
+  font-size: 0.82rem;
+  color: var(--green-600);
+  background: color-mix(in srgb, var(--green-500) 12%, transparent);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 4px 9px;
+}
+.spec-head h2 {
+  font-size: 1.35rem;
+  margin: 0;
+}
+.spec-items {
+  gap: 16px 28px;
+}
+.spec-item {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+.spec-check {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--green-500) 14%, transparent);
+  color: var(--green-600);
+  display: grid;
+  place-items: center;
+  margin-top: 1px;
+}
+.spec-item strong {
+  font-size: 0.98rem;
+}
+
 /* ── Steps / assembly / progress line ───────────────────────────────────── */
 .step-num {
   width: 40px;
@@ -1449,8 +1514,113 @@ p {
   font-size: 0.9rem;
   font-family: var(--font-mono);
 }
+.updated-badge {
+  display: inline-block;
+  font-size: 0.76rem;
+  letter-spacing: 0.04em;
+  color: var(--fg-muted);
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--green-500) 8%, var(--panel));
+  border-radius: 999px;
+  padding: 5px 13px;
+}
+
+/* ── Legal document layout (TOC + prose) ────────────────────────────────── */
+.legal-grid {
+  display: grid;
+  grid-template-columns: 232px 1fr;
+  gap: 52px;
+  align-items: start;
+}
+.legal-body {
+  max-width: 68ch;
+  margin: 0;
+}
+.legal-body h2 {
+  scroll-margin-top: 96px;
+  padding-top: 0.4em;
+}
+.legal-body h2:not(:first-child) {
+  border-top: 1px solid var(--line);
+  padding-top: 1.6em;
+}
+.legal-aside {
+  position: sticky;
+  top: 100px;
+}
+.legal-toc {
+  border-left: 2px solid var(--line);
+  padding-left: 2px;
+}
+.legal-toc-title {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--fg-faint);
+  padding: 0 0 12px 16px;
+}
+.legal-toc ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 2px;
+}
+.legal-toc a {
+  display: block;
+  font-size: 0.88rem;
+  line-height: 1.35;
+  color: var(--fg-muted);
+  padding: 6px 0 6px 16px;
+  margin-left: -2px;
+  border-left: 2px solid transparent;
+  transition: color 0.2s ease, border-color 0.2s ease;
+}
+.legal-toc a:hover {
+  color: var(--fg);
+}
+.legal-toc a.active {
+  color: var(--green-600);
+  border-left-color: var(--green-500);
+  font-weight: 600;
+}
+@media (max-width: 860px) {
+  .legal-grid {
+    grid-template-columns: 1fr;
+    gap: 0;
+  }
+  .legal-aside {
+    display: none;
+  }
+  .legal-body {
+    max-width: none;
+  }
+}
 
 /* ── FAQ ────────────────────────────────────────────────────────────────── */
+.faq-grid {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: 52px;
+  align-items: start;
+}
+.faq-side {
+  position: sticky;
+  top: 100px;
+}
+.faq-list {
+  min-width: 0;
+}
+@media (max-width: 860px) {
+  .faq-grid {
+    grid-template-columns: 1fr;
+    gap: 28px;
+  }
+  .faq-side {
+    position: static;
+  }
+}
 .faq-item {
   background: var(--panel);
   border: 1px solid var(--line);

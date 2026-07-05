@@ -47,8 +47,34 @@ export default function FaqPage() {
       </div>
 
       <section className="section">
-        <div className="container" style={{ maxWidth: 780 }}>
-          <RevealGroup stagger={0.05}>
+        <div className="container faq-grid">
+          <Reveal className="faq-side">
+            <div>
+              <h2 style={{ fontSize: '1.7rem' }}>Questions &amp; answers</h2>
+              <p className="muted">
+                The essentials about how {SITE.name} works. Can&apos;t find your
+                answer? We&apos;re one message away.
+              </p>
+              <div className="card" style={{ marginTop: 20 }}>
+                <div className="icon">
+                  <Icon name="mail" />
+                </div>
+                <h3 style={{ marginBottom: 4 }}>Still curious?</h3>
+                <p className="muted" style={{ marginBottom: 16 }}>
+                  A real person reads every message and replies.
+                </p>
+                <MagneticButton
+                  href="/contact"
+                  external={false}
+                  className="btn btn-primary btn-block"
+                >
+                  <Icon name="mail" size={16} /> Contact us
+                </MagneticButton>
+              </div>
+            </div>
+          </Reveal>
+
+          <RevealGroup className="faq-list" stagger={0.05}>
             {FAQS.map((f) => (
               <RevealItem key={f.q}>
                 <details className="faq-item">
@@ -58,30 +84,6 @@ export default function FaqPage() {
               </RevealItem>
             ))}
           </RevealGroup>
-          <Reveal>
-            <div
-              className="cta-band glass"
-              style={{ marginTop: 36, padding: '36px 28px' }}
-            >
-              <div className="grid-bg" aria-hidden="true" />
-              <div className="cta-inner">
-                <div className="icon" style={{ margin: '0 auto 14px' }}>
-                  <Icon name="mail" />
-                </div>
-                <h3 style={{ fontSize: '1.5rem' }}>Still have a question?</h3>
-                <p className="muted" style={{ margin: '0 auto 20px', maxWidth: 420 }}>
-                  We&apos;re happy to help — a real person reads every message.
-                </p>
-                <MagneticButton
-                  href="/contact"
-                  external={false}
-                  className="btn btn-primary"
-                >
-                  <Icon name="mail" size={16} /> Contact us
-                </MagneticButton>
-              </div>
-            </div>
-          </Reveal>
         </div>
       </section>
     </>

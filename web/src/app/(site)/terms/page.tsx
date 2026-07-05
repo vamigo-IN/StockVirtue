@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { SITE } from '@/lib/site';
-import { GlowField } from '@/components/motion/GlowField';
+import { LegalShell } from '@/components/motion/LegalShell';
 
 export const metadata: Metadata = {
   title: 'Terms & Conditions',
@@ -12,18 +12,12 @@ const UPDATED = 'June 27, 2026';
 
 export default function TermsPage() {
   return (
-    <>
-      <div className="page-head">
-        <GlowField />
-        <div className="container">
-          <h1>Terms &amp; Conditions</h1>
-          <p className="updated">Last updated: {UPDATED}</p>
-        </div>
-      </div>
-
-      <section className="section">
-        <div className="container prose">
-          <p>
+    <LegalShell
+      title="Terms & Conditions"
+      updated={UPDATED}
+      summary={`The terms that govern your use of ${SITE.name} — an educational simulator, not a broker.`}
+    >
+      <p>
             These Terms &amp; Conditions (&quot;Terms&quot;) govern your access
             to and use of the {SITE.name} mobile application and the website at{' '}
             {SITE.url} (together, the &quot;Service&quot;), operated by{' '}
@@ -156,13 +150,11 @@ export default function TermsPage() {
             <a href="/contact">contact page</a>.
           </p>
 
-          <p className="muted" style={{ fontSize: '0.85rem', marginTop: 32 }}>
-            This document is a general template provided for convenience and does
-            not constitute legal advice. Please have it reviewed by a qualified
-            lawyer before relying on it.
-          </p>
-        </div>
-      </section>
-    </>
+      <p className="muted" style={{ fontSize: '0.85rem', marginTop: 32 }}>
+        This document is a general template provided for convenience and does
+        not constitute legal advice. Please have it reviewed by a qualified
+        lawyer before relying on it.
+      </p>
+    </LegalShell>
   );
 }

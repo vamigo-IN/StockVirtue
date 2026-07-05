@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
 import { SITE } from '@/lib/site';
-import { GlowField } from '@/components/motion/GlowField';
+import { LegalShell } from '@/components/motion/LegalShell';
 
 export const metadata: Metadata = {
   title: 'Risk Disclaimer',
@@ -12,18 +12,12 @@ const UPDATED = 'June 27, 2026';
 
 export default function DisclaimerPage() {
   return (
-    <>
-      <div className="page-head">
-        <GlowField />
-        <div className="container">
-          <h1>Risk Disclaimer</h1>
-          <p className="updated">Last updated: {UPDATED}</p>
-        </div>
-      </div>
-
-      <section className="section">
-        <div className="container prose">
-          <h2>Educational simulator — virtual money only</h2>
+    <LegalShell
+      title="Risk Disclaimer"
+      updated={UPDATED}
+      summary={`${SITE.name} is an educational simulator using virtual money — not investment advice, and not a broker.`}
+    >
+      <h2>Educational simulator — virtual money only</h2>
           <p>
             {SITE.name} is a <strong>stock-market simulator built for
             education</strong>. All trading inside the Service is performed with{' '}
@@ -71,13 +65,11 @@ export default function DisclaimerPage() {
             availability.
           </p>
 
-          <p style={{ marginTop: 28 }}>
-            By using {SITE.name}, you acknowledge and accept this disclaimer
-            together with our <a href="/terms">Terms &amp; Conditions</a> and{' '}
-            <a href="/privacy">Privacy Policy</a>.
-          </p>
-        </div>
-      </section>
-    </>
+      <p style={{ marginTop: 28 }}>
+        By using {SITE.name}, you acknowledge and accept this disclaimer
+        together with our <a href="/terms">Terms &amp; Conditions</a> and{' '}
+        <a href="/privacy">Privacy Policy</a>.
+      </p>
+    </LegalShell>
   );
 }
