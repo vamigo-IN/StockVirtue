@@ -60,8 +60,12 @@
   color-scheme: light;
 }
 
-/* Dark terminal zone — opt in by adding `.terminal` to a section/wrapper. */
+/* Dark terminal zone — opt in by adding `.terminal` to a section/wrapper.
+   Sets an explicit dark background so a section is dark even where its
+   decorative `.floor` sits at reduced opacity — otherwise the light <body>
+   bled through as muddy grey bands. */
 .terminal {
+  background: var(--ink-900);
   --paper: var(--ink-900);
   --panel: var(--ink-800);
   --panel-2: var(--ink-700);
