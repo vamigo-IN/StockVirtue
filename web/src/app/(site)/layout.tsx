@@ -3,6 +3,9 @@ import { Header } from '@/components/Header';
 import { Footer } from '@/components/Footer';
 import { RawHtml } from '@/components/CodeInjection';
 import { JsonLd } from '@/components/JsonLd';
+import { SmoothScroll } from '@/components/motion/SmoothScroll';
+import { ScrollProgress } from '@/components/motion/ScrollProgress';
+import { MotionProvider } from '@/components/motion/MotionProvider';
 
 /**
  * Public marketing chrome. Lives in the (site) route group so the admin panel
@@ -21,9 +24,13 @@ export default async function SiteLayout({
       <RawHtml html={settings.headCode} />
       <RawHtml html={settings.bodyStartCode} />
       <JsonLd />
-      <Header />
-      <main>{children}</main>
-      <Footer settings={settings} />
+      <MotionProvider>
+        <SmoothScroll />
+        <ScrollProgress />
+        <Header />
+        <main>{children}</main>
+        <Footer settings={settings} />
+      </MotionProvider>
       <RawHtml html={settings.bodyEndCode} />
     </>
   );

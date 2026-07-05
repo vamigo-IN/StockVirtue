@@ -2,22 +2,27 @@ import Link from 'next/link';
 
 export default function NotFound() {
   return (
-    <section className="section">
-      <div className="container center" style={{ padding: '80px 20px' }}>
+    <section className="hero terminal" style={{ minHeight: '70vh', display: 'grid', alignItems: 'center' }}>
+      <div className="floor" aria-hidden="true" />
+      <div className="grid-bg" aria-hidden="true" />
+      <div
+        className="container center"
+        style={{ position: 'relative', zIndex: 2, padding: '60px 20px' }}
+      >
         <div
-          style={{ fontSize: '5rem', fontWeight: 900, color: 'var(--green)' }}
+          className="mono accent"
+          style={{ fontSize: 'clamp(4rem, 16vw, 9rem)', fontWeight: 700, lineHeight: 1 }}
         >
           404
         </div>
-        <h1>Page not found</h1>
-        <p className="lead">
-          The page you&apos;re looking for doesn&apos;t exist or has moved.
+        <h1 style={{ marginTop: 8 }}>Order not found</h1>
+        <p className="hero-sub" style={{ margin: '0 auto 26px' }}>
+          This page doesn&apos;t exist or has moved. Let&apos;s get you back to
+          the trading desk.
         </p>
-        <div style={{ marginTop: 24 }}>
-          <Link className="btn btn-primary" href="/">
-            Back to home
-          </Link>
-        </div>
+        <Link className="btn btn-primary btn-lg" href="/">
+          Back to home
+        </Link>
       </div>
     </section>
   );

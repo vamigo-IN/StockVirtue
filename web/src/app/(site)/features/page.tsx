@@ -2,6 +2,9 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { FEATURES, SITE } from '@/lib/site';
 import { Icon } from '@/components/Icon';
+import { Reveal, RevealGroup, RevealItem } from '@/components/motion/Reveal';
+import { TiltCard } from '@/components/motion/TiltCard';
+import { MagneticButton } from '@/components/motion/MagneticButton';
 
 export const metadata: Metadata = {
   title: 'Features',
@@ -21,11 +24,12 @@ const GROUPS = [
     ],
   },
   {
-    title: 'Derivatives & indices',
+    title: 'Derivatives, indices & commodities',
     items: [
       ['Futures & Options', 'Trade index & stock F&O in correct lot sizes.'],
-      ['Option chains', 'Browse live option chains for every supported underlying.'],
+      ['Option chains & greeks', 'Live option chains with official delta, gamma, theta, vega & IV.'],
       ['Indices', 'Nifty 50, Sensex, Bank Nifty and many more, with constituents.'],
+      ['MCX commodities', 'Gold, silver, crude and base metals — front-month futures, live.'],
     ],
   },
   {
@@ -62,69 +66,103 @@ export default function FeaturesPage() {
     <>
       <div className="page-head">
         <div className="container">
-          <h1>Features</h1>
-          <p className="lead">
-            A complete, realistic trading experience built for learning — every
-            feature, zero financial risk.
-          </p>
+          <Reveal>
+            <span className="eyebrow">
+              <span className="dot" /> Everything inside
+            </span>
+          </Reveal>
+          <Reveal delay={0.06}>
+            <h1>Features</h1>
+          </Reveal>
+          <Reveal delay={0.12}>
+            <p className="lead">
+              A complete, realistic trading desk built for learning — every
+              feature, zero financial risk.
+            </p>
+          </Reveal>
         </div>
       </div>
 
       <section className="section">
         <div className="container">
-          <div className="grid grid-4" style={{ marginBottom: 56 }}>
+          <Reveal>
+            <h2 style={{ marginBottom: 28 }}>Everything, at a glance</h2>
+          </Reveal>
+          <RevealGroup
+            className="grid grid-4"
+            stagger={0.06}
+            style={{ marginBottom: 64 }}
+          >
             {FEATURES.map((f) => (
-              <div className="card" key={f.title}>
-                <div className="icon">
-                  <Icon name={f.icon} />
-                </div>
-                <h3>{f.title}</h3>
-                <p>{f.body}</p>
-              </div>
+              <RevealItem key={f.title}>
+                <TiltCard>
+                  <div className="icon">
+                    <Icon name={f.icon} />
+                  </div>
+                  <h3>{f.title}</h3>
+                  <p>{f.body}</p>
+                </TiltCard>
+              </RevealItem>
             ))}
-          </div>
+          </RevealGroup>
 
           {GROUPS.map((g) => (
-            <div key={g.title} style={{ marginBottom: 40 }}>
-              <h2 style={{ fontSize: '1.5rem' }}>{g.title}</h2>
-              <div className="grid grid-2" style={{ marginTop: 16 }}>
-                {g.items.map(([t, d]) => (
-                  <div
-                    key={t}
-                    style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}
-                  >
-                    <span style={{ color: 'var(--green)', marginTop: 2 }}>
-                      <Icon name="check" size={20} />
-                    </span>
-                    <div>
-                      <strong>{t}</strong>
-                      <p className="muted" style={{ margin: '2px 0 0' }}>
-                        {d}
-                      </p>
+            <Reveal key={g.title} className="fgroup" as="section">
+              <div style={{ marginBottom: 44 }}>
+                <h2 style={{ fontSize: '1.6rem' }}>{g.title}</h2>
+                <div className="grid grid-2" style={{ marginTop: 18 }}>
+                  {g.items.map(([t, d]) => (
+                    <div
+                      key={t}
+                      style={{ display: 'flex', gap: 12, alignItems: 'flex-start' }}
+                    >
+                      <span style={{ color: 'var(--green-600)', marginTop: 2, flex: 'none' }}>
+                        <Icon name="check" size={20} />
+                      </span>
+                      <div>
+                        <strong>{t}</strong>
+                        <p className="muted" style={{ margin: '2px 0 0' }}>
+                          {d}
+                        </p>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
+              </div>
+            </Reveal>
+          ))}
+        </div>
+      </section>
+
+      {/* Dark terminal CTA moment */}
+      <section className="section terminal zone-dark">
+        <div className="floor" aria-hidden="true" />
+        <div className="container" style={{ position: 'relative', zIndex: 2 }}>
+          <Reveal>
+            <div className="cta-band glass">
+              <div className="grid-bg" aria-hidden="true" />
+              <div className="cta-inner">
+                <h2>
+                  See it for <span className="accent">yourself</span>
+                </h2>
+                <p className="muted" style={{ maxWidth: 520, margin: '0 auto 26px' }}>
+                  Download {SITE.name} and put every feature to work — free, with
+                  virtual money.
+                </p>
+                <MagneticButton
+                  href={SITE.playUrl}
+                  className="btn btn-primary btn-lg btn-sheen"
+                >
+                  <Icon name="play" size={18} /> Get it on Google Play
+                </MagneticButton>
+                <div style={{ marginTop: 14 }}>
+                  <Link href="/faq" className="mono" style={{ color: 'var(--green-400)', fontSize: '0.9rem' }}>
+                    Have questions? Read the FAQ →
+                  </Link>
+                </div>
               </div>
             </div>
-          ))}
-
-          <div className="cta-band" style={{ marginTop: 24 }}>
-            <h2>See it for yourself</h2>
-            <p>Download {SITE.name} and put every feature to work — for free.</p>
-            <a
-              className="btn btn-ghost btn-lg"
-              href={SITE.playUrl}
-              target="_blank"
-              rel="noopener"
-            >
-              <Icon name="play" size={18} /> Get it on Google Play
-            </a>
-            <div style={{ marginTop: 14 }}>
-              <Link href="/faq" style={{ color: '#fff', textDecoration: 'underline' }}>
-                Have questions? Read the FAQ →
-              </Link>
-            </div>
-          </div>
+          </Reveal>
         </div>
       </section>
     </>
