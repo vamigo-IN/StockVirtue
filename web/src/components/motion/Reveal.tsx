@@ -36,7 +36,7 @@ export function Reveal({
   className,
   style,
   as = 'div',
-  amount = 0.3,
+  amount = 0.1,
 }: {
   children: ReactNode;
   direction?: Direction;
@@ -57,7 +57,7 @@ export function Reveal({
       style={style}
       initial={{ opacity: 0, x, y, filter: `blur(${blur}px)` }}
       whileInView={{ opacity: 1, x: 0, y: 0, filter: 'blur(0px)' }}
-      viewport={{ once: true, amount }}
+      viewport={{ once: true, amount, margin: '0px 0px -80px 0px' }}
       transition={{
         duration,
         delay,
@@ -79,7 +79,7 @@ export function RevealGroup({
   style,
   stagger = 0.08,
   delayChildren = 0,
-  amount = 0.2,
+  amount = 0.08,
   as = 'div',
 }: {
   children: ReactNode;
@@ -104,7 +104,7 @@ export function RevealGroup({
       variants={container}
       initial="hidden"
       whileInView="show"
-      viewport={{ once: true, amount }}
+      viewport={{ once: true, amount, margin: '0px 0px -60px 0px' }}
     >
       {children}
     </MotionTag>
