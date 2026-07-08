@@ -1,10 +1,18 @@
 import { HttpException, HttpStatus } from '@nestjs/common';
 import Redis from 'ioredis';
 
-/// Tiny fixed-window rate limiter on top of Redis. Each call increments
-/// a counter at `key`; if the counter is the first increment of the
-/// window we set its TTL so the window auto-expires. Throws a 429 once
-/// the threshold is exceeded.
+/// INCR the window counter and, only on its first hit, attach the TTL — as ONE
+/// atomic server-side step. Doing INCR then EXPIRE as two round-trips (the old
+/// approach) risks a crash/disconnect in between leaving a counter with no
+/// expiry, which would lock an account out forever. Returns the new count.
+const INCR_WITH_TTL = `
+local c = redis.call('INCR', KEYS[1])
+if c == 1 then redis.call('EXPIRE', KEYS[1], ARGV[1]) end
+return c
+`;
+
+/// Tiny fixed-window rate limiter on top of Redis. Throws a 429 once the
+/// threshold is exceeded.
 ///
 /// Trade-off: fixed windows allow a ~2× burst at the boundary, which is
 /// fine for the abuse cases this guards (OTP spam, admin brute-force).
@@ -16,13 +24,20 @@ export async function enforceRateLimit(
   windowSeconds: number,
   message?: string,
 ): Promise<void> {
-  const count = await redis.incr(key);
-  if (count === 1) {
-    // First hit in this window — set the TTL atomically with the value.
-    await redis.expire(key, windowSeconds);
-  }
+  const count = (await redis.eval(
+    INCR_WITH_TTL,
+    1,
+    key,
+    String(windowSeconds),
+  )) as number;
   if (count > limit) {
-    const ttl = await redis.ttl(key);
+    let ttl = await redis.ttl(key);
+    // Self-heal a legacy key that was stranded without a TTL by the old
+    // non-atomic path, so a lockout can't persist forever.
+    if (ttl < 0) {
+      await redis.expire(key, windowSeconds);
+      ttl = windowSeconds;
+    }
     throw new HttpException(
       {
         message:

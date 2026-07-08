@@ -14,6 +14,7 @@ import { Server, Socket } from 'socket.io';
 import { Exchange, isExchange } from '../common/exchange';
 import { AppConfig } from '../config/configuration';
 import { ScripMasterService } from '../market/scrip-master.service';
+import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeBusService } from './realtime-bus.service';
 import { SmartApiWsService } from './smartapi-ws.service';
 import { SubscribeDto } from './dto/subscribe.dto';
@@ -29,6 +30,9 @@ interface JwtPayload {
   sub: string;
   type: 'access' | 'refresh';
 }
+
+/// Max distinct live tick subscriptions a single socket may hold.
+const MAX_SUBS_PER_SOCKET = 300;
 
 @WebSocketGateway({
   cors: { origin: '*' },
@@ -52,6 +56,7 @@ export class TicksGateway
     private readonly realtime: RealtimeBusService,
     private readonly scripMaster: ScripMasterService,
     private readonly jwt: JwtService,
+    private readonly prisma: PrismaService,
     config: ConfigService<AppConfig, true>,
   ) {
     this.accessSecret = config.get('jwt', { infer: true }).accessSecret;
@@ -103,9 +108,19 @@ export class TicksGateway
     try {
       const payload = await this.jwt.verifyAsync<JwtPayload>(token, {
         secret: this.accessSecret,
+        algorithms: ['HS256'],
       });
       if (payload.type !== 'access') {
         throw new Error('wrong token type');
+      }
+      // Re-check the account: a blocked/deleted user must not keep (or open) a
+      // live tick/notification stream on a still-valid access token.
+      const user = await this.prisma.user.findUnique({
+        where: { id: payload.sub },
+        select: { status: true },
+      });
+      if (!user || user.status === 'BLOCKED') {
+        throw new Error('account not active');
       }
       client.data.userId = payload.sub;
       // Personal room so services can push notifications to this user's
@@ -160,6 +175,12 @@ export class TicksGateway
       }
       const key = `${inst.exchange}:${inst.token}`;
       if (subs.has(key)) continue;
+      // Hard cap total live subscriptions per socket so one client can't
+      // balloon the upstream Angel One subscription set.
+      if (subs.size >= MAX_SUBS_PER_SOCKET) {
+        rejected.push({ symbol: item.symbol, reason: 'subscription limit' });
+        continue;
+      }
       subs.add(key);
       this.tokenIndex.set(key, {
         exchange: inst.exchange,
@@ -214,14 +235,16 @@ export class TicksGateway
   }
 
   private extractToken(client: Socket): string | undefined {
+    // Only the Socket.IO auth payload or the Authorization header. The
+    // query-string fallback was dropped: URLs leak into proxy/CDN/access logs,
+    // so a short-lived access token must never ride there. The mobile client
+    // already sends it via handshake.auth.token.
     const fromAuth = client.handshake.auth?.token as string | undefined;
     if (fromAuth) return fromAuth;
     const authHeader = client.handshake.headers['authorization'] as
       | string
       | undefined;
     if (authHeader?.startsWith('Bearer ')) return authHeader.slice(7);
-    const fromQuery = client.handshake.query['token'];
-    if (typeof fromQuery === 'string') return fromQuery;
     return undefined;
   }
 }

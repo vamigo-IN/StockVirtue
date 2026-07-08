@@ -11,6 +11,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { Order, OrderStatus, User } from '@prisma/client';
+import { Throttle } from '@nestjs/throttler';
 import { Response } from 'express';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -39,6 +40,9 @@ export class OrdersController {
     return this.autoSquare.runForUser(user.id);
   }
 
+  // Each order does an outbound SmartAPI price fetch + a wallet-locking
+  // transaction, so cap placement well above real active-trading rates.
+  @Throttle({ default: { limit: 60, ttl: 60_000 } })
   @Post()
   async place(@CurrentUser() user: User, @Body() dto: PlaceOrderDto) {
     const order = await this.orders.place({
@@ -65,6 +69,7 @@ export class OrdersController {
   /// on the long leg's collateral being locked first). If one leg fails,
   /// earlier legs stay in their resulting state and the response surfaces
   /// per-leg success / error so the UI can show what cleared and what didn't.
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @Post('basket')
   async placeBasket(
     @CurrentUser() user: User,

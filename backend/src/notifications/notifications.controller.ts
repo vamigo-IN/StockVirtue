@@ -120,6 +120,16 @@ export class NotificationsController {
 
   @Post('alerts')
   async create(@CurrentUser() user: User, @Body() dto: CreateAlertDto) {
+    // Cap active alerts per user (mirrors the watchlist-count guard) so one
+    // account can't create unbounded rows + in-memory watcher entries.
+    const activeCount = await this.prisma.priceAlert.count({
+      where: { userId: user.id, status: AlertStatus.ACTIVE },
+    });
+    if (activeCount >= 100) {
+      throw new BadRequestException(
+        'You have reached the maximum of 100 active price alerts. Delete some to add more.',
+      );
+    }
     const exchange = this.parseExchange(dto.exchange ?? 'NSE');
     const inst = this.scripMaster.getInstrument(dto.symbol, exchange);
     if (!inst) {

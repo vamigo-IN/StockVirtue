@@ -14,10 +14,18 @@ import { ParseError, parsePhoneNumberWithError } from 'libphonenumber-js';
 import { AppConfig } from '../config/configuration';
 import { enforceRateLimit } from '../common/rate-limit';
 import { hashPassword, verifyPassword } from '../common/password';
+import {
+  FeatureFlagsService,
+  FEATURE_MOBILE_OTP,
+} from '../feature-flags/feature-flags.service';
 import { FirebaseAdminService } from '../firebase/firebase-admin.service';
 import { MailService } from '../mail/mail.service';
 import { RedisService } from '../redis/redis.service';
 import { UsersService } from '../users/users.service';
+
+/// Accepted JWT signing algorithm. Pinned on every verify so a token can't be
+/// smuggled in under a different alg (e.g. an "alg: none" or RS/HS confusion).
+export const JWT_ALG: 'HS256' = 'HS256';
 
 /// Email-OTP lifetime for sign-up verification.
 const EMAIL_OTP_TTL = 10 * 60; // 10 minutes
@@ -56,12 +64,34 @@ export class AuthService {
     private readonly jwt: JwtService,
     private readonly firebase: FirebaseAdminService,
     private readonly mail: MailService,
+    private readonly flags: FeatureFlagsService,
   ) {
     const jwtCfg = config.get('jwt', { infer: true });
     this.accessSecret = jwtCfg.accessSecret;
     this.refreshSecret = jwtCfg.refreshSecret;
     this.accessTtl = jwtCfg.accessTtl;
     this.refreshTtl = jwtCfg.refreshTtl;
+  }
+
+  /// Per-IP throttle for the auth surface. The existing limits are keyed by
+  /// email/account, which protect a single targeted account but let one IP
+  /// spray attempts across many accounts under just the global limiter. This
+  /// caps a single client IP across ALL accounts. Limits are set well above
+  /// real human rates so shared/carrier-NAT users aren't harmed.
+  private ipLimit(
+    ip: string | undefined,
+    action: string,
+    limit: number,
+    windowSeconds: number,
+  ): Promise<void> {
+    const key = `ip:${action}:${ip || 'unknown'}`;
+    return enforceRateLimit(this.redis.client, key, limit, windowSeconds);
+  }
+
+  /// Revoke every refresh session for a user (e.g. when an admin blocks them,
+  /// so a still-valid 30-day refresh token can't keep minting access tokens).
+  async revokeAllUserSessions(userId: string): Promise<void> {
+    await this.revokeAllSessions(userId);
   }
 
   // ── Server-side email / password auth (no Firebase) ──────────────
@@ -73,7 +103,10 @@ export class AuthService {
    * Verified accounts are rejected so an attacker can't reset a live account's
    * password (they'd still need the OTP, but we fail fast and clearly).
    */
-  async registerEmail(rawEmail: string, password: string) {
+  async registerEmail(ip: string | undefined, rawEmail: string, password: string) {
+    // Per-IP cap BEFORE the 32MB scrypt + user create + email send, so a single
+    // IP can't burn CPU / spam accounts / email-bomb arbitrary addresses.
+    await this.ipLimit(ip, 'register', 10, 15 * 60);
     const email = this.normalizeEmail(rawEmail);
     const existing = await this.users.findByEmail(email);
     if (existing?.emailVerified) {
@@ -92,7 +125,8 @@ export class AuthService {
   }
 
   /** Step 2 of sign-up: check the OTP, mark verified, issue app tokens. */
-  async verifyEmail(rawEmail: string, code: string) {
+  async verifyEmail(ip: string | undefined, rawEmail: string, code: string) {
+    await this.ipLimit(ip, 'verify', 30, 15 * 60);
     const email = this.normalizeEmail(rawEmail);
     await enforceRateLimit(
       this.redis.client,
@@ -120,7 +154,10 @@ export class AuthService {
    * (re)send the OTP and tell the client to route to the verify screen instead
    * of issuing tokens.
    */
-  async loginEmail(rawEmail: string, password: string) {
+  async loginEmail(ip: string | undefined, rawEmail: string, password: string) {
+    // Per-IP cap across ALL accounts (blocks single-IP credential stuffing);
+    // the per-email cap below still protects a single targeted account.
+    await this.ipLimit(ip, 'login', 30, 15 * 60);
     const email = this.normalizeEmail(rawEmail);
     await enforceRateLimit(
       this.redis.client,
@@ -152,7 +189,8 @@ export class AuthService {
   }
 
   /** Resend the sign-up OTP (rate-limited). */
-  async resendEmailOtp(rawEmail: string) {
+  async resendEmailOtp(ip: string | undefined, rawEmail: string) {
+    await this.ipLimit(ip, 'resend', 10, 15 * 60);
     const email = this.normalizeEmail(rawEmail);
     const user = await this.users.findByEmail(email);
     // Only resend for accounts that still need verifying; stay vague otherwise
@@ -172,7 +210,8 @@ export class AuthService {
    * that never receives a code. (Trade-off: this allows email enumeration; the
    * per-email rate limit below blunts bulk probing.)
    */
-  async requestPasswordReset(rawEmail: string) {
+  async requestPasswordReset(ip: string | undefined, rawEmail: string) {
+    await this.ipLimit(ip, 'forgot', 15, 15 * 60);
     const email = this.normalizeEmail(rawEmail);
     await enforceRateLimit(
       this.redis.client,
@@ -211,7 +250,13 @@ export class AuthService {
    * sessions (so a leaked refresh token can't survive a reset), and issue a
    * fresh token pair (auto sign-in).
    */
-  async resetPassword(rawEmail: string, code: string, newPassword: string) {
+  async resetPassword(
+    ip: string | undefined,
+    rawEmail: string,
+    code: string,
+    newPassword: string,
+  ) {
+    await this.ipLimit(ip, 'reset', 30, 15 * 60);
     const email = this.normalizeEmail(rawEmail);
     await enforceRateLimit(
       this.redis.client,
@@ -287,6 +332,7 @@ export class AuthService {
     try {
       payload = await this.jwt.verifyAsync<RefreshTokenPayload>(refreshToken, {
         secret: this.refreshSecret,
+        algorithms: [JWT_ALG],
       });
     } catch {
       throw new UnauthorizedException('Invalid refresh token');
@@ -299,6 +345,13 @@ export class AuthService {
     if (!stored || stored !== this.hashToken(refreshToken)) {
       throw new UnauthorizedException('Refresh token revoked');
     }
+    // A blocked (or deleted) user must not be able to keep minting access
+    // tokens from a still-valid 30-day refresh token.
+    const user = await this.users.findById(payload.sub);
+    if (!user || user.status === 'BLOCKED') {
+      await this.redis.client.del(key);
+      throw new UnauthorizedException('Account is not active');
+    }
     await this.redis.client.del(key);
     return this.issueTokens(payload.sub);
   }
@@ -310,7 +363,8 @@ export class AuthService {
    * in the Firebase console: the client authenticates with Firebase, then
    * exchanges the resulting ID token here for app tokens + a persisted User.
    */
-  async loginWithFirebaseIdToken(idToken: string) {
+  async loginWithFirebaseIdToken(ip: string | undefined, idToken: string) {
+    await this.ipLimit(ip, 'firebase', 30, 60);
     if (!this.firebase.configured) {
       throw new UnauthorizedException('Firebase not configured on backend');
     }
@@ -321,11 +375,21 @@ export class AuthService {
       this.logger.warn(`Firebase verify failed: ${(err as Error).message}`);
       throw new UnauthorizedException('Invalid Firebase ID token');
     }
+    // Enforce the admin Mobile-OTP kill-switch on the SERVER, not just in the
+    // client UI: a paused phone-login must actually reject phone tokens.
+    const provider = decoded.firebase?.sign_in_provider;
+    if (provider === 'phone' && !this.flags.isEnabled(FEATURE_MOBILE_OTP, false)) {
+      throw new UnauthorizedException('Phone sign-in is currently disabled.');
+    }
     const rawPhone = decoded.phone_number ?? null;
-    const email = decoded.email ?? null;
+    // Only trust the email claim when Firebase says it's VERIFIED. Otherwise an
+    // attacker could assert an arbitrary email (e.g. via an email/password
+    // Firebase provider) and get auto-linked into a victim's existing account.
+    const email =
+      decoded.email && decoded.email_verified === true ? decoded.email : null;
     if (!rawPhone && !email) {
       throw new UnauthorizedException(
-        'Firebase token has neither phone nor email claim',
+        'Firebase token has no phone claim and no verified email',
       );
     }
     const phone = rawPhone ? this.normalizePhone(rawPhone) : null;
@@ -360,7 +424,7 @@ export class AuthService {
     try {
       const payload = await this.jwt.verifyAsync<RefreshTokenPayload>(
         refreshToken,
-        { secret: this.refreshSecret },
+        { secret: this.refreshSecret, algorithms: [JWT_ALG] },
       );
       await this.redis.client.del(this.refreshKey(payload.sub, payload.jti));
     } catch {

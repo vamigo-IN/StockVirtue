@@ -6,7 +6,9 @@ import {
   Param,
   Post,
   Query,
+  UseGuards,
 } from '@nestjs/common';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Exchange, isExchange } from '../common/exchange';
 import {
   BrokerageEstimateRequest,
@@ -322,6 +324,7 @@ export class MarketController {
   // Margin preview for an F&O position — SPAN + exposure as the broker
   // would compute it. Body shape mirrors SmartAPI's margin/v1/batch input.
   @Post('margin-preview')
+  @UseGuards(JwtAuthGuard)
   marginPreview(@Body() body: MarginPosition) {
     if (!body || typeof body !== 'object') {
       throw new BadRequestException('Invalid margin-preview body');
@@ -331,6 +334,7 @@ export class MarketController {
 
   // Brokerage / taxes preview for one or more orders.
   @Post('brokerage-preview')
+  @UseGuards(JwtAuthGuard)
   brokeragePreview(@Body() body: BrokerageEstimateRequest) {
     if (!body || !Array.isArray(body.orders) || body.orders.length === 0) {
       throw new BadRequestException(

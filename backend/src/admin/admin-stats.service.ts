@@ -2,10 +2,14 @@ import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { paiseToRupees } from '../common/money';
 import { PrismaService } from '../prisma/prisma.service';
+import { RedisService } from '../redis/redis.service';
 
 @Injectable()
 export class AdminStatsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly redis: RedisService,
+  ) {}
 
   /// One call → everything the dashboard's hero cards show. We bundle
   /// the queries in Promise.all so the page renders in a single DB
@@ -270,10 +274,23 @@ export class AdminStatsService {
   async setUserBlocked(userId: string, blocked: boolean) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new Error('User not found');
-    return this.prisma.user.update({
+    const updated = await this.prisma.user.update({
       where: { id: userId },
       data: { status: blocked ? 'BLOCKED' : 'ACTIVE' },
     });
+    // Blocking must be a hard cut-off: drop every refresh session so a
+    // still-valid 30-day refresh token can't keep minting access tokens.
+    // (HTTP requests + new socket connections are already rejected by the
+    // per-request/​per-connection status check.)
+    if (blocked) {
+      try {
+        const keys = await this.redis.client.keys(`refresh:${userId}:*`);
+        if (keys.length) await this.redis.client.del(...keys);
+      } catch {
+        // Best-effort — never let a Redis hiccup block the block.
+      }
+    }
+    return updated;
   }
 
   /// All rooms with member counts — /admin/rooms.

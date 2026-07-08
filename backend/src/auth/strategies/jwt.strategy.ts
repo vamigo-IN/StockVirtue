@@ -21,6 +21,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
       secretOrKey: jwt.accessSecret,
+      // Pin the signing algorithm so a token can't be accepted under a
+      // different alg (alg-confusion / "alg:none").
+      algorithms: ['HS256'],
     });
   }
 

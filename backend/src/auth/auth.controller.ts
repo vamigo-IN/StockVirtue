@@ -4,6 +4,7 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Ip,
   Patch,
   Post,
   UseGuards,
@@ -43,38 +44,38 @@ export class AuthController {
 
   @Post('email/register')
   @HttpCode(HttpStatus.OK)
-  registerEmail(@Body() dto: EmailRegisterDto) {
-    return this.auth.registerEmail(dto.email, dto.password);
+  registerEmail(@Ip() ip: string, @Body() dto: EmailRegisterDto) {
+    return this.auth.registerEmail(ip, dto.email, dto.password);
   }
 
   @Post('email/verify')
   @HttpCode(HttpStatus.OK)
-  verifyEmail(@Body() dto: EmailVerifyDto) {
-    return this.auth.verifyEmail(dto.email, dto.code);
+  verifyEmail(@Ip() ip: string, @Body() dto: EmailVerifyDto) {
+    return this.auth.verifyEmail(ip, dto.email, dto.code);
   }
 
   @Post('email/login')
   @HttpCode(HttpStatus.OK)
-  loginEmail(@Body() dto: EmailLoginDto) {
-    return this.auth.loginEmail(dto.email, dto.password);
+  loginEmail(@Ip() ip: string, @Body() dto: EmailLoginDto) {
+    return this.auth.loginEmail(ip, dto.email, dto.password);
   }
 
   @Post('email/resend')
   @HttpCode(HttpStatus.OK)
-  resendEmailOtp(@Body() dto: EmailResendDto) {
-    return this.auth.resendEmailOtp(dto.email);
+  resendEmailOtp(@Ip() ip: string, @Body() dto: EmailResendDto) {
+    return this.auth.resendEmailOtp(ip, dto.email);
   }
 
   @Post('email/forgot')
   @HttpCode(HttpStatus.OK)
-  forgotPassword(@Body() dto: EmailForgotDto) {
-    return this.auth.requestPasswordReset(dto.email);
+  forgotPassword(@Ip() ip: string, @Body() dto: EmailForgotDto) {
+    return this.auth.requestPasswordReset(ip, dto.email);
   }
 
   @Post('email/reset')
   @HttpCode(HttpStatus.OK)
-  resetPassword(@Body() dto: EmailResetDto) {
-    return this.auth.resetPassword(dto.email, dto.code, dto.newPassword);
+  resetPassword(@Ip() ip: string, @Body() dto: EmailResetDto) {
+    return this.auth.resetPassword(ip, dto.email, dto.code, dto.newPassword);
   }
 
   private serializeUser(user: User) {
@@ -108,8 +109,8 @@ export class AuthController {
 
   @Post('firebase/login')
   @HttpCode(HttpStatus.OK)
-  firebaseLogin(@Body() dto: FirebaseLoginDto) {
-    return this.auth.loginWithFirebaseIdToken(dto.idToken);
+  firebaseLogin(@Ip() ip: string, @Body() dto: FirebaseLoginDto) {
+    return this.auth.loginWithFirebaseIdToken(ip, dto.idToken);
   }
 
   @Post('refresh')
