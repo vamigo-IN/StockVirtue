@@ -102,11 +102,11 @@ export class AlertWatcherService implements OnModuleInit {
           data: { status: AlertStatus.TRIGGERED, triggeredAt: new Date() },
         });
         if (updated.count > 0) {
-          await this.notifications.sendToUser(a.userId, {
+          await this.notifications.create(a.userId, {
+            kind: 'price',
             title: `${a.symbol} ${a.condition === AlertCondition.ABOVE ? 'above' : 'below'} ₹${a.thresholdRupees.toFixed(2)}`,
             body: `Current price ₹${tick.ltp.toFixed(2)}`,
             data: {
-              kind: 'PRICE_ALERT',
               alertId: a.id,
               symbol: a.symbol,
               exchange: a.exchange,

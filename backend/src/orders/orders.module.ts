@@ -6,6 +6,7 @@ import { WalletModule } from '../wallet/wallet.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { AchievementsModule } from '../achievements/achievements.module';
 import { AutoSquareService } from './auto-square.service';
+import { CloseReminderService } from './close-reminder.service';
 import { ExpirySettlementService } from './expiry-settlement.service';
 import { LimitWatcherService } from './limit-watcher.service';
 import { OrdersController } from './orders.controller';
@@ -26,6 +27,7 @@ import { OrdersService } from './orders.service';
     LimitWatcherService,
     AutoSquareService,
     ExpirySettlementService,
+    CloseReminderService,
   ],
   exports: [
     OrdersService,

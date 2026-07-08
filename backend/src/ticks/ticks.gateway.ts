@@ -14,6 +14,7 @@ import { Server, Socket } from 'socket.io';
 import { Exchange, isExchange } from '../common/exchange';
 import { AppConfig } from '../config/configuration';
 import { ScripMasterService } from '../market/scrip-master.service';
+import { RealtimeBusService } from './realtime-bus.service';
 import { SmartApiWsService } from './smartapi-ws.service';
 import { SubscribeDto } from './dto/subscribe.dto';
 import { TickBusService } from './tick-bus.service';
@@ -48,6 +49,7 @@ export class TicksGateway
   constructor(
     private readonly upstream: SmartApiWsService,
     private readonly bus: TickBusService,
+    private readonly realtime: RealtimeBusService,
     private readonly scripMaster: ScripMasterService,
     private readonly jwt: JwtService,
     config: ConfigService<AppConfig, true>,
@@ -56,6 +58,16 @@ export class TicksGateway
   }
 
   onModuleInit() {
+    // Relay realtime notifications (from any fork, via Redis) to the target
+    // user's sockets — or to everyone for an admin broadcast.
+    this.realtime.onMessage((msg) => {
+      if (msg.userId === null) {
+        this.server.emit(msg.event, msg.payload);
+      } else {
+        this.server.to(`user:${msg.userId}`).emit(msg.event, msg.payload);
+      }
+    });
+
     this.bus.onTick((tick) => {
       const room = `${tick.exchange}:${tick.token}`;
       const entry = this.tokenIndex.get(room);
@@ -96,6 +108,9 @@ export class TicksGateway
         throw new Error('wrong token type');
       }
       client.data.userId = payload.sub;
+      // Personal room so services can push notifications to this user's
+      // sockets by id (see RealtimeBusService relay in onModuleInit).
+      await client.join(`user:${payload.sub}`);
     } catch (err) {
       this.logger.warn(
         `reject ${client.id}: invalid token (${(err as Error).message})`,

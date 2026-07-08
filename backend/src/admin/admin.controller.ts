@@ -34,6 +34,7 @@ import {
   loginPage,
   messageDetailBody,
   messagesBody,
+  notificationsBody,
   referralsBody,
   roomsBody,
   settingsBody,
@@ -42,6 +43,7 @@ import {
   usersBody,
 } from './admin-views';
 import { ContactStatus } from '@prisma/client';
+import { NotificationsService } from '../notifications/notifications.service';
 import { SiteService } from '../site/site.service';
 
 @Controller('admin')
@@ -56,6 +58,7 @@ export class AdminController {
     private readonly learn: LearnService,
     private readonly achievements: AchievementsService,
     private readonly site: SiteService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   // ─── Login / logout ──────────────────────────────────────────────
@@ -440,6 +443,69 @@ export class AdminController {
     await this.snapshots.runForAllUsers();
     await this.auditAction(req, 'snapshot.run');
     res.redirect('/admin');
+  }
+
+  // ─── Notifications: send a custom push ───────────────────────────
+
+  @Get('notifications')
+  @UseGuards(AdminGuard)
+  async notificationsPage(
+    @Req() req: Request,
+    @Res() res: Response,
+    @Query('sent') sentRaw?: string,
+  ) {
+    const adminEmail = await this.currentAdminEmail(req);
+    const sent =
+      sentRaw !== undefined ? { recipients: Number(sentRaw) || 0 } : null;
+    res.type('html').send(
+      layout({
+        title: 'Notifications',
+        current: 'notifications',
+        adminEmail,
+        body: notificationsBody({ sent }),
+      }),
+    );
+  }
+
+  /// Send a custom notification — to a single user or broadcast to all.
+  /// Lands in the recipient's inbox, pushes in real time + via FCM.
+  @Post('notifications/send')
+  @UseGuards(AdminGuard)
+  async sendNotification(
+    @Req() req: Request,
+    @Body()
+    body: { audience?: string; userId?: string; title?: string; body?: string },
+    @Res() res: Response,
+  ) {
+    const title = (body.title ?? '').trim();
+    const message = (body.body ?? '').trim();
+    if (!title || !message) {
+      res.redirect('/admin/notifications');
+      return;
+    }
+    if (body.audience === 'user' && body.userId?.trim()) {
+      const userId = body.userId.trim();
+      await this.notifications.create(userId, {
+        kind: 'admin',
+        title,
+        body: message,
+      });
+      await this.auditAction(req, 'notification.send', userId, title);
+      res.redirect('/admin/notifications?sent=1');
+      return;
+    }
+    const { recipients } = await this.notifications.broadcast({
+      kind: 'admin',
+      title,
+      body: message,
+    });
+    await this.auditAction(
+      req,
+      'notification.broadcast',
+      'all',
+      `${recipients} · ${title}`,
+    );
+    res.redirect(`/admin/notifications?sent=${recipients}`);
   }
 
   /// Toggle a user's blocked state. Wired to the Block / Unblock

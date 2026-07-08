@@ -177,10 +177,11 @@ export class AchievementsService {
     if (!badge) return;
 
     await this.notifications
-      .sendToUser(userId, {
+      .create(userId, {
+        kind: 'achievement',
         title: `Badge unlocked — ${badge.name}`,
         body: badge.hint,
-        data: { kind: 'ACHIEVEMENT_UNLOCKED', badgeId },
+        data: { badgeId },
       })
       .catch((err: unknown) => {
         const msg = err instanceof Error ? err.message : String(err);

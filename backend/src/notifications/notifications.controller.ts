@@ -22,6 +22,7 @@ import { rupeesToPaise } from '../common/money';
 import { ScripMasterService } from '../market/scrip-master.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AlertWatcherService } from './alert-watcher.service';
+import { NotificationsService } from './notifications.service';
 import { CreateAlertDto } from './dto/create-alert.dto';
 import { RegisterDeviceDto } from './dto/register-device.dto';
 import { UpdatePrefsDto } from './dto/update-prefs.dto';
@@ -33,7 +34,33 @@ export class NotificationsController {
     private readonly prisma: PrismaService,
     private readonly scripMaster: ScripMasterService,
     private readonly watcher: AlertWatcherService,
+    private readonly notifications: NotificationsService,
   ) {}
+
+  // ── Inbox ────────────────────────────────────────────────────────
+
+  /** The caller's notification history, newest first. */
+  @Get()
+  inbox(@CurrentUser() user: User) {
+    return this.notifications.list(user.id);
+  }
+
+  @Get('unread-count')
+  async unreadCount(@CurrentUser() user: User) {
+    return { count: await this.notifications.unreadCount(user.id) };
+  }
+
+  @Post('read-all')
+  async readAll(@CurrentUser() user: User) {
+    await this.notifications.markAllRead(user.id);
+    return { ok: true };
+  }
+
+  @Post(':id/read')
+  async read(@CurrentUser() user: User, @Param('id') id: string) {
+    await this.notifications.markRead(user.id, id);
+    return { ok: true };
+  }
 
   // ── Device tokens ────────────────────────────────────────────────
 

@@ -58,6 +58,7 @@ export interface LayoutOpts {
     | 'referrals'
     | 'learning'
     | 'messages'
+    | 'notifications'
     | 'health'
     | 'settings'
     | 'audit';
@@ -73,6 +74,7 @@ const NAV_ITEMS = [
   { key: 'referrals', label: 'Referrals', href: '/admin/referrals', icon: '↗' },
   { key: 'learning', label: 'Learning', href: '/admin/learning', icon: '◆' },
   { key: 'messages', label: 'Messages', href: '/admin/messages', icon: '✉' },
+  { key: 'notifications', label: 'Notifications', href: '/admin/notifications', icon: '✷' },
   { key: 'health', label: 'System health', href: '/admin/health', icon: '♥' },
   { key: 'settings', label: 'Settings', href: '/admin/settings', icon: '⚙' },
   { key: 'audit', label: 'Audit log', href: '/admin/audit', icon: '☰' },
@@ -776,6 +778,51 @@ function authMethodRow(
     </div>
     ${action}
   </div>`;
+}
+
+// ─── Notifications ──────────────────────────────────────────────────────
+
+export function notificationsBody(opts: {
+  sent: { recipients: number } | null;
+}): string {
+  const input =
+    'w-full bg-zinc-800/70 border border-zinc-700 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:border-indigo-500';
+  const label = 'block text-xs font-medium text-zinc-400 mb-1.5';
+  return `
+    <div class="max-w-2xl space-y-6">
+      ${
+        opts.sent
+          ? `<div class="bg-emerald-500/10 border border-emerald-500/30 rounded-xl p-4 text-sm text-emerald-300">Notification sent to ${opts.sent.recipients} recipient${opts.sent.recipients === 1 ? '' : 's'}.</div>`
+          : ''
+      }
+      <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">
+        <h2 class="font-bold mb-1">Send a push notification</h2>
+        <p class="text-xs text-zinc-500 mb-5">Delivers instantly to open apps over the realtime socket, stores a copy in each recipient's in-app inbox, and pushes via FCM for background delivery.</p>
+        <form method="post" action="/admin/notifications/send" class="space-y-4" onsubmit="return confirm('Send this notification now?');">
+          <div>
+            <label class="${label}">Audience</label>
+            <select name="audience" class="${input}">
+              <option value="all">All users</option>
+              <option value="user">A single user (by user id)</option>
+            </select>
+          </div>
+          <div>
+            <label class="${label}">User id <span class="text-zinc-600">(only when targeting a single user)</span></label>
+            <input name="userId" class="${input}" placeholder="clxxxxxxxx…" />
+          </div>
+          <div>
+            <label class="${label}">Title</label>
+            <input name="title" maxlength="80" required class="${input}" placeholder="e.g. New feature: options chain" />
+          </div>
+          <div>
+            <label class="${label}">Message</label>
+            <textarea name="body" maxlength="300" required rows="3" class="${input}" placeholder="What do you want to tell your users?"></textarea>
+          </div>
+          <button class="text-sm px-4 py-2 rounded-lg bg-indigo-500/20 text-indigo-200 border border-indigo-500/40 font-bold hover:bg-indigo-500/30">Send notification</button>
+        </form>
+      </div>
+    </div>
+  `;
 }
 
 // ─── Audit log ──────────────────────────────────────────────────────────

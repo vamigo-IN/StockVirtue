@@ -1,13 +1,32 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { DeviceToken, Order } from '@prisma/client';
+import { DeviceToken, Notification, Order, Prisma } from '@prisma/client';
 import { FirebaseAdminService } from '../firebase/firebase-admin.service';
 import { MailService } from '../mail/mail.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { RealtimeBusService } from '../ticks/realtime-bus.service';
 
 export interface NotificationPayload {
   title: string;
   body: string;
   data?: Record<string, string>;
+}
+
+/** Everything needed to create an inbox notification. */
+export interface CreateNotificationInput {
+  kind?: string; // info | order | price | achievement | reminder | admin
+  title: string;
+  body: string;
+  data?: Record<string, unknown>;
+}
+
+export interface SerializedNotification {
+  id: string;
+  kind: string;
+  title: string;
+  body: string;
+  data: unknown;
+  read: boolean;
+  createdAt: string;
 }
 
 @Injectable()
@@ -18,7 +37,147 @@ export class NotificationsService {
     private readonly firebase: FirebaseAdminService,
     private readonly prisma: PrismaService,
     private readonly mail: MailService,
+    private readonly realtime: RealtimeBusService,
   ) {}
+
+  // ─── Inbox: store + real-time + push ──────────────────────────────────
+
+  private serialize(n: Notification): SerializedNotification {
+    return {
+      id: n.id,
+      kind: n.kind,
+      title: n.title,
+      body: n.body,
+      data: n.data ?? null,
+      read: n.readAt !== null,
+      createdAt: n.createdAt.toISOString(),
+    };
+  }
+
+  /** FCM data values must be strings. Flatten the payload for the pipe. */
+  private toFcmData(
+    kind: string,
+    id: string,
+    data?: Record<string, unknown>,
+  ): Record<string, string> {
+    const out: Record<string, string> = { kind, notificationId: id };
+    if (data) {
+      for (const [k, v] of Object.entries(data)) {
+        if (v !== null && v !== undefined) out[k] = String(v);
+      }
+    }
+    return out;
+  }
+
+  /**
+   * The one place a user-facing notification is born: persist it to the inbox,
+   * deliver it in real time to any open socket, and push it via FCM for
+   * background delivery. Callers (order fills, alerts, achievements, reminders,
+   * admin) go through here so everything lands in the fetchable inbox.
+   */
+  async create(
+    userId: string,
+    input: CreateNotificationInput,
+  ): Promise<SerializedNotification> {
+    const kind = input.kind ?? 'info';
+    const row = await this.prisma.notification.create({
+      data: {
+        userId,
+        kind,
+        title: input.title,
+        body: input.body,
+        data: (input.data ?? undefined) as Prisma.InputJsonValue | undefined,
+      },
+    });
+    const serialized = this.serialize(row);
+    // Real-time (open app) — best-effort; never block on the bus.
+    this.realtime
+      .emitToUser(userId, 'notification', serialized)
+      .catch((err: unknown) =>
+        this.logger.warn(`realtime emit failed: ${(err as Error).message}`),
+      );
+    // Background push (closed app).
+    await this.sendToUser(userId, {
+      title: input.title,
+      body: input.body,
+      data: this.toFcmData(kind, row.id, input.data),
+    });
+    return serialized;
+  }
+
+  /** The caller's notification inbox, newest first. */
+  async list(userId: string, limit = 50): Promise<SerializedNotification[]> {
+    const rows = await this.prisma.notification.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+      take: Math.min(Math.max(limit, 1), 100),
+    });
+    return rows.map((r) => this.serialize(r));
+  }
+
+  async unreadCount(userId: string): Promise<number> {
+    return this.prisma.notification.count({
+      where: { userId, readAt: null },
+    });
+  }
+
+  async markRead(userId: string, id: string): Promise<void> {
+    await this.prisma.notification.updateMany({
+      where: { id, userId, readAt: null },
+      data: { readAt: new Date() },
+    });
+  }
+
+  async markAllRead(userId: string): Promise<void> {
+    await this.prisma.notification.updateMany({
+      where: { userId, readAt: null },
+      data: { readAt: new Date() },
+    });
+  }
+
+  /**
+   * Admin broadcast: store a copy in every user's inbox, signal all open
+   * sockets to refresh, and push via FCM. Returns the recipient count.
+   */
+  async broadcast(input: CreateNotificationInput): Promise<{ recipients: number }> {
+    const kind = input.kind ?? 'admin';
+    const users = await this.prisma.user.findMany({ select: { id: true } });
+    if (users.length > 0) {
+      await this.prisma.notification.createMany({
+        data: users.map((u) => ({
+          userId: u.id,
+          kind,
+          title: input.title,
+          body: input.body,
+          data: (input.data ?? undefined) as Prisma.InputJsonValue | undefined,
+        })),
+      });
+    }
+    // One realtime event to everyone; clients show it and refetch their inbox.
+    this.realtime
+      .broadcast('notification', {
+        id: null,
+        kind,
+        title: input.title,
+        body: input.body,
+        data: input.data ?? null,
+        read: false,
+        createdAt: new Date().toISOString(),
+      })
+      .catch(() => {});
+    // FCM to every registered device.
+    const tokens = await this.prisma.deviceToken.findMany();
+    await Promise.all(
+      tokens.map((t) =>
+        this.sendToToken(t, {
+          title: input.title,
+          body: input.body,
+          data: { kind },
+        }),
+      ),
+    );
+    return { recipients: users.length };
+  }
 
   async sendToUser(
     userId: string,
@@ -69,11 +228,11 @@ export class NotificationsService {
     const price = order.fillPriceP
       ? `₹${(Number(order.fillPriceP) / 100).toFixed(2)}`
       : '?';
-    await this.sendToUser(order.userId, {
+    await this.create(order.userId, {
+      kind: 'order',
       title: `${order.side} filled — ${order.symbol}`,
       body: `${order.quantity} @ ${price} (${order.type})`,
       data: {
-        kind: 'ORDER_FILLED',
         orderId: order.id,
         symbol: order.symbol,
         side: order.side,

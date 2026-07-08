@@ -143,6 +143,7 @@ model User {
   leaderboard LeaderboardEntry?
   deviceTokens DeviceToken[]
   priceAlerts  PriceAlert[]
+  notifications Notification[]
   portfolioSnapshots PortfolioSnapshot[]
   ownedRooms      Room[]       @relation("RoomOwner")
   roomMemberships RoomMember[]
@@ -169,6 +170,26 @@ model DeviceToken {
 
   @@index([userId])
   @@map("device_tokens")
+}
+
+/// Server-owned notification inbox. Every notification we surface (order fills,
+/// price alerts, achievements, market-close reminders, admin broadcasts) is
+/// stored here so the app can fetch its history and unread count. Real-time
+/// delivery rides the Socket.IO connection; FCM handles background delivery.
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  kind      String    @default("info") // info | order | price | achievement | reminder | admin
+  title     String
+  body      String
+  data      Json? // optional deep-link payload (e.g. { symbol })
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("notifications")
 }
 
 enum AlertCondition {

@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { AchievementsModule } from '../achievements/achievements.module';
 import { LearnModule } from '../learn/learn.module';
 import { MarketModule } from '../market/market.module';
+import { NotificationsModule } from '../notifications/notifications.module';
 import { PortfolioModule } from '../portfolio/portfolio.module';
 import { RedisModule } from '../redis/redis.module';
 import { SiteModule } from '../site/site.module';
@@ -22,6 +23,7 @@ import { AdminController } from './admin.controller';
     LearnModule,
     AchievementsModule,
     SiteModule,
+    NotificationsModule,
   ],
   controllers: [AdminController],
   providers: [
