@@ -81,13 +81,14 @@ export class RoomsController {
   /// `tournament=false` excludes them; omit for both.
   @Get('public')
   publicRooms(
+    @CurrentUser() user: User,
     @Query('tournament') tournamentRaw?: string,
     @Query('q') search?: string,
   ) {
     let tournament: boolean | undefined;
     if (tournamentRaw === 'true') tournament = true;
     else if (tournamentRaw === 'false') tournament = false;
-    return this.rooms.listPublic({ tournament, search });
+    return this.rooms.listPublic({ tournament, search, callerId: user.id });
   }
 
   /// Room detail + sorted member leaderboard. Membership-gated for

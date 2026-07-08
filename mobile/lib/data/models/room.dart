@@ -14,6 +14,9 @@ class RoomSummary {
   final int maxMembers;
   final int memberCount;
   final DateTime createdAt;
+  /// Whether I'm already a member of (or own) this room. Used to hide the
+  /// "Join" button on public/tournament rooms I've already joined.
+  final bool joined;
   /// My equity at join time. Null for public-list rows where I'm not a
   /// member yet — the list screen falls back to "—" in that case.
   final double? myBaseline;
@@ -34,6 +37,7 @@ class RoomSummary {
     required this.maxMembers,
     required this.memberCount,
     required this.createdAt,
+    this.joined = false,
     required this.myBaseline,
     required this.returnPct,
   });
@@ -52,6 +56,7 @@ class RoomSummary {
         memberCount: (json['memberCount'] as num?)?.toInt() ?? 0,
         createdAt:
             _parseDate(json['createdAt']) ?? DateTime.fromMillisecondsSinceEpoch(0),
+        joined: json['joined'] as bool? ?? false,
         myBaseline: (json['myBaseline'] as num?)?.toDouble(),
         returnPct: (json['returnPct'] as num?)?.toDouble(),
       );

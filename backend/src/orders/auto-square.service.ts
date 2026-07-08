@@ -7,6 +7,7 @@ import {
   forwardRef,
 } from '@nestjs/common';
 import {
+  OrderOrigin,
   OrderProduct,
   OrderSide,
   OrderStatus,
@@ -114,6 +115,8 @@ export class AutoSquareService implements OnModuleInit, OnModuleDestroy {
           quantity: closable,
           type: OrderType.MARKET,
           product: OrderProduct.INTRADAY,
+          origin: OrderOrigin.AUTO_SQUARE,
+          forceFill: true,
         });
         result.squared += 1;
       } catch (err) {

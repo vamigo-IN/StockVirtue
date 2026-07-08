@@ -56,6 +56,7 @@ export function serializeOrder(o: Order) {
     side: o.side,
     type: o.type,
     product: o.product,
+    origin: o.origin,
     quantity: o.quantity,
     limitPrice,
     triggerPrice,

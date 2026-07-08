@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import {
   Order,
+  OrderOrigin,
   OrderProduct,
   OrderSide,
   OrderStatus,
@@ -41,6 +42,13 @@ interface PlaceOrderInput {
   triggerPrice?: number;
   /** rupees, required when type === TRAILING_STOP */
   trailAmount?: number;
+  /** Who created this order. Defaults to USER; system square-off /
+   *  settlement jobs pass AUTO_SQUARE / EXPIRY. */
+  origin?: OrderOrigin;
+  /** System square-off / settlement: fill a MARKET order immediately at the
+   *  last price even when the market is closed, instead of queueing it as a
+   *  pending after-market order. */
+  forceFill?: boolean;
 }
 
 @Injectable()
@@ -150,7 +158,11 @@ export class OrdersService {
     // When it's CLOSED, we queue an after-market order (AMO): it sits PENDING
     // and the tick-watcher fills it at the open price on the first live tick
     // when the market next opens. (Users wanting a specific price use a LIMIT.)
-    if (!this.isTradingOpen(inst.exchange)) {
+    //
+    // forceFill bypasses the AMO queue for system square-off / expiry
+    // settlement: those must settle instantly at the last (close) price, never
+    // sit PENDING (a settlement you could cancel isn't a settlement).
+    if (!input.forceFill && !this.isTradingOpen(inst.exchange)) {
       return this.placePendingMarket({ ...input, type, inst });
     }
     return this.placeMarket({ ...input, type, inst });
@@ -344,6 +356,7 @@ export class OrdersService {
           side: input.side,
           type: OrderType.MARKET,
           product,
+          origin: input.origin ?? OrderOrigin.USER,
           quantity: input.quantity,
           fillPriceP,
           feesP,
@@ -1130,6 +1143,13 @@ export class OrdersService {
       }
       if (order.status !== OrderStatus.PENDING) {
         throw new BadRequestException('Only pending orders can be cancelled');
+      }
+      // System square-off / expiry settlement orders are never user-cancellable
+      // (they should already be FILLED, but guard here for defence in depth).
+      if (order.origin !== OrderOrigin.USER) {
+        throw new BadRequestException(
+          'Automatic square-off orders cannot be cancelled.',
+        );
       }
       if (order.shortIntent) {
         // Release the place-time margin reservation.

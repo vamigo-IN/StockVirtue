@@ -296,7 +296,9 @@ class _PublicRoomsTab extends ConsumerWidget {
                   room: r,
                   onTap: () => onOpen(r.id),
                   publicLayout: true,
-                  onJoin: () => onJoin(r.id),
+                  // Already a member (or owner)? Open it instead of offering
+                  // to join. _RoomCard hides the Join button when onJoin is null.
+                  onJoin: r.joined ? null : () => onJoin(r.id),
                 ),
                 const SizedBox(height: 10),
               ],

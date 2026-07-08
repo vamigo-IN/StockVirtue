@@ -6,7 +6,7 @@ import {
   OnModuleInit,
   forwardRef,
 } from '@nestjs/common';
-import { OrderSide, OrderStatus, OrderType } from '@prisma/client';
+import { OrderOrigin, OrderSide, OrderStatus, OrderType } from '@prisma/client';
 import { Exchange, isExchange } from '../common/exchange';
 import { ScripMasterService } from '../market/scrip-master.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -162,6 +162,10 @@ export class ExpirySettlementService
             side,
             quantity: qty,
             product: p.product,
+            origin: OrderOrigin.EXPIRY,
+            // Settle instantly at the last (close) price — never leave a
+            // cancellable pending order sitting overnight.
+            forceFill: true,
           });
           result.closed += 1;
         } catch (err) {

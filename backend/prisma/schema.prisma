@@ -57,6 +57,15 @@ enum OrderProduct {
   INTRADAY // MIS: square-off same day, lower STT, brokerage applies. TODO: auto-square.
 }
 
+/// Where an order came from. USER orders are cancellable while PENDING;
+/// system-generated square-off / settlement orders are not — they always
+/// fill immediately and must never be shown a Cancel action.
+enum OrderOrigin {
+  USER
+  AUTO_SQUARE // intraday (MIS) end-of-day square-off
+  EXPIRY // F&O expiry-day settlement
+}
+
 /// Admin-toggleable feature flags. Currently gates which auth methods the
 /// mobile app offers — e.g. pausing Mobile OTP login. The public
 /// /auth/config endpoint reads these; the admin panel writes them. Rows are
@@ -254,6 +263,7 @@ model Order {
   side          OrderSide
   type          OrderType    @default(MARKET)
   product       OrderProduct @default(DELIVERY)
+  origin        OrderOrigin  @default(USER)
   quantity      Int
   limitPriceP   BigInt?
   triggerPriceP BigInt?

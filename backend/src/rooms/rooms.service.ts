@@ -254,7 +254,7 @@ export class RoomsService {
     const totals = await this.portfolio.computeTotalsP(userId);
     return {
       rooms: memberships.map((m) => ({
-        ...this.toListItem(m.room, m.baselineEquityP),
+        ...this.toListItem(m.room, m.baselineEquityP, true),
         joinedAt: m.joinedAt.toISOString(),
         returnPct: this.returnPct(totals.totalEquityP, m.baselineEquityP),
       })),
@@ -264,7 +264,11 @@ export class RoomsService {
   /// Browseable public rooms. Tournaments are surfaced first, then
   /// evergreen public rooms, both newest-first. Closed tournaments
   /// (endsAt in the past) drop off the list.
-  async listPublic(opts: { tournament?: boolean; search?: string }) {
+  async listPublic(opts: {
+    tournament?: boolean;
+    search?: string;
+    callerId?: string;
+  }) {
     const now = new Date();
     const where: Prisma.RoomWhereInput = {
       isPublic: true,
@@ -293,8 +297,27 @@ export class RoomsService {
       ],
       take: 100,
     });
+    // Which of these rooms the caller already belongs to — one query, so the
+    // client can hide "Join" on rooms they've joined (or own).
+    let joinedIds = new Set<string>();
+    if (opts.callerId && rooms.length > 0) {
+      const memberships = await this.prisma.roomMember.findMany({
+        where: {
+          userId: opts.callerId,
+          roomId: { in: rooms.map((r) => r.id) },
+        },
+        select: { roomId: true },
+      });
+      joinedIds = new Set(memberships.map((m) => m.roomId));
+    }
     return {
-      rooms: rooms.map((r) => this.toListItem(r, null)),
+      rooms: rooms.map((r) =>
+        this.toListItem(
+          r,
+          null,
+          joinedIds.has(r.id) || r.ownerId === opts.callerId,
+        ),
+      ),
     };
   }
 
@@ -408,6 +431,7 @@ export class RoomsService {
       include: { _count: { select: { members: true } } };
     }>,
     myBaselineP: bigint | null,
+    joined = false,
   ) {
     return {
       id: room.id,
@@ -422,6 +446,9 @@ export class RoomsService {
       maxMembers: room.maxMembers,
       memberCount: room._count.members,
       createdAt: room.createdAt.toISOString(),
+      // Whether the caller is already a member — lets the client hide the
+      // "Join" button on rooms they've already joined (or own).
+      joined,
       myBaseline:
         myBaselineP === null ? null : paiseToRupees(myBaselineP),
     };
