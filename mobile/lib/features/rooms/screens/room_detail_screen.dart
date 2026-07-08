@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../../../core/config.dart';
 import '../../../core/error_mapper.dart';
 import '../../../core/market_hours.dart';
 import '../../../core/money_format.dart';
@@ -452,7 +453,8 @@ class _CodeRow extends StatelessWidget {
               await SharePlus.instance.share(
                 ShareParams(
                   text: 'Join me on StockVirtue! Open the app → Rooms → '
-                      'Join by code and enter ${room.code}',
+                      'Join by code and enter ${room.code}'
+                      '\n\nGet the app: $kPlayStoreUrl',
                 ),
               );
             },

@@ -8,6 +8,8 @@
 /// emit here matches what the redemption endpoint will look up.
 library;
 
+import '../../core/config.dart';
+
 String referralCodeFor(String userId) {
   if (userId.isEmpty) return 'SV-STOCKV';
   // FNV-1a 32-bit
@@ -26,5 +28,5 @@ String referralCodeFor(String userId) {
 String referralInviteMessage(String code) {
   return 'Join me on StockVirtue — practise trading the Indian markets with '
       'virtual ₹10,00,000 of capital. Use my invite code $code when you '
-      'sign up.';
+      'sign up.\n\nGet the app: $kPlayStoreUrl';
 }

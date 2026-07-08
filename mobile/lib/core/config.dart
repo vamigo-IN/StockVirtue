@@ -16,3 +16,11 @@ String defaultApiBaseUrl() {
   if (fromEnv.isNotEmpty) return fromEnv;
   return 'https://api.stockvirtue.com/api';
 }
+
+/// Android package id for the published app.
+const String kAndroidPackageId = 'com.vamigo.stockvirtue';
+
+/// Google Play listing for the app. Shared by the "Rate us" tile, the invite
+/// share message, and room-share messages so the link lives in one place.
+const String kPlayStoreUrl =
+    'https://play.google.com/store/apps/details?id=$kAndroidPackageId';

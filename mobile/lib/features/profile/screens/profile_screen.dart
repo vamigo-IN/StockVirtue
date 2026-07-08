@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 
+import '../../../core/config.dart';
 import '../../../core/error_mapper.dart';
 import '../../../core/theme_provider.dart';
 import '../../../data/models/user.dart';
@@ -66,6 +68,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           const _GlossaryTile(),
           const SizedBox(height: 14),
           _PreferencesCard(),
+          const SizedBox(height: 14),
+          const _RateUsTile(),
           const SizedBox(height: 16),
           _DangerZone(
             onLogout: () => _logout(context, ref),
@@ -1090,6 +1094,82 @@ class _SettingsTile extends StatelessWidget {
 /// Quick link to the in-app glossary — definitions for order types, F&O
 /// jargon, greeks, indicators. Curated client-side; updates ship with app
 /// releases.
+/// Opens the app's Google Play listing so users can leave a rating/review.
+/// Sits just above the log-out button in the profile list.
+class _RateUsTile extends StatelessWidget {
+  const _RateUsTile();
+
+  Future<void> _openStore(BuildContext context) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final uri = Uri.parse(kPlayStoreUrl);
+    final ok = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    if (!ok) {
+      messenger.showSnackBar(
+        const SnackBar(content: Text("Couldn't open the Play Store.")),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    const amber = Color(0xFFF59E0B);
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: () => _openStore(context),
+      child: Ink(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+        decoration: BoxDecoration(
+          color: scheme.surfaceContainerHighest.withValues(alpha: 0.4),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: scheme.outlineVariant.withValues(alpha: 0.3),
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: amber.withValues(alpha: 0.18),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(Icons.star_rounded, color: amber, size: 20),
+            ),
+            const SizedBox(width: 12),
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Rate us on Play Store',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 14,
+                    ),
+                  ),
+                  SizedBox(height: 2),
+                  Text(
+                    'Enjoying StockVirtue? Leave a review',
+                    style: TextStyle(fontSize: 11.5),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              Icons.open_in_new,
+              size: 16,
+              color: scheme.onSurface.withValues(alpha: 0.5),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _GlossaryTile extends StatelessWidget {
   const _GlossaryTile();
 

@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../../core/money_format.dart';
 import '../../../core/preferences.dart';
 import '../../../data/models/order.dart';
 import '../../auth/auth_controller.dart';
@@ -52,22 +51,6 @@ class SettingsScreen extends ConsumerWidget {
                   (OrderProduct.intraday, 'Intraday (MIS)'),
                 ],
                 onChanged: notifier.setDefaultProduct,
-              ),
-            ],
-          ),
-          const SizedBox(height: 18),
-          _SectionTitle('Display'),
-          _SettingsCard(
-            children: [
-              _ChoiceRow<CurrencyFormat>(
-                icon: Icons.currency_rupee,
-                label: 'Currency format',
-                hint: 'How money values render across the app',
-                value: prefs.currencyFormat,
-                options: [
-                  for (final f in CurrencyFormat.values) (f, f.label),
-                ],
-                onChanged: notifier.setCurrencyFormat,
               ),
             ],
           ),

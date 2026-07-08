@@ -81,24 +81,6 @@ class _MarketStatusCardState extends ConsumerState<MarketStatusCard> {
                             const SizedBox(width: 6),
                             const _LivePill(),
                           ],
-                          const SizedBox(width: 8),
-                          Flexible(
-                            child: Text(
-                              '· NSE / BSE',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 11.5,
-                                color: scheme.onSurface.withValues(alpha: 0.55),
-                              ),
-                            ),
-                          ),
-                          // Tiny chip flagging where the holiday list came
-                          // from — "NSE" (live API) vs "CACHED" (bundled
-                          // fallback). This is data provenance, NOT a market
-                          // live indicator (that's the _LivePill above).
-                          const SizedBox(width: 6),
-                          const _HolidaySourceBadge(),
                         ],
                       ),
                       const SizedBox(height: 3),
@@ -153,42 +135,6 @@ extension _MarketStateColor on MarketState {
         MarketStateKind.holiday => const Color(0xFFEC4899),
         MarketStateKind.closed => const Color(0xFF94A3B8),
       };
-}
-
-/// Tiny chip that flags whether the holiday list backing the
-/// market-status card came from NSE's live API or our curated
-/// fallback. Useful in dev to confirm the live fetch is actually
-/// reaching upstream; in prod it doubles as a "data verified" cue.
-class _HolidaySourceBadge extends ConsumerWidget {
-  const _HolidaySourceBadge();
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final async = ref.watch(liveMarketHolidaysProvider);
-    final payload = async.value;
-    // While the fetch is in flight we render nothing — the parent row
-    // already gives meaningful info; an empty chip would just be noise.
-    if (payload == null) return const SizedBox.shrink();
-    final fromNse = payload.source == 'nse';
-    final color = fromNse ? const Color(0xFF22C55E) : const Color(0xFFF59E0B);
-    final label = fromNse ? 'NSE' : 'CACHED';
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.16),
-        borderRadius: BorderRadius.circular(4),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          color: color,
-          fontSize: 8.5,
-          fontWeight: FontWeight.w900,
-          letterSpacing: 0.6,
-        ),
-      ),
-    );
-  }
 }
 
 /// Small green "LIVE" pill — rendered only while the regular session is open.

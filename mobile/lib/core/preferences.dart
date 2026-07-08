@@ -7,20 +7,11 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../data/models/order.dart';
 import '../features/notifications/notifications_provider.dart';
-import 'money_format.dart';
 import 'secure_storage.dart';
-
-extension CurrencyFormatX on CurrencyFormat {
-  String get label => switch (this) {
-        CurrencyFormat.full => 'Full (₹12,34,567.89)',
-        CurrencyFormat.abbreviated => 'Abbreviated (₹12.35 L / ₹1.23 Cr)',
-      };
-}
 
 class AppPreferences {
   final OrderType defaultOrderType;
   final OrderProduct defaultProduct;
-  final CurrencyFormat currencyFormat;
   // Notification gating — keyed by AppNotificationKind so future kinds can
   // default to "on" without a migration.
   final Set<AppNotificationKind> mutedKinds;
@@ -28,7 +19,6 @@ class AppPreferences {
   const AppPreferences({
     this.defaultOrderType = OrderType.market,
     this.defaultProduct = OrderProduct.delivery,
-    this.currencyFormat = CurrencyFormat.full,
     this.mutedKinds = const <AppNotificationKind>{},
   });
 
@@ -37,27 +27,23 @@ class AppPreferences {
   AppPreferences copyWith({
     OrderType? defaultOrderType,
     OrderProduct? defaultProduct,
-    CurrencyFormat? currencyFormat,
     Set<AppNotificationKind>? mutedKinds,
   }) =>
       AppPreferences(
         defaultOrderType: defaultOrderType ?? this.defaultOrderType,
         defaultProduct: defaultProduct ?? this.defaultProduct,
-        currencyFormat: currencyFormat ?? this.currencyFormat,
         mutedKinds: mutedKinds ?? this.mutedKinds,
       );
 
   Map<String, dynamic> toJson() => {
         'defaultOrderType': defaultOrderType.name,
         'defaultProduct': defaultProduct.name,
-        'currencyFormat': currencyFormat.name,
         'mutedKinds': [for (final k in mutedKinds) k.name],
       };
 
   factory AppPreferences.fromJson(Map<String, dynamic> json) {
     final orderName = json['defaultOrderType'] as String?;
     final productName = json['defaultProduct'] as String?;
-    final fmtName = json['currencyFormat'] as String?;
     final muted = (json['mutedKinds'] as List?)?.cast<String>() ?? const [];
     return AppPreferences(
       defaultOrderType: OrderType.values.firstWhere(
@@ -67,10 +53,6 @@ class AppPreferences {
       defaultProduct: OrderProduct.values.firstWhere(
         (p) => p.name == productName,
         orElse: () => OrderProduct.delivery,
-      ),
-      currencyFormat: CurrencyFormat.values.firstWhere(
-        (c) => c.name == fmtName,
-        orElse: () => CurrencyFormat.full,
       ),
       mutedKinds: {
         for (final name in muted)
@@ -127,9 +109,6 @@ class PreferencesNotifier extends AsyncNotifier<AppPreferences> {
   Future<void> setDefaultProduct(OrderProduct p) =>
       _update((prev) => prev.copyWith(defaultProduct: p));
 
-  Future<void> setCurrencyFormat(CurrencyFormat fmt) =>
-      _update((p) => p.copyWith(currencyFormat: fmt));
-
   Future<void> setMuted(AppNotificationKind kind, bool muted) =>
       _update((p) {
         final next = Set<AppNotificationKind>.of(p.mutedKinds);
@@ -157,7 +136,7 @@ final preferencesProvider =
 
 /// Synchronous, default-resolved view — every consumer treats prefs as
 /// "always loaded" so we don't ladder AsyncValue.when() through every
-/// widget that just needs to know which currency format to render.
+/// widget that just needs the default order type / product.
 final prefsProvider = Provider<AppPreferences>((ref) {
   return ref.watch(preferencesProvider).value ??
       const AppPreferences();
