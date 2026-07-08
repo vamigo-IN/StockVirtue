@@ -23,7 +23,7 @@ export class PortfolioService {
 
   async getPortfolio(userId: string) {
     const [wallet, allPositions] = await Promise.all([
-      this.wallet.getOrCreate(userId),
+      this.wallet.get(userId),
       this.prisma.position.findMany({
         where: { userId },
         orderBy: { openedAt: 'asc' },
@@ -134,7 +134,7 @@ export class PortfolioService {
     marginReservedP: bigint;
   }> {
     const [wallet, allPositions] = await Promise.all([
-      this.wallet.getOrCreate(userId),
+      this.wallet.get(userId),
       this.prisma.position.findMany({ where: { userId } }),
     ]);
     const openPositions = allPositions.filter((p) => p.quantity !== 0);

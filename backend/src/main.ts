@@ -2,6 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
 import { Logger, RequestMethod, ValidationPipe } from '@nestjs/common';
 import helmet from 'helmet';
+import compression from 'compression';
 import { AppModule } from './app.module';
 import { AppConfig } from './config/configuration';
 import { AllExceptionsFilter } from './common/all-exceptions.filter';
@@ -18,6 +19,10 @@ async function bootstrap() {
   // helmet's hardening (HSTS, X-Frame-Options, no-sniff, etc.) without
   // the breakage.
   app.use(helmet({ contentSecurityPolicy: false }));
+  // gzip/deflate JSON responses. The mobile app pulls large payloads
+  // (portfolios, option chains, leaderboards, scanners) over mobile networks;
+  // compressing them cuts transfer size ~70-85% for a big latency win.
+  app.use(compression());
   app.enableCors({ origin: true, credentials: true });
   // In production the app sits behind a TLS-terminating reverse proxy
   // (api.stockvirtue.com). Trust the first proxy hop so req.ip and the

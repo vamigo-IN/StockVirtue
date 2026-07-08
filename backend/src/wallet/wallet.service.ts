@@ -18,6 +18,18 @@ export class WalletService {
   }
 
   /**
+   * Read-only wallet fetch for read/analytics paths (portfolio totals, room &
+   * leaderboard loops). Uses findUnique so a plain read doesn't take a write
+   * lock via upsert on every call (which was amplified N× across the rooms /
+   * leaderboard member loops). Creates the row only on a user's genuine first
+   * access, then every subsequent read is a pure SELECT.
+   */
+  async get(userId: string): Promise<Wallet> {
+    const existing = await this.prisma.wallet.findUnique({ where: { userId } });
+    return existing ?? this.getOrCreate(userId);
+  }
+
+  /**
    * Returns the wallet locked `FOR UPDATE` for the remainder of the
    * transaction, so concurrent money mutations for the same user serialise.
    * This is what makes the order engine's read-modify-write balance updates

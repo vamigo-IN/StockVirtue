@@ -8,6 +8,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Exchange, isExchange } from '../common/exchange';
 import {
@@ -41,6 +42,11 @@ const OI_BUILDUP_TYPES: OIBuildupType[] = [
   'Short Covering',
 ];
 
+// Every market route proxies the shared single SmartAPI broker account, so a
+// flood from one IP can exhaust that budget and stall trading/portfolio for
+// everyone. Cap per-IP well above a real user's browsing rate; the heaviest
+// routes tighten this further below.
+@Throttle({ default: { limit: 120, ttl: 60_000 } })
 @Controller('market')
 export class MarketController {
   constructor(

@@ -2,8 +2,11 @@
 .env
 .env.local
 .env.*.local
+.env.*
 **/.env
+**/.env.*
 !**/.env.example
+!.env.example
 *.pem
 *.key
 # Android release-signing material — NEVER commit (keep the .example).

@@ -17,8 +17,10 @@ export class RedisHealthIndicator {
         return ind.down({ message: `unexpected response: ${pong}` });
       }
       return ind.up();
-    } catch (err) {
-      return ind.down({ message: (err as Error).message });
+    } catch {
+      // /api/health is public — don't echo the driver error (it embeds the
+      // internal Redis host:port, e.g. "ECONNREFUSED 127.0.0.1:6379").
+      return ind.down({ message: 'unreachable' });
     }
   }
 }
