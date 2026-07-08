@@ -54,6 +54,16 @@ export interface SiteConfig {
   contactTo: string;
 }
 
+/// Traffic-monitoring & abuse-detection subsystem. `enabled` is a kill-switch;
+/// `sampleRate` = 1-in-N sampling for the raw request log (errors/flagged are
+/// always kept); `autoBlock` gates automatic IP blocking (ships OFF so it runs
+/// detect-only until thresholds are tuned against real traffic).
+export interface MonitoringConfig {
+  enabled: boolean;
+  sampleRate: number;
+  autoBlock: boolean;
+}
+
 export interface AppConfig {
   nodeEnv: NodeEnv;
   host: string;
@@ -66,6 +76,7 @@ export interface AppConfig {
   smtp: SmtpConfig;
   admin: AdminConfig;
   site: SiteConfig;
+  monitoring: MonitoringConfig;
 }
 
 export default (): AppConfig => ({
@@ -126,5 +137,13 @@ export default (): AppConfig => ({
       process.env.SITE_CONTACT_TO ||
       process.env.ADMIN_EMAIL ||
       'admin@stockvirtue.local',
+  },
+  monitoring: {
+    enabled: (process.env.MONITORING_ENABLED ?? 'true') !== 'false',
+    sampleRate: Math.max(
+      1,
+      parseInt(process.env.MONITORING_SAMPLE_RATE ?? '50', 10),
+    ),
+    autoBlock: (process.env.MONITORING_AUTO_BLOCK ?? 'false') === 'true',
   },
 });

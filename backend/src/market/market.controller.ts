@@ -155,9 +155,7 @@ export class MarketController {
     const other: Exchange = exchange === 'NSE' ? 'BSE' : 'NSE';
     const inst = this.scripMaster.getEquity(symbol, other);
     if (!inst) {
-      throw new BadRequestException(
-        `${symbol} is not listed on ${other}`,
-      );
+      throw new BadRequestException(`${symbol} is not listed on ${other}`);
     }
     return {
       symbol: inst.name,
@@ -263,10 +261,7 @@ export class MarketController {
 
   // Equity scanners — `type` is one of `volume`, `52w-high`, `52w-low`.
   @Get('scanners')
-  scanners(
-    @Query('type') typeRaw = 'volume',
-    @Query('limit') limitRaw = '15',
-  ) {
+  scanners(@Query('type') typeRaw = 'volume', @Query('limit') limitRaw = '15') {
     const allowed = ['volume', '52w-high', '52w-low'] as const;
     if (!(allowed as readonly string[]).includes(typeRaw)) {
       throw new BadRequestException(`Invalid scanner type "${typeRaw}"`);

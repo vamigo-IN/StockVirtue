@@ -103,7 +103,11 @@ export class AuthService {
    * Verified accounts are rejected so an attacker can't reset a live account's
    * password (they'd still need the OTP, but we fail fast and clearly).
    */
-  async registerEmail(ip: string | undefined, rawEmail: string, password: string) {
+  async registerEmail(
+    ip: string | undefined,
+    rawEmail: string,
+    password: string,
+  ) {
     // Per-IP cap BEFORE the 32MB scrypt + user create + email send, so a single
     // IP can't burn CPU / spam accounts / email-bomb arbitrary addresses.
     await this.ipLimit(ip, 'register', 10, 15 * 60);
@@ -378,7 +382,10 @@ export class AuthService {
     // Enforce the admin Mobile-OTP kill-switch on the SERVER, not just in the
     // client UI: a paused phone-login must actually reject phone tokens.
     const provider = decoded.firebase?.sign_in_provider;
-    if (provider === 'phone' && !this.flags.isEnabled(FEATURE_MOBILE_OTP, false)) {
+    if (
+      provider === 'phone' &&
+      !this.flags.isEnabled(FEATURE_MOBILE_OTP, false)
+    ) {
       throw new UnauthorizedException('Phone sign-in is currently disabled.');
     }
     const rawPhone = decoded.phone_number ?? null;

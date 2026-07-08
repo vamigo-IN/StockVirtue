@@ -34,6 +34,8 @@ import {
   loginPage,
   messageDetailBody,
   messagesBody,
+  monitoringActorBody,
+  monitoringBody,
   notificationsBody,
   referralsBody,
   roomsBody,
@@ -42,7 +44,8 @@ import {
   userDetailBody,
   usersBody,
 } from './admin-views';
-import { ContactStatus } from '@prisma/client';
+import { AbuseStatus, ContactStatus } from '@prisma/client';
+import { MonitoringService } from '../monitoring/monitoring.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { SiteService } from '../site/site.service';
 
@@ -59,6 +62,7 @@ export class AdminController {
     private readonly achievements: AchievementsService,
     private readonly site: SiteService,
     private readonly notifications: NotificationsService,
+    private readonly monitoringSvc: MonitoringService,
   ) {}
 
   // ─── Login / logout ──────────────────────────────────────────────
@@ -97,7 +101,7 @@ export class AdminController {
         ip: req.ip ?? null,
       });
       const back = (body.back ?? '/admin').startsWith('/admin')
-        ? body.back ?? '/admin'
+        ? (body.back ?? '/admin')
         : '/admin';
       res.redirect(back);
     } catch (err) {
@@ -506,6 +510,128 @@ export class AdminController {
       `${recipients} · ${title}`,
     );
     res.redirect(`/admin/notifications?sent=${recipients}`);
+  }
+
+  // ─── Monitoring / Traffic ────────────────────────────────────────
+
+  @Get('monitoring')
+  @UseGuards(AdminGuard)
+  async monitoring(@Req() req: Request, @Res() res: Response) {
+    const adminEmail = await this.currentAdminEmail(req);
+    const [overview, topEndpoints, topIps, topUsers, flags, recentRaw] =
+      await Promise.all([
+        this.monitoringSvc.overview(),
+        this.monitoringSvc.topEndpoints(),
+        this.monitoringSvc.topActors('ip'),
+        this.monitoringSvc.topActors('user'),
+        this.monitoringSvc.recentFlags(),
+        this.monitoringSvc.recentRequests(60),
+      ]);
+    const recent = recentRaw
+      .map((s) => {
+        try {
+          const o = JSON.parse(s) as Record<string, unknown>;
+          return {
+            ts: new Date(o.t as number),
+            method: String(o.method),
+            route: String(o.route),
+            status: Number(o.status),
+            latencyMs: Number(o.ms),
+            userId: (o.userId as string) ?? null,
+            ip: (o.ip as string) ?? null,
+          };
+        } catch {
+          return null;
+        }
+      })
+      .filter((x): x is NonNullable<typeof x> => x !== null);
+    res.type('html').send(
+      layout({
+        title: 'Traffic',
+        current: 'monitoring',
+        adminEmail,
+        body: monitoringBody({
+          overview,
+          topEndpoints,
+          topIps,
+          topUsers,
+          flags,
+          recent,
+        }),
+      }),
+    );
+  }
+
+  @Get('monitoring/:kind/:subject')
+  @UseGuards(AdminGuard)
+  async monitoringActor(
+    @Req() req: Request,
+    @Res() res: Response,
+    @Param('kind') kind: string,
+    @Param('subject') subject: string,
+  ) {
+    const adminEmail = await this.currentAdminEmail(req);
+    const k = kind === 'user' ? 'user' : 'ip';
+    const detail = await this.monitoringSvc.actorDetail(k, subject);
+    res.type('html').send(
+      layout({
+        title: 'Traffic',
+        current: 'monitoring',
+        adminEmail,
+        body: monitoringActorBody({
+          kind: k,
+          subject,
+          blocked: detail.blocked,
+          flags: detail.flags,
+          logs: detail.logs,
+        }),
+      }),
+    );
+  }
+
+  @Post('monitoring/block-ip')
+  @UseGuards(AdminGuard)
+  async blockIp(
+    @Req() req: Request,
+    @Body() body: { ip?: string },
+    @Res() res: Response,
+  ) {
+    const ip = (body.ip ?? '').trim();
+    if (ip) {
+      await this.monitoringSvc.blockIp(ip);
+      await this.auditAction(req, 'monitoring.block-ip', ip);
+    }
+    res.redirect('/admin/monitoring');
+  }
+
+  @Post('monitoring/unblock-ip')
+  @UseGuards(AdminGuard)
+  async unblockIp(
+    @Req() req: Request,
+    @Body() body: { ip?: string },
+    @Res() res: Response,
+  ) {
+    const ip = (body.ip ?? '').trim();
+    if (ip) {
+      await this.monitoringSvc.unblockIp(ip);
+      await this.auditAction(req, 'monitoring.unblock-ip', ip);
+    }
+    res.redirect('/admin/monitoring');
+  }
+
+  @Post('monitoring/flag/:id/:action')
+  @UseGuards(AdminGuard)
+  async flagAction(
+    @Req() req: Request,
+    @Param('id') id: string,
+    @Param('action') action: string,
+    @Res() res: Response,
+  ) {
+    const status =
+      action === 'ignore' ? AbuseStatus.IGNORED : AbuseStatus.ACKNOWLEDGED;
+    await this.monitoringSvc.setFlagStatus(id, status);
+    await this.auditAction(req, `monitoring.flag.${action}`, id);
+    res.redirect('/admin/monitoring');
   }
 
   /// Toggle a user's blocked state. Wired to the Block / Unblock

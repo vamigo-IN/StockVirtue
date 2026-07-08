@@ -47,7 +47,10 @@ export class RealtimeBusService implements OnModuleInit, OnModuleDestroy {
     this.subscriber = new Redis(opts);
     this.subscriber.on('pmessage', (_pattern, channel, message) => {
       try {
-        const parsed = JSON.parse(message) as { event: string; payload: unknown };
+        const parsed = JSON.parse(message) as {
+          event: string;
+          payload: unknown;
+        };
         const userId =
           channel === BROADCAST_CHANNEL
             ? null

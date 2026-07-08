@@ -10,11 +10,7 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
-import {
-  AlertStatus,
-  Prisma,
-  User,
-} from '@prisma/client';
+import { AlertStatus, Prisma, User } from '@prisma/client';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Exchange, isExchange } from '../common/exchange';
@@ -71,7 +67,11 @@ export class NotificationsController {
   ) {
     const device = await this.prisma.deviceToken.upsert({
       where: { token: dto.token },
-      update: { userId: user.id, platform: dto.platform, lastSeenAt: new Date() },
+      update: {
+        userId: user.id,
+        platform: dto.platform,
+        lastSeenAt: new Date(),
+      },
       create: {
         userId: user.id,
         token: dto.token,
@@ -95,10 +95,7 @@ export class NotificationsController {
   // ── Email preferences ────────────────────────────────────────────
 
   @Patch('preferences')
-  async setPreferences(
-    @CurrentUser() user: User,
-    @Body() dto: UpdatePrefsDto,
-  ) {
+  async setPreferences(@CurrentUser() user: User, @Body() dto: UpdatePrefsDto) {
     const updated = await this.prisma.user.update({
       where: { id: user.id },
       data: { tradeEmailsOptIn: dto.tradeEmails },

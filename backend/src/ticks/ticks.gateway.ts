@@ -241,9 +241,7 @@ export class TicksGateway
     // already sends it via handshake.auth.token.
     const fromAuth = client.handshake.auth?.token as string | undefined;
     if (fromAuth) return fromAuth;
-    const authHeader = client.handshake.headers['authorization'] as
-      | string
-      | undefined;
+    const authHeader = client.handshake.headers['authorization'];
     if (authHeader?.startsWith('Bearer ')) return authHeader.slice(7);
     return undefined;
   }

@@ -96,6 +96,85 @@ model AdminAuditLog {
   @@map("admin_audit_logs")
 }
 
+// ─── Traffic monitoring & data-misuse detection ─────────────────────────────
+
+enum AbuseSubjectType {
+  IP
+  USER
+}
+
+enum AbuseStatus {
+  OPEN
+  ACKNOWLEDGED
+  IGNORED
+  ACTIONED
+}
+
+/// Aggregated request traffic, one row per (minute bucket, method, route,
+/// status class). Flushed from Redis every 60s; backs the admin traffic charts
+/// and top-endpoints table without ever writing a row per request.
+model TrafficStat {
+  id           String   @id @default(cuid())
+  bucket       DateTime // start of the 1-minute window (UTC)
+  method       String
+  route        String // route template, e.g. '/api/market/quote/:symbol'
+  statusClass  Int // 2 | 3 | 4 | 5
+  count        Int
+  errorCount   Int
+  latencySumMs BigInt // avg = latencySumMs / count
+  latencyMaxMs Int
+  createdAt    DateTime @default(now())
+
+  @@unique([bucket, method, route, statusClass])
+  @@index([bucket])
+  @@map("traffic_stats")
+}
+
+/// One detected abuse / data-misuse event per (kind, subject) per de-dupe
+/// window (deduped in Redis so it can't spam). Surfaced on the admin panel.
+model AbuseEvent {
+  id          String           @id @default(cuid())
+  kind        String // 'rate.ip' | 'authfail.ip' | 'order.spam' | 'market.scrape' | 'signup.multi' | 'data.harvest' | …
+  subjectType AbuseSubjectType
+  subject     String // the IP or userId
+  severity    Int              @default(1) // 1..3
+  count       Int
+  threshold   Int
+  windowSec   Int
+  detail      String?
+  ip          String?
+  userId      String?
+  status      AbuseStatus      @default(OPEN)
+  autoAction  String? // 'blocked' | 'throttled' | null
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@index([status, createdAt])
+  @@index([subjectType, subject, createdAt])
+  @@map("abuse_events")
+}
+
+/// Sampled + high-signal raw request log for forensic drill-down (NOT every
+/// request — sampled 2xx + always errors/flagged). Pruned on a retention timer.
+model RequestLog {
+  id        String   @id @default(cuid())
+  ts        DateTime @default(now())
+  method    String
+  route     String
+  status    Int
+  latencyMs Int
+  userId    String?
+  ip        String?
+  userAgent String?
+  requestId String?
+  flagged   Boolean  @default(false)
+
+  @@index([ts])
+  @@index([userId, ts])
+  @@index([ip, ts])
+  @@map("request_logs")
+}
+
 model User {
   id          String     @id @default(cuid())
   phone       String?    @unique

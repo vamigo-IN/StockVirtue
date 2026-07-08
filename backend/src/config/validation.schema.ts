@@ -75,4 +75,10 @@ export const validationSchema = Joi.object({
   // ADMIN_EMAIL). Both optional so the backend boots without the website.
   SITE_ADMIN_KEY: Joi.string().allow('').default(''),
   SITE_CONTACT_TO: Joi.string().email().allow('').default(''),
+
+  // Traffic monitoring / abuse detection. Defaults: on, 1-in-50 raw-log
+  // sampling, auto-block OFF (detect-only until thresholds are tuned).
+  MONITORING_ENABLED: Joi.string().valid('true', 'false').default('true'),
+  MONITORING_SAMPLE_RATE: Joi.number().min(1).default(50),
+  MONITORING_AUTO_BLOCK: Joi.string().valid('true', 'false').default('false'),
 });

@@ -30,6 +30,7 @@ import { AchievementsModule } from './achievements/achievements.module';
 import { LearnModule } from './learn/learn.module';
 import { AdminModule } from './admin/admin.module';
 import { SiteModule } from './site/site.module';
+import { MonitoringModule } from './monitoring/monitoring.module';
 
 @Module({
   imports: [
@@ -69,6 +70,7 @@ import { SiteModule } from './site/site.module';
     LearnModule,
     AdminModule,
     SiteModule,
+    MonitoringModule,
   ],
   controllers: [AppController],
   providers: [

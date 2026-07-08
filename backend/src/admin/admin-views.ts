@@ -59,6 +59,7 @@ export interface LayoutOpts {
     | 'learning'
     | 'messages'
     | 'notifications'
+    | 'monitoring'
     | 'health'
     | 'settings'
     | 'audit';
@@ -74,7 +75,13 @@ const NAV_ITEMS = [
   { key: 'referrals', label: 'Referrals', href: '/admin/referrals', icon: '↗' },
   { key: 'learning', label: 'Learning', href: '/admin/learning', icon: '◆' },
   { key: 'messages', label: 'Messages', href: '/admin/messages', icon: '✉' },
-  { key: 'notifications', label: 'Notifications', href: '/admin/notifications', icon: '✷' },
+  {
+    key: 'notifications',
+    label: 'Notifications',
+    href: '/admin/notifications',
+    icon: '✷',
+  },
+  { key: 'monitoring', label: 'Traffic', href: '/admin/monitoring', icon: '◎' },
   { key: 'health', label: 'System health', href: '/admin/health', icon: '♥' },
   { key: 'settings', label: 'Settings', href: '/admin/settings', icon: '⚙' },
   { key: 'audit', label: 'Audit log', href: '/admin/audit', icon: '☰' },
@@ -179,9 +186,11 @@ export function loginPage(opts: {
       <input type="password" name="password" required
         class="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 mb-2 focus:outline-none focus:border-indigo-500" />
       <input type="hidden" name="back" value="${esc(opts.back ?? '/admin')}" />
-      ${opts.error
-        ? `<div class="mt-3 mb-2 text-xs px-3 py-2 rounded-lg bg-rose-500/15 text-rose-300 border border-rose-500/30">${esc(opts.error)}</div>`
-        : ''}
+      ${
+        opts.error
+          ? `<div class="mt-3 mb-2 text-xs px-3 py-2 rounded-lg bg-rose-500/15 text-rose-300 border border-rose-500/30">${esc(opts.error)}</div>`
+          : ''
+      }
       <button type="submit" class="mt-5 w-full bg-indigo-500 hover:bg-indigo-400 transition text-white font-bold py-2.5 rounded-lg">Sign in</button>
     </form>
   </div>
@@ -356,7 +365,8 @@ export function usersBody(list: {
   const pager = renderPager(
     list.page,
     list.pages,
-    (p) => `/admin/users?page=${p}${list.q ? `&q=${encodeURIComponent(list.q)}` : ''}`,
+    (p) =>
+      `/admin/users?page=${p}${list.q ? `&q=${encodeURIComponent(list.q)}` : ''}`,
   );
   return `
     ${search}
@@ -389,12 +399,14 @@ function renderPager(
   href: (p: number) => string,
 ): string {
   if (pages <= 1) return '';
-  const prev = page > 1
-    ? `<a href="${href(page - 1)}" class="px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-sm hover:bg-zinc-800">← Prev</a>`
-    : `<span class="px-3 py-1.5 rounded-lg bg-zinc-950 border border-zinc-900 text-sm text-zinc-700">← Prev</span>`;
-  const next = page < pages
-    ? `<a href="${href(page + 1)}" class="px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-sm hover:bg-zinc-800">Next →</a>`
-    : `<span class="px-3 py-1.5 rounded-lg bg-zinc-950 border border-zinc-900 text-sm text-zinc-700">Next →</span>`;
+  const prev =
+    page > 1
+      ? `<a href="${href(page - 1)}" class="px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-sm hover:bg-zinc-800">← Prev</a>`
+      : `<span class="px-3 py-1.5 rounded-lg bg-zinc-950 border border-zinc-900 text-sm text-zinc-700">← Prev</span>`;
+  const next =
+    page < pages
+      ? `<a href="${href(page + 1)}" class="px-3 py-1.5 rounded-lg bg-zinc-900 border border-zinc-800 text-sm hover:bg-zinc-800">Next →</a>`
+      : `<span class="px-3 py-1.5 rounded-lg bg-zinc-950 border border-zinc-900 text-sm text-zinc-700">Next →</span>`;
   return `<div class="flex items-center gap-2 mt-4">
     ${prev}<span class="text-sm text-zinc-500">Page ${page} of ${pages}</span>${next}
   </div>`;
@@ -507,7 +519,11 @@ export interface UserDetailLike {
   referralCode: string | null;
   createdAt: Date;
   lastLoginAt: Date | null;
-  referredBy: { id: string; displayName: string | null; email: string | null } | null;
+  referredBy: {
+    id: string;
+    displayName: string | null;
+    email: string | null;
+  } | null;
   balanceRupees: number;
   reservedRupees: number;
   marginRupees: number;
@@ -614,19 +630,21 @@ export function tradingBody(opts: {
 
 // ─── Rooms ─────────────────────────────────────────────────────────────
 
-export function roomsBody(rows: Array<{
-  id: string;
-  code: string;
-  name: string;
-  isPublic: boolean;
-  isTournament: boolean;
-  memberCount: number;
-  maxMembers: number;
-  ownerName: string;
-  startsAt: string | null;
-  endsAt: string | null;
-  createdAt: string;
-}>): string {
+export function roomsBody(
+  rows: Array<{
+    id: string;
+    code: string;
+    name: string;
+    isPublic: boolean;
+    isTournament: boolean;
+    memberCount: number;
+    maxMembers: number;
+    ownerName: string;
+    startsAt: string | null;
+    endsAt: string | null;
+    createdAt: string;
+  }>,
+): string {
   const body = rows
     .map((r) => {
       const visibility = r.isPublic
@@ -635,9 +653,10 @@ export function roomsBody(rows: Array<{
       const tourney = r.isTournament
         ? `<span class="text-[10px] px-2 py-0.5 rounded-md bg-amber-500/15 text-amber-300 font-bold tracking-wider">TOURNEY</span>`
         : '';
-      const window = r.isTournament && r.startsAt && r.endsAt
-        ? `${esc(r.startsAt.slice(0, 10))} → ${esc(r.endsAt.slice(0, 10))}`
-        : '—';
+      const window =
+        r.isTournament && r.startsAt && r.endsAt
+          ? `${esc(r.startsAt.slice(0, 10))} → ${esc(r.endsAt.slice(0, 10))}`
+          : '—';
       const limit = r.maxMembers === 0 ? '∞' : r.maxMembers;
       return `<tr class="border-b border-zinc-800">
         <td class="px-3 py-3"><div class="font-medium">${esc(r.name)}</div><div class="text-[11px] font-mono text-zinc-500">${esc(r.code)}</div></td>
@@ -668,13 +687,15 @@ export function roomsBody(rows: Array<{
 
 // ─── Referrals ─────────────────────────────────────────────────────────
 
-export function referralsBody(rows: Array<{
-  userId: string;
-  displayName: string;
-  email: string | null;
-  referralCode: string | null;
-  count: number;
-}>): string {
+export function referralsBody(
+  rows: Array<{
+    userId: string;
+    displayName: string;
+    email: string | null;
+    referralCode: string | null;
+    count: number;
+  }>,
+): string {
   const body = rows
     .map(
       (r, i) => `<tr class="border-b border-zinc-800">
@@ -825,6 +846,252 @@ export function notificationsBody(opts: {
   `;
 }
 
+// ─── Monitoring / Traffic ───────────────────────────────────────────────
+
+interface FlagRow {
+  id: string;
+  kind: string;
+  subjectType: string;
+  subject: string;
+  severity: number;
+  count: number;
+  threshold: number;
+  detail: string | null;
+  autoAction: string | null;
+  createdAt: Date;
+}
+
+interface ReqLogRow {
+  ts: Date;
+  method: string;
+  route: string;
+  status: number;
+  latencyMs: number;
+  userId: string | null;
+  ip: string | null;
+}
+
+function httpStatusTone(status: number): string {
+  if (status >= 500) return 'text-rose-300';
+  if (status === 429) return 'text-amber-300';
+  if (status >= 400) return 'text-orange-300';
+  return 'text-emerald-300';
+}
+
+function monStatCard(
+  label: string,
+  value: string,
+  tone = 'text-zinc-100',
+): string {
+  return `<div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-4">
+    <div class="text-[11px] uppercase tracking-wider text-zinc-500">${esc(label)}</div>
+    <div class="text-2xl font-bold mt-1 ${tone}">${esc(value)}</div>
+  </div>`;
+}
+
+function flagActionForm(
+  id: string,
+  action: string,
+  label: string,
+  cls: string,
+): string {
+  return `<form method="post" action="/admin/monitoring/flag/${esc(id)}/${esc(action)}" class="inline">
+    <button class="text-[11px] px-2 py-1 rounded-md border font-bold ${cls}">${esc(label)}</button>
+  </form>`;
+}
+
+export function monitoringBody(opts: {
+  overview: {
+    reqLastMin: number;
+    errLastMin: number;
+    reqPrevMin: number;
+    openFlags: number;
+    blockedIps: number;
+  };
+  topEndpoints: Array<{
+    method: string;
+    route: string;
+    count: number;
+    errors: number;
+    avgMs: number;
+    maxMs: number;
+  }>;
+  topIps: Array<{ subject: string; count: number }>;
+  topUsers: Array<{ subject: string; count: number }>;
+  flags: FlagRow[];
+  recent: ReqLogRow[];
+}): string {
+  const o = opts.overview;
+  const errRate =
+    o.reqLastMin > 0 ? ((o.errLastMin / o.reqLastMin) * 100).toFixed(1) : '0.0';
+
+  const endpoints = opts.topEndpoints.length
+    ? opts.topEndpoints
+        .map(
+          (e) => `<tr class="border-t border-zinc-800">
+        <td class="px-3 py-2 font-mono text-[11px]">${esc(e.method)} ${esc(e.route)}</td>
+        <td class="px-3 py-2 text-right">${e.count}</td>
+        <td class="px-3 py-2 text-right ${e.errors ? 'text-rose-300' : 'text-zinc-500'}">${e.errors}</td>
+        <td class="px-3 py-2 text-right">${e.avgMs}ms</td>
+        <td class="px-3 py-2 text-right text-zinc-400">${e.maxMs}ms</td>
+      </tr>`,
+        )
+        .join('')
+    : `<tr><td class="px-3 py-4 text-zinc-500" colspan="5">No traffic recorded yet.</td></tr>`;
+
+  const actorRows = (
+    rows: Array<{ subject: string; count: number }>,
+    kind: string,
+  ) =>
+    rows.length
+      ? rows
+          .map(
+            (r) => `<tr class="border-t border-zinc-800">
+          <td class="px-3 py-2"><a class="text-indigo-300 hover:underline font-mono text-[12px]" href="/admin/monitoring/${kind}/${encodeURIComponent(r.subject)}">${esc(r.subject)}</a></td>
+          <td class="px-3 py-2 text-right">${r.count}</td>
+          ${
+            kind === 'ip'
+              ? `<td class="px-3 py-2 text-right"><form method="post" action="/admin/monitoring/block-ip" class="inline"><input type="hidden" name="ip" value="${esc(r.subject)}"/><button class="text-[11px] px-2 py-1 rounded-md border border-rose-500/40 bg-rose-500/15 text-rose-300 font-bold">Block</button></form></td>`
+              : '<td></td>'
+          }
+        </tr>`,
+          )
+          .join('')
+      : `<tr><td class="px-3 py-4 text-zinc-500" colspan="3">None.</td></tr>`;
+
+  const flagRows = opts.flags.length
+    ? opts.flags
+        .map(
+          (f) => `<tr class="border-t border-zinc-800">
+        <td class="px-3 py-2 text-[11px] text-zinc-400">${esc(new Date(f.createdAt).toISOString().slice(5, 16).replace('T', ' '))}</td>
+        <td class="px-3 py-2"><span class="text-[10px] px-2 py-0.5 rounded bg-amber-500/15 text-amber-300 font-bold">${esc(f.kind)}</span></td>
+        <td class="px-3 py-2 font-mono text-[11px]">${esc(f.subjectType)}:${esc(f.subject)}</td>
+        <td class="px-3 py-2 text-right">${f.count}/${f.threshold}</td>
+        <td class="px-3 py-2 text-[11px] text-zinc-400">${esc(f.detail ?? '')}${f.autoAction ? ` <span class="text-rose-300">[${esc(f.autoAction)}]</span>` : ''}</td>
+        <td class="px-3 py-2 text-right whitespace-nowrap">
+          ${flagActionForm(f.id, 'ack', 'Ack', 'border-zinc-600 text-zinc-300')}
+          ${flagActionForm(f.id, 'ignore', 'Ignore', 'border-zinc-700 text-zinc-500')}
+          ${f.subjectType === 'IP' ? `<form method="post" action="/admin/monitoring/block-ip" class="inline"><input type="hidden" name="ip" value="${esc(f.subject)}"/><button class="text-[11px] px-2 py-1 rounded-md border border-rose-500/40 bg-rose-500/15 text-rose-300 font-bold">Block</button></form>` : ''}
+        </td>
+      </tr>`,
+        )
+        .join('')
+    : `<tr><td class="px-3 py-4 text-zinc-500" colspan="6">No open flags. 🎉</td></tr>`;
+
+  const recentRows = opts.recent
+    .slice(0, 60)
+    .map(
+      (r) => `<tr class="border-t border-zinc-800/60">
+      <td class="px-3 py-1.5 text-[11px] text-zinc-500">${esc(new Date(r.ts).toISOString().slice(11, 19))}</td>
+      <td class="px-3 py-1.5 font-mono text-[11px]">${esc(r.method)} ${esc(r.route)}</td>
+      <td class="px-3 py-1.5 text-right ${httpStatusTone(r.status)}">${r.status}</td>
+      <td class="px-3 py-1.5 text-right text-zinc-400">${r.latencyMs}ms</td>
+      <td class="px-3 py-1.5 font-mono text-[11px] text-zinc-500">${esc(r.ip ?? '')}</td>
+    </tr>`,
+    )
+    .join('');
+
+  return `
+    <meta http-equiv="refresh" content="20" />
+    <div class="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
+      ${monStatCard('Req / min', String(o.reqLastMin))}
+      ${monStatCard('Prev min', String(o.reqPrevMin), 'text-zinc-400')}
+      ${monStatCard('Error rate', `${errRate}%`, Number(errRate) > 5 ? 'text-rose-300' : 'text-zinc-100')}
+      ${monStatCard('Open flags', String(o.openFlags), o.openFlags > 0 ? 'text-amber-300' : 'text-emerald-300')}
+      ${monStatCard('Blocked IPs', String(o.blockedIps), o.blockedIps > 0 ? 'text-rose-300' : 'text-zinc-100')}
+    </div>
+
+    <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl overflow-hidden mb-6">
+      <div class="px-4 py-3 font-bold border-b border-zinc-800">Flagged abuse events (open)</div>
+      <table class="w-full text-sm"><thead class="text-[11px] uppercase tracking-wider text-zinc-500 text-left">
+        <tr><th class="px-3 py-2">When</th><th class="px-3 py-2">Kind</th><th class="px-3 py-2">Subject</th><th class="px-3 py-2 text-right">Count</th><th class="px-3 py-2">Detail</th><th class="px-3 py-2 text-right">Action</th></tr>
+      </thead><tbody>${flagRows}</tbody></table>
+    </div>
+
+    <div class="grid md:grid-cols-2 gap-6 mb-6">
+      <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl overflow-hidden">
+        <div class="px-4 py-3 font-bold border-b border-zinc-800">Top IPs (15 min)</div>
+        <table class="w-full text-sm"><tbody>${actorRows(opts.topIps, 'ip')}</tbody></table>
+      </div>
+      <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl overflow-hidden">
+        <div class="px-4 py-3 font-bold border-b border-zinc-800">Top users (15 min)</div>
+        <table class="w-full text-sm"><tbody>${actorRows(opts.topUsers, 'user')}</tbody></table>
+      </div>
+    </div>
+
+    <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl overflow-hidden mb-6">
+      <div class="px-4 py-3 font-bold border-b border-zinc-800">Top endpoints (15 min)</div>
+      <table class="w-full text-sm"><thead class="text-[11px] uppercase tracking-wider text-zinc-500 text-left">
+        <tr><th class="px-3 py-2">Endpoint</th><th class="px-3 py-2 text-right">Reqs</th><th class="px-3 py-2 text-right">Errors</th><th class="px-3 py-2 text-right">Avg</th><th class="px-3 py-2 text-right">Max</th></tr>
+      </thead><tbody>${endpoints}</tbody></table>
+    </div>
+
+    <details class="bg-zinc-900/60 border border-zinc-800 rounded-2xl overflow-hidden">
+      <summary class="px-4 py-3 font-bold cursor-pointer">Recent requests (live)</summary>
+      <table class="w-full text-sm"><tbody>${recentRows}</tbody></table>
+    </details>
+  `;
+}
+
+export function monitoringActorBody(opts: {
+  kind: 'ip' | 'user';
+  subject: string;
+  blocked: boolean;
+  flags: FlagRow[];
+  logs: ReqLogRow[];
+}): string {
+  const flagRows = opts.flags.length
+    ? opts.flags
+        .map(
+          (f) => `<tr class="border-t border-zinc-800">
+        <td class="px-3 py-2 text-[11px] text-zinc-400">${esc(new Date(f.createdAt).toISOString().slice(5, 16).replace('T', ' '))}</td>
+        <td class="px-3 py-2">${esc(f.kind)}</td>
+        <td class="px-3 py-2 text-right">${f.count}/${f.threshold}</td>
+        <td class="px-3 py-2 text-[11px] text-zinc-400">${esc(f.detail ?? '')}</td>
+      </tr>`,
+        )
+        .join('')
+    : `<tr><td class="px-3 py-4 text-zinc-500" colspan="4">No flags.</td></tr>`;
+
+  const logRows = opts.logs.length
+    ? opts.logs
+        .map(
+          (r) => `<tr class="border-t border-zinc-800/60">
+        <td class="px-3 py-1.5 text-[11px] text-zinc-500">${esc(new Date(r.ts).toISOString().slice(5, 19).replace('T', ' '))}</td>
+        <td class="px-3 py-1.5 font-mono text-[11px]">${esc(r.method)} ${esc(r.route)}</td>
+        <td class="px-3 py-1.5 text-right ${httpStatusTone(r.status)}">${r.status}</td>
+        <td class="px-3 py-1.5 text-right text-zinc-400">${r.latencyMs}ms</td>
+        ${opts.kind === 'ip' ? `<td class="px-3 py-1.5 font-mono text-[11px] text-zinc-500">${esc(r.userId ?? '')}</td>` : `<td class="px-3 py-1.5 font-mono text-[11px] text-zinc-500">${esc(r.ip ?? '')}</td>`}
+      </tr>`,
+        )
+        .join('')
+    : `<tr><td class="px-3 py-4 text-zinc-500" colspan="5">No recent requests logged.</td></tr>`;
+
+  const blockBtn =
+    opts.kind === 'ip'
+      ? opts.blocked
+        ? `<form method="post" action="/admin/monitoring/unblock-ip"><input type="hidden" name="ip" value="${esc(opts.subject)}"/><button class="text-xs px-3 py-1.5 rounded-lg border border-emerald-500/40 bg-emerald-500/15 text-emerald-300 font-bold">Unblock IP</button></form>`
+        : `<form method="post" action="/admin/monitoring/block-ip"><input type="hidden" name="ip" value="${esc(opts.subject)}"/><button class="text-xs px-3 py-1.5 rounded-lg border border-rose-500/40 bg-rose-500/15 text-rose-300 font-bold">Block IP</button></form>`
+      : `<a href="/admin/users/${esc(opts.subject)}" class="text-xs text-indigo-300 hover:underline">→ Open user record</a>`;
+
+  return `
+    <div class="flex items-center gap-4 mb-5">
+      <a href="/admin/monitoring" class="text-sm text-zinc-400 hover:text-indigo-300">← Traffic</a>
+      <div class="font-bold font-mono">${esc(opts.kind.toUpperCase())}: ${esc(opts.subject)}</div>
+      ${opts.blocked ? '<span class="text-[10px] px-2 py-0.5 rounded bg-rose-500/15 text-rose-300 font-bold">BLOCKED</span>' : ''}
+      <div class="ml-auto">${blockBtn}</div>
+    </div>
+    <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl overflow-hidden mb-6">
+      <div class="px-4 py-3 font-bold border-b border-zinc-800">Flags</div>
+      <table class="w-full text-sm"><tbody>${flagRows}</tbody></table>
+    </div>
+    <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl overflow-hidden">
+      <div class="px-4 py-3 font-bold border-b border-zinc-800">Recent requests</div>
+      <table class="w-full text-sm"><tbody>${logRows}</tbody></table>
+    </div>
+  `;
+}
+
 // ─── Audit log ──────────────────────────────────────────────────────────
 
 export function auditBody(
@@ -891,7 +1158,10 @@ export function learningBody(opts: {
       ${sub ? `<div class="text-[11px] text-zinc-500 mt-0.5">${esc(sub)}</div>` : ''}
     </div>`;
   const passPct = `${(learn.quizPassRate * 100).toFixed(0)}%`;
-  const maxCount = achievements.perBadge.reduce((m, b) => Math.max(m, b.count), 0);
+  const maxCount = achievements.perBadge.reduce(
+    (m, b) => Math.max(m, b.count),
+    0,
+  );
   const badgeRows = achievements.perBadge
     .map((b) => {
       const pct = maxCount === 0 ? 0 : Math.round((b.count / maxCount) * 100);
@@ -930,11 +1200,13 @@ export function learningBody(opts: {
 
 // ─── Health ─────────────────────────────────────────────────────────────
 
-export function healthBody(blocks: Array<{
-  label: string;
-  ok: boolean;
-  detail: string;
-}>): string {
+export function healthBody(
+  blocks: Array<{
+    label: string;
+    ok: boolean;
+    detail: string;
+  }>,
+): string {
   return `<div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">${blocks
     .map((b) => {
       const tone = b.ok
@@ -1041,7 +1313,9 @@ export function messagesBody(list: {
     ${pager}`;
 }
 
-export function messageDetailBody(m: ContactRow & { reply: string | null }): string {
+export function messageDetailBody(
+  m: ContactRow & { reply: string | null },
+): string {
   const statusBtn = (s: string, label: string) =>
     `<button name="status" value="${s}" class="px-3 py-1.5 rounded-lg text-xs font-bold border border-zinc-700 hover:border-indigo-500 hover:text-indigo-300">${label}</button>`;
   return `

@@ -40,11 +40,15 @@ export class AdminStatsService {
       lastSnapshot,
     ] = await Promise.all([
       this.prisma.user.count(),
-      this.prisma.user.count({ where: { createdAt: { gte: startOfTodayIst } } }),
+      this.prisma.user.count({
+        where: { createdAt: { gte: startOfTodayIst } },
+      }),
       this.prisma.user.count({ where: { createdAt: { gte: startOfWeek } } }),
       this.prisma.user.count({ where: { lastLoginAt: { gte: last24h } } }),
       this.prisma.user.count({ where: { status: 'BLOCKED' } }),
-      this.prisma.order.count({ where: { createdAt: { gte: startOfTodayIst } } }),
+      this.prisma.order.count({
+        where: { createdAt: { gte: startOfTodayIst } },
+      }),
       this.prisma.order.count({
         where: { status: 'FILLED', filledAt: { gte: startOfTodayIst } },
       }),
@@ -128,7 +132,9 @@ export class AdminStatsService {
         take: pageSize,
         include: {
           wallet: { select: { balanceP: true } },
-          _count: { select: { orders: true, positions: true, referrals: true } },
+          _count: {
+            select: { orders: true, positions: true, referrals: true },
+          },
         },
       }),
       this.prisma.user.count({ where }),
@@ -216,10 +222,10 @@ export class AdminStatsService {
       ordersPretty: orders.map((o) => ({
         id: o.id,
         symbol: o.symbol,
-        side: o.side as string,
-        type: o.type as string,
-        product: o.product as string,
-        status: o.status as string,
+        side: o.side,
+        type: o.type,
+        product: o.product,
+        status: o.status,
         quantity: o.quantity,
         fillPrice: o.fillPriceP ? paiseToRupees(o.fillPriceP) : null,
         limitPrice: o.limitPriceP ? paiseToRupees(o.limitPriceP) : null,
@@ -281,7 +287,7 @@ export class AdminStatsService {
     // Blocking must be a hard cut-off: drop every refresh session so a
     // still-valid 30-day refresh token can't keep minting access tokens.
     // (HTTP requests + new socket connections are already rejected by the
-    // per-request/​per-connection status check.)
+    // per-request / per-connection status check.)
     if (blocked) {
       try {
         const keys = await this.redis.client.keys(`refresh:${userId}:*`);

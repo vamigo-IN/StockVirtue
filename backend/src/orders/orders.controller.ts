@@ -71,10 +71,7 @@ export class OrdersController {
   /// per-leg success / error so the UI can show what cleared and what didn't.
   @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @Post('basket')
-  async placeBasket(
-    @CurrentUser() user: User,
-    @Body() dto: BasketOrderDto,
-  ) {
+  async placeBasket(@CurrentUser() user: User, @Body() dto: BasketOrderDto) {
     const results: Array<{
       ok: boolean;
       order?: ReturnType<typeof serializeOrder>;
@@ -165,10 +162,7 @@ export class OrdersController {
     const orders = await this.orders.listForExport(user.id, fromDate, toDate);
     const today = new Date().toISOString().slice(0, 10);
     const filename = `stockvirtue-trades-${today}.${format}`;
-    res.setHeader(
-      'Content-Disposition',
-      `attachment; filename="${filename}"`,
-    );
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     if (format === 'json') {
       res.setHeader('Content-Type', 'application/json; charset=utf-8');
       res.send(JSON.stringify(orders.map(serializeOrder), null, 2));

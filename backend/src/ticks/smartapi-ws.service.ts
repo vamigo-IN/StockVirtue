@@ -118,7 +118,9 @@ export class SmartApiWsService implements OnModuleInit, OnModuleDestroy {
       this.ws.on('close', (code, reason) =>
         this.onClose(code, reason.toString()),
       );
-      this.ws.on('error', (err) => this.logger.warn(`WS error: ${err.message}`));
+      this.ws.on('error', (err) =>
+        this.logger.warn(`WS error: ${err.message}`),
+      );
     } catch (err) {
       this.logger.error(`WS connect failed: ${(err as Error).message}`);
       this.scheduleReconnect();
@@ -200,10 +202,7 @@ export class SmartApiWsService implements OnModuleInit, OnModuleDestroy {
   private scheduleReconnect(): void {
     if (this.reconnectTimer) return;
     const delay = this.reconnectDelay;
-    this.reconnectDelay = Math.min(
-      this.reconnectDelay * 2,
-      RECONNECT_MAX_MS,
-    );
+    this.reconnectDelay = Math.min(this.reconnectDelay * 2, RECONNECT_MAX_MS);
     this.logger.log(`Reconnecting in ${delay}ms`);
     this.reconnectTimer = setTimeout(() => {
       this.reconnectTimer = null;

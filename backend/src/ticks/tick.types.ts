@@ -14,7 +14,7 @@ export const EXCHANGE_TO_WS_TYPE: Record<Exchange, number> = {
 
 export const WS_TYPE_TO_EXCHANGE: Record<number, Exchange> = Object.fromEntries(
   Object.entries(EXCHANGE_TO_WS_TYPE).map(([k, v]) => [v, k as Exchange]),
-) as Record<number, Exchange>;
+);
 
 export interface DepthLevel {
   quantity: number;
