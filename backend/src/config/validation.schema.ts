@@ -64,7 +64,12 @@ export const validationSchema = Joi.object({
   }),
   ADMIN_SESSION_SECRET: Joi.string().when('NODE_ENV', {
     is: 'production',
-    then: Joi.string().min(32).required(),
+    // Must be strong AND distinct from the JWT secrets so a leak of one key
+    // can't forge the other (the config comment promised this; now enforced).
+    then: Joi.string()
+      .min(32)
+      .invalid(Joi.ref('JWT_ACCESS_SECRET'), Joi.ref('JWT_REFRESH_SECRET'))
+      .required(),
     otherwise: Joi.string().allow('').default(''),
   }),
   ADMIN_SESSION_TTL: Joi.number().default(28800),

@@ -10,6 +10,8 @@ import {
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { cacheJson } from '../common/redis-cache';
+import { RedisService } from '../redis/redis.service';
 import { Exchange, isExchange } from '../common/exchange';
 import {
   BrokerageEstimateRequest,
@@ -53,6 +55,7 @@ export class MarketController {
     private readonly market: MarketService,
     private readonly scripMaster: ScripMasterService,
     private readonly holidays: HolidaysService,
+    private readonly redis: RedisService,
   ) {}
 
   /// NSE+BSE trading holidays. The service tries the live NSE
@@ -179,7 +182,12 @@ export class MarketController {
     const segment = this.parseCap(segmentRaw);
     const type = this.parseMoverType(typeRaw);
     const limit = Math.min(Math.max(parseInt(limitRaw, 10) || 10, 1), 30);
-    return this.market.getMovers(segment, type, limit);
+    return cacheJson(
+      this.redis.client,
+      `mkt:movers:${segment}:${type}:${limit}`,
+      5,
+      () => this.market.getMovers(segment, type, limit),
+    );
   }
 
   private parseCap(value: string): CapSegment {
@@ -213,7 +221,13 @@ export class MarketController {
     if (symbols.length === 0) {
       throw new BadRequestException('symbols query param is required');
     }
-    return this.market.getQuotes(symbols, this.parseExchange(exchangeRaw));
+    const exchange = this.parseExchange(exchangeRaw);
+    return cacheJson(
+      this.redis.client,
+      `mkt:quotes:${exchange}:${symbols.join(',')}`,
+      3,
+      () => this.market.getQuotes(symbols, exchange),
+    );
   }
 
   @Get('expiries/:underlying')
@@ -224,7 +238,9 @@ export class MarketController {
   // Major MCX commodities with live rates (front-month future per commodity).
   @Get('commodities')
   commodities() {
-    return this.market.getCommodities();
+    return cacheJson(this.redis.client, 'mkt:commodities', 5, () =>
+      this.market.getCommodities(),
+    );
   }
 
   @Get('option-chain/:underlying')
@@ -235,7 +251,12 @@ export class MarketController {
     if (!expiry) {
       throw new BadRequestException('expiry query param is required');
     }
-    return this.market.getOptionChain(underlying, expiry);
+    return cacheJson(
+      this.redis.client,
+      `mkt:oc:${underlying}:${expiry}`,
+      4,
+      () => this.market.getOptionChain(underlying, expiry),
+    );
   }
 
   // Official option greeks + IV per strike (delta/gamma/theta/vega/IV) for the
@@ -248,7 +269,12 @@ export class MarketController {
     if (!expiry) {
       throw new BadRequestException('expiry query param is required');
     }
-    return this.market.getOptionGreeks(underlying, expiry);
+    return cacheJson(
+      this.redis.client,
+      `mkt:greeks:${underlying}:${expiry}`,
+      5,
+      () => this.market.getOptionGreeks(underlying, expiry),
+    );
   }
 
   @Get('snapshot/:symbol')
@@ -256,7 +282,13 @@ export class MarketController {
     @Param('symbol') symbol: string,
     @Query('exchange') exchangeRaw = 'NSE',
   ) {
-    return this.market.getSnapshot(symbol, this.parseExchange(exchangeRaw));
+    const exchange = this.parseExchange(exchangeRaw);
+    return cacheJson(
+      this.redis.client,
+      `mkt:snap:${exchange}:${symbol}`,
+      3,
+      () => this.market.getSnapshot(symbol, exchange),
+    );
   }
 
   // Equity scanners — `type` is one of `volume`, `52w-high`, `52w-low`.
@@ -267,9 +299,11 @@ export class MarketController {
       throw new BadRequestException(`Invalid scanner type "${typeRaw}"`);
     }
     const limit = Math.min(Math.max(parseInt(limitRaw, 10) || 15, 1), 50);
-    return this.market.runScanner(
-      typeRaw as 'volume' | '52w-high' | '52w-low',
-      limit,
+    return cacheJson(this.redis.client, `mkt:scan:${typeRaw}:${limit}`, 5, () =>
+      this.market.runScanner(
+        typeRaw as 'volume' | '52w-high' | '52w-low',
+        limit,
+      ),
     );
   }
 
@@ -284,7 +318,12 @@ export class MarketController {
   ) {
     const type = this.parseGainersLosersType(typeRaw);
     const expiry = this.parseExpiryBucket(expiryRaw);
-    return this.market.getFnoMovers(type, expiry);
+    return cacheJson(
+      this.redis.client,
+      `mkt:fnomovers:${type}:${expiry}`,
+      5,
+      () => this.market.getFnoMovers(type, expiry),
+    );
   }
 
   // OI buildup classification across F&O contracts.

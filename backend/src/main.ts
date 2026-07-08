@@ -12,6 +12,21 @@ async function bootstrap() {
   const logger = new Logger('Bootstrap');
   const config = app.get(ConfigService<AppConfig, true>);
 
+  // Advisory (non-fatal): in production, a remote Redis that holds OTPs and
+  // refresh-token hashes should be password-protected. We only warn — a
+  // loopback-bound Redis without a password is a legitimate setup, and we must
+  // never turn a config nuance into a boot outage.
+  const redisCfg = config.get('redis', { infer: true });
+  if (
+    config.get('nodeEnv', { infer: true }) === 'production' &&
+    !redisCfg.password &&
+    !['localhost', '127.0.0.1', '::1'].includes(redisCfg.host)
+  ) {
+    logger.warn(
+      `REDIS_PASSWORD is empty while REDIS_HOST="${redisCfg.host}" is non-loopback — Redis is unauthenticated. Set a password.`,
+    );
+  }
+
   // Helmet's default Content-Security-Policy blocks third-party scripts
   // and inline styles, which would break the admin dashboard's Tailwind
   // CDN + sidebar styling. The mobile API only ever returns JSON so the
@@ -23,7 +38,12 @@ async function bootstrap() {
   // (portfolios, option chains, leaderboards, scanners) over mobile networks;
   // compressing them cuts transfer size ~70-85% for a big latency win.
   app.use(compression());
-  app.enableCors({ origin: true, credentials: true });
+  // credentials:false — the mobile app authenticates with Bearer tokens (not
+  // cookies) and the admin dashboard is same-origin, so nothing legitimately
+  // needs credentialed cross-origin requests. Reflecting any origin WITH
+  // credentials would let a malicious site ride a victim's admin cookie; with
+  // credentials off, a cross-origin caller can never read authenticated data.
+  app.enableCors({ origin: true, credentials: false });
   // In production the app sits behind a TLS-terminating reverse proxy
   // (api.stockvirtue.com). Trust the first proxy hop so req.ip and the
   // X-Forwarded-* headers reflect the real client/host — used by audit-log
