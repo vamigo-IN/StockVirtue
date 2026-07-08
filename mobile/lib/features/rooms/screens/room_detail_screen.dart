@@ -11,6 +11,7 @@ import '../../../core/market_hours.dart';
 import '../../../core/money_format.dart';
 import '../../../data/models/room.dart';
 import '../../../widgets/error_retry_view.dart';
+import '../../../widgets/rank_chip.dart';
 import '../../auth/auth_controller.dart';
 import '../rooms_providers.dart';
 import '../rooms_repository.dart';
@@ -609,13 +610,23 @@ class _LeaderboardTile extends StatelessWidget {
                     ],
                   ],
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  '${formatInr(entry.baseline)} → ${formatInr(entry.current)}',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: scheme.onSurface.withValues(alpha: 0.55),
-                  ),
+                const SizedBox(height: 3),
+                Row(
+                  children: [
+                    RankChip(tag: entry.badgeTag, compact: true),
+                    const SizedBox(width: 6),
+                    Flexible(
+                      child: Text(
+                        '${formatInr(entry.baseline)} → ${formatInr(entry.current)}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: scheme.onSurface.withValues(alpha: 0.55),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),

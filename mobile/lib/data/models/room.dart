@@ -69,6 +69,8 @@ class RoomLeaderboardEntry {
   final int rank;
   final String userId;
   final String displayName;
+  /// Named rank from achievements + academy progress (e.g. "Pro Trader").
+  final String badgeTag;
   final double baseline;
   final double current;
   final double change;
@@ -81,6 +83,7 @@ class RoomLeaderboardEntry {
     required this.rank,
     required this.userId,
     required this.displayName,
+    this.badgeTag = 'Rookie',
     required this.baseline,
     required this.current,
     required this.change,
@@ -95,6 +98,7 @@ class RoomLeaderboardEntry {
         rank: (json['rank'] as num).toInt(),
         userId: json['userId'] as String,
         displayName: json['displayName'] as String,
+        badgeTag: json['badgeTag'] as String? ?? 'Rookie',
         baseline: (json['baseline'] as num).toDouble(),
         current: (json['current'] as num).toDouble(),
         change: (json['change'] as num).toDouble(),

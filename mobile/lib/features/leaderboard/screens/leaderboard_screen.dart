@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/money_format.dart';
 import '../../../data/models/leaderboard.dart';
 import '../../../widgets/error_retry_view.dart';
+import '../../../widgets/rank_chip.dart';
 import '../leaderboard_providers.dart';
 
 const _upColor = Color(0xFF22C55E);
@@ -288,13 +289,23 @@ class _LeaderRow extends StatelessWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: 2),
-              Text(
-                formatInr(entry.totalEquity, decimals: 0),
-                style: TextStyle(
-                  color: scheme.onSurface.withValues(alpha: 0.6),
-                  fontSize: 12,
-                ),
+              const SizedBox(height: 3),
+              Row(
+                children: [
+                  RankChip(tag: entry.badgeTag, compact: true),
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: Text(
+                      formatInr(entry.totalEquity, decimals: 0),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: scheme.onSurface.withValues(alpha: 0.6),
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),

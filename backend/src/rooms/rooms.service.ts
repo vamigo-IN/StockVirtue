@@ -6,6 +6,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { AchievementsService } from '../achievements/achievements.service';
 import { paiseToRupees } from '../common/money';
 import { PortfolioService } from '../portfolio/portfolio.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -25,6 +26,7 @@ export class RoomsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly portfolio: PortfolioService,
+    private readonly achievements: AchievementsService,
   ) {}
 
   /// Creates a room and adds the owner as the first member with their
@@ -365,6 +367,11 @@ export class RoomsService {
       totalsByUser.map((t) => [t.userId, t.totals.totalEquityP]),
     );
 
+    // Named rank per member (achievements unlocked + academy progress).
+    const badgeTags = await this.achievements.badgeTagsFor(
+      room.members.map((m) => m.userId),
+    );
+
     const leaderboard = room.members
       .map((m) => {
         const currentP = totalsMap.get(m.userId) ?? m.baselineEquityP;
@@ -377,6 +384,7 @@ export class RoomsService {
         return {
           userId: m.userId,
           displayName: m.user.displayName ?? 'Trader',
+          badgeTag: badgeTags.get(m.userId) ?? 'Rookie',
           baseline: paiseToRupees(baselineP),
           current: paiseToRupees(currentP),
           change: paiseToRupees(changeP),

@@ -5,6 +5,7 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import { LeaderboardEntry } from '@prisma/client';
+import { AchievementsService } from '../achievements/achievements.service';
 import { paiseToRupees, rupeesToPaise } from '../common/money';
 import { PrismaService } from '../prisma/prisma.service';
 import { SmartApiService } from '../smartapi/smartapi.service';
@@ -17,6 +18,8 @@ const QUOTE_BATCH_SIZE = 50;
 export interface PublicEntry {
   rank: number;
   displayName: string | null;
+  /** Named rank from achievements + academy progress (e.g. "Pro Trader"). */
+  badgeTag: string;
   totalEquity: number;
   returnPct: number;
 }
@@ -42,6 +45,7 @@ export class LeaderboardService implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly prisma: PrismaService,
     private readonly smartapi: SmartApiService,
+    private readonly achievements: AchievementsService,
   ) {}
 
   onModuleInit() {
@@ -72,11 +76,16 @@ export class LeaderboardService implements OnModuleInit, OnModuleDestroy {
         where: { userId },
       });
     }
+    // Named rank chip per shown user (achievements + academy progress).
+    const tags = await this.achievements.badgeTagsFor([
+      ...top.map((e) => e.userId),
+      ...(me ? [me.userId] : []),
+    ]);
     return {
       computedAt: top[0]?.computedAt?.toISOString() ?? null,
       total: await this.prisma.leaderboardEntry.count(),
-      top: top.map((e) => this.serializePublic(e)),
-      me: me ? this.serializeMe(me) : null,
+      top: top.map((e) => this.serializePublic(e, tags)),
+      me: me ? this.serializeMe(me, tags) : null,
     };
   }
 
@@ -183,16 +192,20 @@ export class LeaderboardService implements OnModuleInit, OnModuleDestroy {
     return ltpByKey;
   }
 
-  private serializePublic(e: LeaderboardEntry): PublicEntry {
+  private serializePublic(
+    e: LeaderboardEntry,
+    tags: Map<string, string>,
+  ): PublicEntry {
     return {
       rank: e.rank,
       displayName: e.displayName,
+      badgeTag: tags.get(e.userId) ?? 'Rookie',
       totalEquity: paiseToRupees(e.totalEquityP),
       returnPct: e.returnPct,
     };
   }
 
-  private serializeMe(e: LeaderboardEntry): MeEntry {
-    return { userId: e.userId, ...this.serializePublic(e) };
+  private serializeMe(e: LeaderboardEntry, tags: Map<string, string>): MeEntry {
+    return { userId: e.userId, ...this.serializePublic(e, tags) };
   }
 }

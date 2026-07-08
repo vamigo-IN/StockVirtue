@@ -6,6 +6,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { TOTAL_LESSONS } from '../learn/lesson-catalog';
 import { distinctSectorCount } from './company-sectors';
 import { BADGES, BADGE_BY_ID, UserStats } from './badge-catalog';
+import { traderTag } from './badge-tag';
 
 /**
  * Server-authoritative achievements. Replaces the old client-side computation
@@ -233,6 +234,26 @@ export class AchievementsService {
         unlockedAt: at.get(b.id)?.toISOString() ?? null,
       })),
     };
+  }
+
+  /// Named "badge tag" (rank) per user, derived from their unlocked-badge
+  /// count, for many users at once (a room's members, a leaderboard page).
+  /// One groupBy query; users with no unlocks map to the base "Rookie" tag.
+  /// Used by rooms + leaderboard to show a rank chip next to each name.
+  async badgeTagsFor(userIds: string[]): Promise<Map<string, string>> {
+    const tags = new Map<string, string>();
+    const unique = [...new Set(userIds)];
+    if (unique.length === 0) return tags;
+    const counts = await this.prisma.userAchievement.groupBy({
+      by: ['userId'],
+      where: { userId: { in: unique } },
+      _count: { _all: true },
+    });
+    const byUser = new Map(counts.map((c) => [c.userId, c._count._all]));
+    for (const uid of unique) {
+      tags.set(uid, traderTag(byUser.get(uid) ?? 0));
+    }
+    return tags;
   }
 
   /// Aggregate unlock counts for the admin panel. Read-only.

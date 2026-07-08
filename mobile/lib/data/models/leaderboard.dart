@@ -1,6 +1,8 @@
 class LeaderboardEntry {
   final int rank;
   final String? displayName;
+  /// Named rank from achievements + academy progress (e.g. "Pro Trader").
+  final String badgeTag;
   final double totalEquity;
   final double returnPct;
   final String? userId; // only present for the requester's own entry
@@ -8,6 +10,7 @@ class LeaderboardEntry {
   const LeaderboardEntry({
     required this.rank,
     required this.displayName,
+    this.badgeTag = 'Rookie',
     required this.totalEquity,
     required this.returnPct,
     required this.userId,
@@ -17,6 +20,7 @@ class LeaderboardEntry {
       LeaderboardEntry(
         rank: (json['rank'] as num).toInt(),
         displayName: json['displayName'] as String?,
+        badgeTag: json['badgeTag'] as String? ?? 'Rookie',
         totalEquity: (json['totalEquity'] as num).toDouble(),
         returnPct: (json['returnPct'] as num).toDouble(),
         userId: json['userId'] as String?,
