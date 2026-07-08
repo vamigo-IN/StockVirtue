@@ -19,6 +19,7 @@ import {
   FEATURE_MOBILE_OTP,
 } from '../feature-flags/feature-flags.service';
 import { FirebaseAdminService } from '../firebase/firebase-admin.service';
+import type { DecodedIdToken } from 'firebase-admin/auth';
 import { MailService } from '../mail/mail.service';
 import { RedisService } from '../redis/redis.service';
 import { UsersService } from '../users/users.service';
@@ -372,7 +373,7 @@ export class AuthService {
     if (!this.firebase.configured) {
       throw new UnauthorizedException('Firebase not configured on backend');
     }
-    let decoded: import('firebase-admin').auth.DecodedIdToken;
+    let decoded: DecodedIdToken;
     try {
       decoded = await this.firebase.auth().verifyIdToken(idToken);
     } catch (err) {

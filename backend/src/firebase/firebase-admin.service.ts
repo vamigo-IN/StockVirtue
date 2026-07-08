@@ -4,7 +4,14 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import * as admin from 'firebase-admin';
+import {
+  App,
+  ServiceAccount,
+  cert,
+  initializeApp,
+} from 'firebase-admin/app';
+import { Auth, getAuth } from 'firebase-admin/auth';
+import { Messaging, getMessaging } from 'firebase-admin/messaging';
 import { AppConfig } from '../config/configuration';
 
 /**
@@ -19,7 +26,7 @@ import { AppConfig } from '../config/configuration';
 @Injectable()
 export class FirebaseAdminService {
   private readonly logger = new Logger(FirebaseAdminService.name);
-  private app: admin.app.App | null = null;
+  private app: App | null = null;
   readonly configured: boolean;
 
   constructor(config: ConfigService<AppConfig, true>) {
@@ -37,10 +44,8 @@ export class FirebaseAdminService {
         string,
         unknown
       >;
-      this.app = admin.initializeApp({
-        credential: admin.credential.cert(
-          credentialJson as admin.ServiceAccount,
-        ),
+      this.app = initializeApp({
+        credential: cert(credentialJson as ServiceAccount),
         projectId,
       });
       this.configured = true;
@@ -55,17 +60,17 @@ export class FirebaseAdminService {
     }
   }
 
-  auth(): admin.auth.Auth {
+  auth(): Auth {
     if (!this.app) {
       throw new ServiceUnavailableException('Firebase Admin not configured');
     }
-    return this.app.auth();
+    return getAuth(this.app);
   }
 
-  messaging(): admin.messaging.Messaging {
+  messaging(): Messaging {
     if (!this.app) {
       throw new ServiceUnavailableException('Firebase Admin not configured');
     }
-    return this.app.messaging();
+    return getMessaging(this.app);
   }
 }
