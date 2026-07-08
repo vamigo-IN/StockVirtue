@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/error_mapper.dart';
 import '../../../core/money_format.dart';
 import '../../../data/models/room.dart';
+import '../../../widgets/error_retry_view.dart';
 import '../rooms_providers.dart';
 import '../rooms_repository.dart';
 import 'create_room_screen.dart';
@@ -165,10 +166,9 @@ class _MyRoomsTab extends ConsumerWidget {
       },
       child: async.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => ListView(
-          children: [
-            Padding(padding: const EdgeInsets.all(24), child: Text('$e')),
-          ],
+        error: (e, _) => ErrorRetryView(
+          error: e,
+          onRetry: () => ref.invalidate(myRoomsProvider),
         ),
         data: (rooms) {
           if (rooms.isEmpty) {
@@ -259,10 +259,9 @@ class _PublicRoomsTab extends ConsumerWidget {
       },
       child: async.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => ListView(
-          children: [
-            Padding(padding: const EdgeInsets.all(24), child: Text('$e')),
-          ],
+        error: (e, _) => ErrorRetryView(
+          error: e,
+          onRetry: () => ref.invalidate(publicRoomsProvider(tournament)),
         ),
         data: (rooms) {
           if (rooms.isEmpty) {

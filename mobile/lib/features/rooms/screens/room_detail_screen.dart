@@ -10,6 +10,7 @@ import '../../../core/error_mapper.dart';
 import '../../../core/market_hours.dart';
 import '../../../core/money_format.dart';
 import '../../../data/models/room.dart';
+import '../../../widgets/error_retry_view.dart';
 import '../../auth/auth_controller.dart';
 import '../rooms_providers.dart';
 import '../rooms_repository.dart';
@@ -182,10 +183,9 @@ class _RoomDetailScreenState extends ConsumerState<RoomDetailScreen> {
         },
         child: async.when(
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (e, _) => ListView(
-            children: [
-              Padding(padding: const EdgeInsets.all(24), child: Text('$e')),
-            ],
+          error: (e, _) => ErrorRetryView(
+            error: e,
+            onRetry: () => ref.invalidate(roomDetailProvider(widget.roomId)),
           ),
           data: (room) => _Body(
             room: room,

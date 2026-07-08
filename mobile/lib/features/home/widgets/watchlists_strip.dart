@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/error_mapper.dart';
 import '../../../data/models/watchlist.dart';
 import '../../watchlists/screens/watchlist_detail_screen.dart';
 import '../../watchlists/watchlists_providers.dart';
@@ -66,7 +67,10 @@ class WatchlistsStrip extends ConsumerWidget {
     } catch (e) {
       if (!context.mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('$e'), backgroundColor: Colors.redAccent),
+        SnackBar(
+          content: Text(friendlyError(e)),
+          backgroundColor: Colors.redAccent,
+        ),
       );
     }
   }

@@ -9,6 +9,7 @@ import '../../../core/money_format.dart';
 import '../../../data/models/order.dart';
 import '../../../data/models/portfolio.dart';
 import '../../../widgets/empty_state.dart';
+import '../../../widgets/error_retry_view.dart';
 import '../../../widgets/fno_badge.dart';
 import '../../home/screens/shell_screen.dart';
 import '../../orders/widgets/trade_sheet.dart';
@@ -103,10 +104,9 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen> {
         },
         child: portfolio.when(
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (e, _) => ListView(
-            children: [
-              Padding(padding: const EdgeInsets.all(24), child: Text('$e')),
-            ],
+          error: (e, _) => ErrorRetryView(
+            error: e,
+            onRetry: () => ref.invalidate(portfolioProvider),
           ),
           data: (snap) {
             // Keep live-tick subscriptions in step with the held symbols.

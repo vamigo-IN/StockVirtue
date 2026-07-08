@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/money_format.dart';
 import '../../../data/models/analytics.dart';
+import '../../../widgets/error_retry_view.dart';
 import '../analytics_repository.dart';
 
 const _upColor = Color(0xFF22C55E);
@@ -75,8 +76,9 @@ class _BySymbolTab extends ConsumerWidget {
       },
       child: async.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => ListView(
-          children: [Padding(padding: const EdgeInsets.all(24), child: Text('$e'))],
+        error: (e, _) => ErrorRetryView(
+          error: e,
+          onRetry: () => ref.invalidate(perSymbolPnLProvider),
         ),
         data: (rows) {
           if (rows.isEmpty) {
@@ -207,8 +209,9 @@ class _RiskTab extends ConsumerWidget {
       },
       child: async.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => ListView(
-          children: [Padding(padding: const EdgeInsets.all(24), child: Text('$e'))],
+        error: (e, _) => ErrorRetryView(
+          error: e,
+          onRetry: () => ref.invalidate(riskMetricsProvider),
         ),
         data: (m) {
           if (m.points < 2) {
@@ -437,8 +440,9 @@ class _CapGainsTab extends ConsumerWidget {
       },
       child: async.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => ListView(
-          children: [Padding(padding: const EdgeInsets.all(24), child: Text('$e'))],
+        error: (e, _) => ErrorRetryView(
+          error: e,
+          onRetry: () => ref.invalidate(capitalGainsProvider),
         ),
         data: (report) {
           if (report.rows.isEmpty) {

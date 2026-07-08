@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../data/models/tick.dart';
+import '../../../widgets/error_retry_view.dart';
 import '../../home/home_providers.dart';
 import '../../home/indices_universe.dart';
 import '../../symbol/screens/symbol_detail_screen.dart';
@@ -64,10 +65,9 @@ class _IndicesScreenState extends ConsumerState<IndicesScreen> {
         },
         child: indices.when(
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (e, _) => ListView(
-            children: [
-              Padding(padding: const EdgeInsets.all(24), child: Text('$e')),
-            ],
+          error: (e, _) => ErrorRetryView(
+            error: e,
+            onRetry: () => ref.invalidate(allIndexQuotesProvider),
           ),
           data: (quotes) {
             WidgetsBinding.instance

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../data/models/quote.dart';
 import '../../../data/models/tick.dart';
 import '../../../data/models/watchlist.dart';
+import '../../../widgets/error_retry_view.dart';
 import '../../market/screens/stock_search_screen.dart';
 import '../../symbol/screens/symbol_detail_screen.dart';
 import '../../ticks/ticks_providers.dart';
@@ -206,7 +207,11 @@ class _WatchlistDetailScreenState
           const Scaffold(body: Center(child: CircularProgressIndicator())),
       error: (e, _) => Scaffold(
         appBar: AppBar(),
-        body: Center(child: Text('$e')),
+        body: ErrorRetryView(
+          error: e,
+          onRetry: () =>
+              ref.invalidate(watchlistDetailProvider(widget.watchlistId)),
+        ),
       ),
       data: (wl) {
         if (wl == null) {

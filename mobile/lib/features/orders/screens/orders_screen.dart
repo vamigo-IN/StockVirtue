@@ -5,6 +5,7 @@ import '../../../core/company_names.dart';
 import '../../../core/error_mapper.dart';
 import '../../../core/money_format.dart';
 import '../../../data/models/order.dart';
+import '../../../widgets/error_retry_view.dart';
 import '../../../widgets/empty_state.dart';
 import '../../../widgets/fno_badge.dart';
 import '../../home/screens/shell_screen.dart';
@@ -109,10 +110,9 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
         },
         child: orders.when(
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (e, _) => ListView(
-            children: [
-              Padding(padding: const EdgeInsets.all(24), child: Text('$e')),
-            ],
+          error: (e, _) => ErrorRetryView(
+            error: e,
+            onRetry: () => ref.invalidate(ordersListProvider),
           ),
           data: (all) {
             final list = _apply(all).toList();

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/company_names.dart';
 import '../../../core/money_format.dart';
+import '../../../widgets/error_retry_view.dart';
 import '../../symbol/screens/symbol_detail_screen.dart';
 import '../market_repository.dart';
 
@@ -103,10 +104,9 @@ class _ScannersScreenState extends ConsumerState<ScannersScreen> {
         },
         child: async.when(
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (e, _) => ListView(
-            children: [
-              Padding(padding: const EdgeInsets.all(24), child: Text('$e')),
-            ],
+          error: (e, _) => ErrorRetryView(
+            error: e,
+            onRetry: () => ref.invalidate(_scannerProvider(_kind)),
           ),
           data: (rows) => ListView(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),

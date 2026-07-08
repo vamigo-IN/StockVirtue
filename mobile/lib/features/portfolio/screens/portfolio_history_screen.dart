@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/money_format.dart';
 import '../../../data/models/portfolio_history.dart';
+import '../../../widgets/error_retry_view.dart';
 import '../portfolio_providers.dart';
 
 const _upColor = Color(0xFF22C55E);
@@ -50,10 +51,9 @@ class _PortfolioHistoryScreenState
         },
         child: history.when(
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (e, _) => ListView(
-            children: [
-              Padding(padding: const EdgeInsets.all(24), child: Text('$e')),
-            ],
+          error: (e, _) => ErrorRetryView(
+            error: e,
+            onRetry: () => ref.invalidate(portfolioHistoryProvider(_days)),
           ),
           data: (h) => _Body(
             history: h,

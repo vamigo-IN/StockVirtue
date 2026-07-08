@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/money_format.dart';
 import '../../../data/models/tick.dart';
 import '../../../widgets/empty_state.dart';
+import '../../../widgets/error_retry_view.dart';
 import '../../symbol/screens/symbol_detail_screen.dart';
 import '../../ticks/ticks_providers.dart';
 import '../../ticks/ticks_service.dart';
@@ -81,13 +82,9 @@ class _CommoditiesScreenState extends ConsumerState<CommoditiesScreen> {
         },
         child: async.when(
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (e, _) => ListView(
-            children: [
-              Padding(
-                padding: const EdgeInsets.all(24),
-                child: Text('Could not load commodities.\n$e'),
-              ),
-            ],
+          error: (e, _) => ErrorRetryView(
+            error: e,
+            onRetry: () => ref.invalidate(_commoditiesProvider),
           ),
           data: (list) {
             if (list.isEmpty) {

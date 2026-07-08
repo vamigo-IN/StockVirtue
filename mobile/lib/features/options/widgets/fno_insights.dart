@@ -345,7 +345,7 @@ class _MoversList extends ConsumerWidget {
       error: (e, _) => Padding(
         padding: const EdgeInsets.all(12),
         child: Text(
-          'Movers unavailable — $e',
+          'Movers unavailable right now. Pull down to refresh.',
           style: TextStyle(
             color: scheme.onSurface.withValues(alpha: 0.55),
             fontSize: 12,
@@ -512,7 +512,7 @@ class _OIList extends ConsumerWidget {
       error: (e, _) => Padding(
         padding: const EdgeInsets.all(12),
         child: Text(
-          'OI data unavailable — $e',
+          'OI data unavailable right now. Pull down to refresh.',
           style: TextStyle(
             color: scheme.onSurface.withValues(alpha: 0.55),
             fontSize: 12,
