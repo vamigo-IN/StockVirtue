@@ -80,11 +80,11 @@ class SettingsScreen extends ConsumerWidget {
             children: const [
               _DeferredRow(
                 icon: Icons.notifications_active_outlined,
-                label: 'Push notifications (FCM)',
+                label: 'Push notifications',
                 hint:
-                    'Deferred — needs the firebase_messaging package and '
-                    'Android google-services config to be wired up. Tracked '
-                    'as a separate platform task.',
+                    'On. This device is registered for push, so order fills, '
+                    'price alerts, market-close reminders and updates arrive '
+                    'even when the app is closed. Mute categories above.',
               ),
               _Divider(),
               _DeferredRow(

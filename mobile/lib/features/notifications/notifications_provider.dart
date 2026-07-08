@@ -1,19 +1,28 @@
 import 'dart:async';
-import 'dart:convert';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 import '../../core/notification_kinds.dart';
 import '../../core/preferences.dart';
-import '../../core/secure_storage.dart';
+import 'notifications_repository.dart';
 
 // AppNotificationKind lives in core/notification_kinds.dart so the core
-// preferences module can mute kinds without creating a feature ↔ core
-// import cycle. Re-exported here for backwards-compat with all the call
-// sites that already import this file.
+// preferences module can reference it without a feature ↔ core cycle.
 export '../../core/notification_kinds.dart' show AppNotificationKind;
+
+/// Maps a backend notification `kind` string to the client's display enum.
+/// The server uses: info | order | price | achievement | reminder | admin.
+AppNotificationKind kindFromServer(String? kind) {
+  switch (kind) {
+    case 'order':
+      return AppNotificationKind.orderFilled;
+    case 'price':
+      return AppNotificationKind.priceAlert;
+    // achievement / reminder / admin / info all render with the info style.
+    default:
+      return AppNotificationKind.info;
+  }
+}
 
 class AppNotification {
   final String id;
@@ -41,111 +50,91 @@ class AppNotification {
         read: read ?? this.read,
       );
 
-  Map<String, dynamic> toJson() => {
-        'id': id,
-        'kind': kind.name,
-        'title': title,
-        'body': body,
-        'at': at.toIso8601String(),
-        'read': read,
-      };
-
-  static AppNotification fromJson(Map<String, dynamic> json) {
-    final kindName = json['kind'] as String? ?? 'info';
-    final kind = AppNotificationKind.values.firstWhere(
-      (k) => k.name == kindName,
-      orElse: () => AppNotificationKind.info,
-    );
+  /// From a `/notifications` inbox row.
+  static AppNotification fromServer(Map<String, dynamic> json) {
     return AppNotification(
       id: json['id'] as String,
-      kind: kind,
-      title: json['title'] as String,
-      body: json['body'] as String,
-      at: DateTime.parse(json['at'] as String),
+      kind: kindFromServer(json['kind'] as String?),
+      title: (json['title'] as String?) ?? '',
+      body: (json['body'] as String?) ?? '',
+      at: DateTime.tryParse(json['createdAt'] as String? ?? '') ??
+          DateTime.now(),
       read: json['read'] as bool? ?? false,
     );
   }
 }
 
-/// Storage wrapper. Persists the notification log so it survives restarts.
-class NotificationsStorage {
-  NotificationsStorage(this._storage);
-  final FlutterSecureStorage _storage;
-  static const _key = 'stockvirtue.notifications';
-  static const max = 50;
-
-  Future<List<AppNotification>> read() async {
-    final raw = await _storage.read(key: _key);
-    if (raw == null || raw.isEmpty) return const [];
-    try {
-      final list = (jsonDecode(raw) as List).cast<Map<String, dynamic>>();
-      return list.map(AppNotification.fromJson).toList();
-    } catch (_) {
-      return const [];
-    }
-  }
-
-  Future<void> write(List<AppNotification> list) async {
-    await _storage.write(
-      key: _key,
-      value: jsonEncode(list.map((n) => n.toJson()).toList()),
-    );
-  }
-}
-
-final notificationsStorageProvider = Provider<NotificationsStorage>((ref) {
-  return NotificationsStorage(appSecureStorage);
-});
-
-/// In-memory notification log. Race-free: writes go through one Notifier
-/// instance, persistence is fire-and-forget after the in-memory mutation
-/// (mirrors the pattern used by [RecentlyViewedNotifier]).
+/// Server-backed notification inbox. The backend owns the notifications
+/// (fills, alerts, achievements, market-close reminders, admin broadcasts);
+/// this fetches them, marks them read, and accepts real-time inserts pushed
+/// over the Socket.IO connection.
 class NotificationsNotifier extends AsyncNotifier<List<AppNotification>> {
   @override
-  Future<List<AppNotification>> build() =>
-      ref.read(notificationsStorageProvider).read();
+  Future<List<AppNotification>> build() async {
+    final rows = await ref.read(notificationsRepositoryProvider).list();
+    return rows.map(AppNotification.fromServer).toList();
+  }
 
+  /// Re-fetch from the server, preserving any optimistic client-only entries
+  /// (order placed/cancelled/rejected etc.) the server doesn't persist. Server
+  /// rows are the source of truth for everything else.
+  Future<void> refresh() async {
+    final rows = await ref.read(notificationsRepositoryProvider).list();
+    final serverList = rows.map(AppNotification.fromServer).toList();
+    final localOnly = (state.value ?? const <AppNotification>[])
+        .where((n) => n.id.startsWith('local:'));
+    final merged = [...localOnly, ...serverList]
+      ..sort((a, b) => b.at.compareTo(a.at));
+    state = AsyncData(merged);
+  }
+
+  /// Optimistic, client-side-only notification for events the server doesn't
+  /// emit (order placed / cancelled / rejected, basket & strategy results,
+  /// local welcome messages). Server-generated events (fills, alerts,
+  /// achievements, reminders, admin) arrive via [onRealtime] / [refresh].
   Future<void> push({
     required AppNotificationKind kind,
     required String title,
     required String body,
   }) async {
-    // Drop muted kinds before they hit the log. Reading the prefs provider
-    // synchronously is safe because [prefsProvider] always returns the
-    // default until storage has loaded — worst case is the first launch
-    // sees an extra notification it would otherwise have suppressed.
-    final prefs = ref.read(prefsProvider);
-    if (prefs.isMuted(kind)) return;
-    final existing = state.value ?? await future;
+    // Respect the user's per-kind mute toggles (Settings → Notifications).
+    if (ref.read(prefsProvider).isMuted(kind)) return;
     final entry = AppNotification(
-      id: DateTime.now().microsecondsSinceEpoch.toString(),
+      id: 'local:${DateTime.now().microsecondsSinceEpoch}',
       kind: kind,
       title: title,
       body: body,
       at: DateTime.now(),
     );
-    final next = [entry, ...existing].take(NotificationsStorage.max).toList();
-    state = AsyncData(next);
-    unawaited(_persist(next));
-  }
-
-  Future<void> markAllRead() async {
-    final list = state.value ?? await future;
-    final next = [for (final n in list) n.copyWith(read: true)];
-    state = AsyncData(next);
-    unawaited(_persist(next));
+    final current = state.value ?? const <AppNotification>[];
+    state = AsyncData([entry, ...current].take(60).toList());
   }
 
   Future<void> clear() async {
     state = const AsyncData([]);
-    unawaited(_persist(const []));
   }
 
-  Future<void> _persist(List<AppNotification> list) async {
+  /// Prepend a notification delivered in real time. Deduped by id so a
+  /// subsequent refresh doesn't double it. A null/absent id (admin broadcast)
+  /// triggers a refresh instead, so the caller gets their canonical row.
+  Future<void> onRealtime(Map<String, dynamic> json) async {
+    final id = json['id'] as String?;
+    if (id == null) {
+      await refresh();
+      return;
+    }
+    final current = state.value ?? const <AppNotification>[];
+    if (current.any((n) => n.id == id)) return;
+    state = AsyncData([AppNotification.fromServer(json), ...current]);
+  }
+
+  Future<void> markAllRead() async {
+    final list = state.value ?? const <AppNotification>[];
+    state = AsyncData([for (final n in list) n.copyWith(read: true)]);
     try {
-      await ref.read(notificationsStorageProvider).write(list);
-    } catch (e, st) {
-      debugPrint('Notifications persist failed: $e\n$st');
+      await ref.read(notificationsRepositoryProvider).markAllRead();
+    } catch (_) {
+      // Best-effort; the next refresh reconciles from the server.
     }
   }
 }
@@ -153,7 +142,7 @@ class NotificationsNotifier extends AsyncNotifier<List<AppNotification>> {
 final notificationsProvider = AsyncNotifierProvider<NotificationsNotifier,
     List<AppNotification>>(NotificationsNotifier.new);
 
-/// Convenience selector — unread count for the bell badge.
+/// Unread count for the bell badge.
 final unreadNotificationsCountProvider = Provider<int>((ref) {
   final list = ref.watch(notificationsProvider).value ?? const [];
   return list.where((n) => !n.read).length;

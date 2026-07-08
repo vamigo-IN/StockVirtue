@@ -43,6 +43,11 @@ dependencies:
   google_sign_in: ^7.2.0
   firebase_analytics: ^12.4.3
 
+  # Push: FCM for background delivery + local notifications to display them
+  # (foreground FCM messages and realtime socket events).
+  firebase_messaging: ^16.0.4
+  flutter_local_notifications: ^19.4.2
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

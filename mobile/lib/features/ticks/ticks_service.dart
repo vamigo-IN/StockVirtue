@@ -20,6 +20,10 @@ class TicksService {
   io.Socket? _socket;
   final _ticks = StreamController<Tick>.broadcast();
   final _connectionState = StreamController<bool>.broadcast();
+  // Server-pushed notifications (order fills, alerts, reminders, admin
+  // broadcasts) delivered over the same authenticated socket.
+  final _notifications =
+      StreamController<Map<String, dynamic>>.broadcast();
   AccessTokenProvider? _tokenProvider;
   bool _refreshingAuth = false;
 
@@ -36,6 +40,7 @@ class TicksService {
 
   Stream<Tick> get ticks => _ticks.stream;
   Stream<bool> get connectionState => _connectionState.stream;
+  Stream<Map<String, dynamic>> get notifications => _notifications.stream;
   bool get isConnected => _socket?.connected ?? false;
 
   String _keyOf(TickSubscription s) => '${s.exchange}:${s.symbol}';
@@ -86,6 +91,11 @@ class TicksService {
           } catch (e) {
             if (kDebugMode) debugPrint('[TicksService] bad tick: $e');
           }
+        }
+      })
+      ..on('notification', (data) {
+        if (data is Map) {
+          _notifications.add(Map<String, dynamic>.from(data));
         }
       })
       ..connect();
@@ -178,5 +188,6 @@ class TicksService {
     disconnect();
     _ticks.close();
     _connectionState.close();
+    _notifications.close();
   }
 }

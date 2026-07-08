@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../widgets/error_retry_view.dart';
 import '../notifications_provider.dart';
 
 class NotificationsScreen extends ConsumerStatefulWidget {
@@ -15,9 +16,12 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
   @override
   void initState() {
     super.initState();
-    // Reading the screen counts as acknowledgement — clear the bell badge.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(notificationsProvider.notifier).markAllRead();
+    // Fetch the latest from the server (covers pushes received while the app
+    // was backgrounded), then mark everything read to clear the bell badge.
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final notifier = ref.read(notificationsProvider.notifier);
+      await notifier.refresh();
+      await notifier.markAllRead();
     });
   }
 
@@ -64,7 +68,10 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
       ),
       body: async.when(
         loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(child: Text('$e')),
+        error: (e, _) => ErrorRetryView(
+          error: e,
+          onRetry: () => ref.read(notificationsProvider.notifier).refresh(),
+        ),
         data: (list) {
           if (list.isEmpty) {
             return Center(

@@ -10,6 +10,10 @@
 -keep class com.google.firebase.** { *; }
 -dontwarn com.google.firebase.**
 
+# --- flutter_local_notifications (GSON models referenced reflectively) ---
+-keep class com.dexterous.** { *; }
+-dontwarn com.dexterous.**
+
 # --- Google Sign-In / Google APIs ---
 -keep class com.google.android.gms.** { *; }
 -dontwarn com.google.android.gms.**

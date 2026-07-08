@@ -3,10 +3,17 @@
          into the debug/profile manifests automatically; release builds use
          this main manifest, so it must be declared here explicitly. -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- Android 13+ runtime permission for showing notifications (FCM + local). -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <application
         android:label="StockVirtue"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
+        <!-- Channel FCM uses for background/terminated notifications; created
+             at runtime by PushService with this same id. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="stockvirtue_default"/>
         <activity
             android:name=".MainActivity"
             android:exported="true"
