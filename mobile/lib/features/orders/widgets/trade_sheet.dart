@@ -302,6 +302,8 @@ class _TradeSheetState extends ConsumerState<_TradeSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final muted = scheme.onSurface.withValues(alpha: 0.6);
     final tick = ref.watch(latestTicksProvider.select<Tick?>((m) => m[_key]));
     final livePrice = _livePrice(tick);
     final orderPrice = _reservationPrice;
@@ -345,7 +347,7 @@ class _TradeSheetState extends ConsumerState<_TradeSheet> {
                 width: 36,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.3),
+                  color: scheme.onSurface.withValues(alpha: 0.25),
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -358,7 +360,7 @@ class _TradeSheetState extends ConsumerState<_TradeSheet> {
             const SizedBox(height: 4),
             Text(
               '${widget.exchange} • LTP ₹${livePrice.toStringAsFixed(2)}',
-              style: TextStyle(color: Colors.white.withValues(alpha: 0.6)),
+              style: TextStyle(color: muted),
             ),
             const SizedBox(height: 20),
             _fieldLabel('Product'),
@@ -604,7 +606,7 @@ class _TradeSheetState extends ConsumerState<_TradeSheet> {
                 return Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.05),
+                    color: scheme.surfaceContainerHighest.withValues(alpha: 0.4),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Column(
@@ -633,19 +635,13 @@ class _TradeSheetState extends ConsumerState<_TradeSheet> {
                           Expanded(
                             child: Text(
                               'Est. fees (STT, GST, etc.)',
-                              style: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.6),
-                                fontSize: 12,
-                              ),
+                              style: TextStyle(color: muted, fontSize: 12),
                             ),
                           ),
                           const SizedBox(width: 8),
                           Text(
                             '₹${feeEst.total.toStringAsFixed(2)}',
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.6),
-                              fontSize: 12,
-                            ),
+                            style: TextStyle(color: muted, fontSize: 12),
                           ),
                         ],
                       ),

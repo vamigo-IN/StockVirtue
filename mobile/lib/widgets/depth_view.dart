@@ -68,7 +68,7 @@ class _Header extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final faint = TextStyle(
-      color: Colors.white.withValues(alpha: 0.5),
+      color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
       fontSize: 11,
       fontWeight: FontWeight.w600,
       letterSpacing: 0.5,
@@ -105,7 +105,9 @@ class _Side extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: 8),
         child: Text(
           isBuy ? 'No bids' : 'No asks',
-          style: TextStyle(color: Colors.white.withValues(alpha: 0.4)),
+          style: TextStyle(
+            color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.4),
+          ),
         ),
       );
     }
@@ -192,7 +194,7 @@ class _Totals extends StatelessWidget {
     final totalBids = bids.fold<int>(0, (a, b) => a + b.quantity);
     final totalAsks = asks.fold<int>(0, (a, b) => a + b.quantity);
     final faint = TextStyle(
-      color: Colors.white.withValues(alpha: 0.6),
+      color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
       fontSize: 11,
     );
     return Row(

@@ -725,6 +725,7 @@ class _PayoffCard extends StatelessWidget {
                   loS: loS,
                   hiS: hiS,
                   spot: spot,
+                  foreground: scheme.onSurface,
                 ),
                 child: const SizedBox.expand(),
               ),
@@ -859,11 +860,13 @@ class _PayoffPainter extends CustomPainter {
     required this.loS,
     required this.hiS,
     required this.spot,
+    required this.foreground,
   });
   final List<double> values;
   final double loS;
   final double hiS;
   final double spot;
+  final Color foreground;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -891,7 +894,7 @@ class _PayoffPainter extends CustomPainter {
       Offset(0, zeroY),
       Offset(size.width, zeroY),
       Paint()
-        ..color = Colors.white.withValues(alpha: 0.16)
+        ..color = foreground.withValues(alpha: 0.18)
         ..strokeWidth = 1,
     );
 
@@ -935,7 +938,7 @@ class _PayoffPainter extends CustomPainter {
     canvas.drawPath(
       linePath,
       Paint()
-        ..color = Colors.white.withValues(alpha: 0.85)
+        ..color = foreground.withValues(alpha: 0.85)
         ..style = PaintingStyle.stroke
         ..strokeWidth = 1.6
         ..strokeJoin = StrokeJoin.round
@@ -961,5 +964,7 @@ class _PayoffPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _PayoffPainter old) =>
-      old.values != values || old.spot != spot;
+      old.values != values ||
+      old.spot != spot ||
+      old.foreground != foreground;
 }

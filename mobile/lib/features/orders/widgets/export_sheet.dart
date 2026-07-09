@@ -74,7 +74,7 @@ class _ExportSheetState extends ConsumerState<_ExportSheet> {
 
   @override
   Widget build(BuildContext context) {
-    final muted = Colors.white.withValues(alpha: 0.6);
+    final muted = Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6);
     return Padding(
       padding: EdgeInsets.fromLTRB(
         24,

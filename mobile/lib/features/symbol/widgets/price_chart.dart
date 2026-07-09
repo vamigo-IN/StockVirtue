@@ -652,6 +652,11 @@ class _ChartCanvas extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    // Painters draw on the transparent chart canvas, which shows the themed
+    // background behind it — so grid/axis/guide colours must derive from the
+    // theme, not a hardcoded white (which is invisible in light mode).
+    final foreground = scheme.onSurface;
     final closes = candles.map((c) => c.close).toList();
     final compareCloses = compareCandles?.map((c) => c.close).toList();
     final inCompareMode = compareCloses != null && compareCloses.length >= 2;
@@ -664,10 +669,14 @@ class _ChartCanvas extends StatelessWidget {
                 ? _ComparePainter(
                     primary: closes,
                     secondary: compareCloses,
+                    foreground: foreground,
                   )
                 : style == ChartStyle.line
-                    ? _PricePainter(values: closes)
-                    : _CandlePainter(candles: candles),
+                    ? _PricePainter(values: closes, foreground: foreground)
+                    : _CandlePainter(
+                        candles: candles,
+                        foreground: foreground,
+                      ),
             child: const SizedBox.expand(),
           ),
           if (!inCompareMode && indicators.isNotEmpty)
@@ -695,6 +704,7 @@ class _ChartCanvas extends StatelessWidget {
                 painter: _TimeAxisPainter(
                   candles: candles,
                   range: range,
+                  foreground: foreground,
                 ),
               ),
             ),
@@ -717,6 +727,7 @@ class _ChartCanvas extends StatelessWidget {
                     hoverIndex: hoverIndex!,
                     style: style,
                     range: range,
+                    foreground: foreground,
                   ),
                 ),
               ),
@@ -736,9 +747,14 @@ class _ChartCanvas extends StatelessWidget {
 /// first/last always anchored to the leftmost/rightmost candle. This
 /// avoids the "10 cramped labels" mess the chart had before.
 class _TimeAxisPainter extends CustomPainter {
-  _TimeAxisPainter({required this.candles, required this.range});
+  _TimeAxisPainter({
+    required this.candles,
+    required this.range,
+    required this.foreground,
+  });
   final List<Candle> candles;
   final ChartRange range;
+  final Color foreground;
 
   static const _bottomReserve = 14.0;
   static const _maxLabels = 6;
@@ -773,7 +789,7 @@ class _TimeAxisPainter extends CustomPainter {
       text: TextSpan(
         text: text,
         style: TextStyle(
-          color: Colors.white.withValues(alpha: 0.5),
+          color: foreground.withValues(alpha: 0.55),
           fontSize: 9.5,
           fontWeight: FontWeight.w600,
           letterSpacing: 0.2,
@@ -788,7 +804,9 @@ class _TimeAxisPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _TimeAxisPainter old) =>
-      old.candles != candles || old.range != range;
+      old.candles != candles ||
+      old.range != range ||
+      old.foreground != foreground;
 }
 
 String _formatTime(DateTime t, ChartRange range) {
@@ -835,12 +853,14 @@ class _CrosshairPainter extends CustomPainter {
     required this.hoverIndex,
     required this.style,
     required this.range,
+    required this.foreground,
   });
 
   final List<Candle> candles;
   final int hoverIndex;
   final ChartStyle style;
   final ChartRange range;
+  final Color foreground;
 
   // Padding constants must mirror the price/candle painters or the dot
   // and the actual candle position will drift apart vertically.
@@ -880,7 +900,7 @@ class _CrosshairPainter extends CustomPainter {
 
     // Vertical crosshair.
     final linePaint = Paint()
-      ..color = Colors.white.withValues(alpha: 0.35)
+      ..color = foreground.withValues(alpha: 0.35)
       ..strokeWidth = 1;
     canvas.drawLine(
       Offset(x, _padTop),
@@ -939,7 +959,12 @@ class _CrosshairPainter extends CustomPainter {
       Rect.fromLTWH(boxLeft, boxTop, boxW, boxH),
       const Radius.circular(6),
     );
-    canvas.drawRRect(rect, Paint()..color = Colors.black.withValues(alpha: 0.55));
+    // Tooltip stays a dark bubble in both themes (like a Material tooltip);
+    // near-opaque so the white text reads over a light chart too.
+    canvas.drawRRect(
+      rect,
+      Paint()..color = const Color(0xFF1A1F2B).withValues(alpha: 0.92),
+    );
     canvas.drawRRect(
       rect,
       Paint()
@@ -959,7 +984,8 @@ class _CrosshairPainter extends CustomPainter {
       old.candles != candles ||
       old.hoverIndex != hoverIndex ||
       old.style != style ||
-      old.range != range;
+      old.range != range ||
+      old.foreground != foreground;
 }
 
 String _formatTooltipTime(DateTime t, ChartRange range) {
@@ -986,9 +1012,14 @@ String _formatTooltipTime(DateTime t, ChartRange range) {
 /// so symbols at very different absolute prices can be visually compared.
 /// Horizontal zero line indicates "no change since start".
 class _ComparePainter extends CustomPainter {
-  _ComparePainter({required this.primary, required this.secondary});
+  _ComparePainter({
+    required this.primary,
+    required this.secondary,
+    required this.foreground,
+  });
   final List<double> primary;
   final List<double> secondary;
+  final Color foreground;
 
   static const _primaryColor = Color(0xFF22C55E);
   static const _secondaryColor = Color(0xFF6366F1);
@@ -1023,7 +1054,7 @@ class _ComparePainter extends CustomPainter {
         size.height - padBottom - ((v - min) / range) * usable;
 
     final guide = Paint()
-      ..color = Colors.white.withValues(alpha: 0.06)
+      ..color = foreground.withValues(alpha: 0.08)
       ..strokeWidth = 1;
     for (var i = 0; i <= 4; i++) {
       final y = padTop + (i / 4) * usable;
@@ -1031,7 +1062,7 @@ class _ComparePainter extends CustomPainter {
     }
     // Solid zero-return baseline.
     final zero = Paint()
-      ..color = Colors.white.withValues(alpha: 0.18)
+      ..color = foreground.withValues(alpha: 0.22)
       ..strokeWidth = 1;
     final y0 = yFor(0);
     canvas.drawLine(Offset(0, y0), Offset(size.width, y0), zero);
@@ -1077,7 +1108,9 @@ class _ComparePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _ComparePainter old) =>
-      old.primary != primary || old.secondary != secondary;
+      old.primary != primary ||
+      old.secondary != secondary ||
+      old.foreground != foreground;
 }
 
 class _CompareLegend extends StatelessWidget {
@@ -1089,7 +1122,9 @@ class _CompareLegend extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
       decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.3),
+        // Dark chip in both themes so the white legend text stays readable
+        // over a light chart too.
+        color: Colors.black.withValues(alpha: 0.6),
         borderRadius: BorderRadius.circular(6),
       ),
       child: Row(
@@ -1198,8 +1233,9 @@ class _StyleToggle extends StatelessWidget {
 /// a time axis (the range chip + the always-visible last marker tell the
 /// user where the latest data is).
 class _CandlePainter extends CustomPainter {
-  _CandlePainter({required this.candles});
+  _CandlePainter({required this.candles, required this.foreground});
   final List<Candle> candles;
+  final Color foreground;
 
   static const _up = Color(0xFF22C55E);
   static const _down = Color(0xFFEF4444);
@@ -1220,7 +1256,7 @@ class _CandlePainter extends CustomPainter {
 
     // Faint horizontal guides — same density as the line chart.
     final guide = Paint()
-      ..color = Colors.white.withValues(alpha: 0.06)
+      ..color = foreground.withValues(alpha: 0.08)
       ..strokeWidth = 1;
     for (var i = 0; i <= 4; i++) {
       final y = padTop + (i / 4) * usable;
@@ -1281,12 +1317,13 @@ class _CandlePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _CandlePainter old) =>
-      old.candles != candles;
+      old.candles != candles || old.foreground != foreground;
 }
 
 class _PricePainter extends CustomPainter {
-  _PricePainter({required this.values});
+  _PricePainter({required this.values, required this.foreground});
   final List<double> values;
+  final Color foreground;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -1309,7 +1346,7 @@ class _PricePainter extends CustomPainter {
 
     // Faint horizontal guides at 0%, 50%, 100% of the visible price band.
     final guidePaint = Paint()
-      ..color = Colors.white.withValues(alpha: 0.06)
+      ..color = foreground.withValues(alpha: 0.08)
       ..strokeWidth = 1;
     for (var i = 0; i <= 4; i++) {
       final y = padTop + (i / 4) * usable;
@@ -1369,7 +1406,8 @@ class _PricePainter extends CustomPainter {
   }
 
   @override
-  bool shouldRepaint(covariant _PricePainter old) => old.values != values;
+  bool shouldRepaint(covariant _PricePainter old) =>
+      old.values != values || old.foreground != foreground;
 }
 
 class _RangeChips extends StatelessWidget {
