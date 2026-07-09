@@ -6,6 +6,7 @@ import '../../../core/market_hours.dart';
 import '../../../core/money_format.dart';
 import '../../../data/models/option_chain.dart';
 import '../../../data/models/tick.dart';
+import '../../../widgets/error_retry_view.dart';
 import '../../home/home_providers.dart';
 import '../../market/market_repository.dart';
 import '../../symbol/screens/symbol_detail_screen.dart';
@@ -86,18 +87,7 @@ class _OptionChainScreenState extends ConsumerState<OptionChainScreen> {
   @override
   void initState() {
     super.initState();
-    _expiriesFuture = ref
-        .read(marketRepositoryProvider)
-        .getExpiries(widget.underlying)
-        .then((list) {
-      if (mounted && list.isNotEmpty) {
-        setState(() {
-          _selectedExpiry = list.first;
-          _loadChain(list.first);
-        });
-      }
-      return list;
-    });
+    _loadExpiries();
     ref.read(marketRepositoryProvider).getPCR().then((rows) {
       if (!mounted) return;
       for (final r in rows) {
@@ -146,6 +136,24 @@ class _OptionChainScreenState extends ConsumerState<OptionChainScreen> {
     super.dispose();
   }
 
+  /// Fetches the underlying's expiry list and auto-selects the nearest one.
+  /// Extracted so the error state can offer a working "Try again" (indices
+  /// with no F&O return a clean 404, handled by ErrorRetryView).
+  void _loadExpiries() {
+    _expiriesFuture = ref
+        .read(marketRepositoryProvider)
+        .getExpiries(widget.underlying)
+        .then((list) {
+      if (mounted && list.isNotEmpty) {
+        setState(() {
+          _selectedExpiry = list.first;
+          _loadChain(list.first);
+        });
+      }
+      return list;
+    });
+  }
+
   void _loadChain(String expiry) {
     _chainFuture = ref
         .read(marketRepositoryProvider)
@@ -181,11 +189,9 @@ class _OptionChainScreenState extends ConsumerState<OptionChainScreen> {
             return const Center(child: CircularProgressIndicator());
           }
           if (snap.hasError) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Text('${snap.error}'),
-              ),
+            return ErrorRetryView(
+              error: snap.error,
+              onRetry: () => setState(_loadExpiries),
             );
           }
           final expiries = snap.data ?? const [];
@@ -214,7 +220,13 @@ class _OptionChainScreenState extends ConsumerState<OptionChainScreen> {
                       return const Center(child: CircularProgressIndicator());
                     }
                     if (csnap.hasError) {
-                      return Center(child: Text('${csnap.error}'));
+                      return ErrorRetryView(
+                        error: csnap.error,
+                        onRetry: _selectedExpiry == null
+                            ? null
+                            : () =>
+                                setState(() => _loadChain(_selectedExpiry!)),
+                      );
                     }
                     final chain = csnap.data;
                     if (chain == null || chain.strikes.isEmpty) {

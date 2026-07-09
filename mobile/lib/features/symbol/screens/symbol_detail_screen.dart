@@ -10,6 +10,7 @@ import '../../../data/models/portfolio.dart';
 import '../../../data/models/quote.dart';
 import '../../../data/models/tick.dart';
 import '../../../widgets/depth_view.dart';
+import '../../../widgets/error_retry_view.dart';
 import '../../chart/screens/chart_screen.dart';
 import '../../home/indices_universe.dart';
 import '../../home/recently_viewed_storage.dart';
@@ -359,7 +360,15 @@ class _SymbolDetailScreenState extends ConsumerState<SymbolDetailScreen> {
             return const Center(child: CircularProgressIndicator());
           }
           if (snap.hasError) {
-            return Center(child: Text('${snap.error}'));
+            return ErrorRetryView(
+              error: snap.error,
+              onRetry: () => setState(() {
+                _restLtp = null;
+                _quoteFuture = ref
+                    .read(marketRepositoryProvider)
+                    .getRawQuote(_quoteSymbol, _exchange);
+              }),
+            );
           }
           final raw = snap.data ?? const {};
           final quote = Quote.fromJson(raw.isEmpty ? null : raw);

@@ -7,6 +7,7 @@ import '../../../core/error_mapper.dart';
 import '../../../core/money_format.dart';
 import '../../../data/models/option_chain.dart';
 import '../../../data/models/order.dart';
+import '../../../widgets/error_retry_view.dart';
 import '../../market/market_repository.dart';
 import '../../notifications/notifications_provider.dart';
 import '../../orders/orders_providers.dart';
@@ -125,6 +126,10 @@ class _StrategyBuilderScreenState
   @override
   void initState() {
     super.initState();
+    _loadExpiries();
+  }
+
+  void _loadExpiries() {
     _expiriesFuture = ref
         .read(marketRepositoryProvider)
         .getExpiries(widget.underlying)
@@ -202,7 +207,10 @@ class _StrategyBuilderScreenState
             return const Center(child: CircularProgressIndicator());
           }
           if (snap.hasError) {
-            return Center(child: Text('${snap.error}'));
+            return ErrorRetryView(
+              error: snap.error,
+              onRetry: () => setState(_loadExpiries),
+            );
           }
           final expiries = snap.data ?? const [];
           if (expiries.isEmpty) {
@@ -239,9 +247,12 @@ class _StrategyBuilderScreenState
                     );
                   }
                   if (csnap.hasError) {
-                    return Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Text('${csnap.error}'),
+                    return ErrorRetryView(
+                      error: csnap.error,
+                      compact: true,
+                      onRetry: _expiry == null
+                          ? null
+                          : () => setState(() => _loadChain(_expiry!)),
                     );
                   }
                   final chain = csnap.data;

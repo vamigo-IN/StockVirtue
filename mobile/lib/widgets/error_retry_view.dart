@@ -11,24 +11,38 @@ import '../core/error_mapper.dart';
 ///
 /// Use [compact] inside cards / carousels where the full centered layout would
 /// be too tall.
+///
+/// For a "not found" (HTTP 404) the load can't succeed on retry — the thing
+/// genuinely isn't there — so the primary action becomes "Go back" (pops the
+/// route) instead of "Try again". [onBack] overrides that pop if the caller
+/// needs different behaviour.
 class ErrorRetryView extends StatelessWidget {
   const ErrorRetryView({
     super.key,
     required this.error,
-    required this.onRetry,
+    this.onRetry,
+    this.onBack,
     this.errorContext,
     this.compact = false,
     this.retryLabel = 'Try again',
+    this.backLabel = 'Go back',
   });
 
   final Object? error;
-  final VoidCallback onRetry;
+
+  /// Re-runs the failed load. Optional — omit for states (e.g. a 404) where a
+  /// retry can't help; the widget then shows "Go back" instead.
+  final VoidCallback? onRetry;
+
+  /// Overrides the default "Go back" action (which pops the current route).
+  final VoidCallback? onBack;
 
   /// Forwarded to [friendlyError] so the same status can read differently per
   /// screen (e.g. a 401 on login vs. elsewhere).
   final String? errorContext;
   final bool compact;
   final String retryLabel;
+  final String backLabel;
 
   /// Network / timeout failures get a "connection" icon and are exactly the
   /// case a Retry button is most warranted for.
@@ -43,13 +57,32 @@ class ErrorRetryView extends StatelessWidget {
     return false;
   }
 
+  /// A 404 means the resource genuinely isn't there — retrying just re-fetches
+  /// the same 404, so we offer "Go back" rather than "Try again".
+  bool get _isNotFound {
+    final e = error;
+    return e is DioException && e.response?.statusCode == 404;
+  }
+
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final muted = scheme.onSurface.withValues(alpha: 0.6);
     final message = friendlyError(error, context: errorContext);
-    final icon =
-        _isConnectivity ? Icons.wifi_off_rounded : Icons.error_outline_rounded;
+    final notFound = _isNotFound;
+    final icon = notFound
+        ? Icons.search_off_rounded
+        : _isConnectivity
+            ? Icons.wifi_off_rounded
+            : Icons.error_outline_rounded;
+
+    // For a not-found, "Go back" is the useful action; otherwise re-run the
+    // load. Fall back to popping the route when no explicit handler is given.
+    final VoidCallback? action = notFound
+        ? (onBack ?? () => Navigator.of(context).maybePop())
+        : onRetry;
+    final actionIcon = notFound ? Icons.arrow_back_rounded : Icons.refresh;
+    final actionLabel = notFound ? backLabel : retryLabel;
 
     if (compact) {
       return Center(
@@ -65,15 +98,17 @@ class ErrorRetryView extends StatelessWidget {
                 textAlign: TextAlign.center,
                 style: TextStyle(color: muted, fontSize: 12.5),
               ),
-              const SizedBox(height: 10),
-              OutlinedButton.icon(
-                onPressed: onRetry,
-                icon: const Icon(Icons.refresh, size: 15),
-                label: Text(retryLabel),
-                style: OutlinedButton.styleFrom(
-                  visualDensity: VisualDensity.compact,
+              if (action != null) ...[
+                const SizedBox(height: 10),
+                OutlinedButton.icon(
+                  onPressed: action,
+                  icon: Icon(actionIcon, size: 15),
+                  label: Text(actionLabel),
+                  style: OutlinedButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                  ),
                 ),
-              ),
+              ],
             ],
           ),
         ),
@@ -96,12 +131,14 @@ class ErrorRetryView extends StatelessWidget {
                   .titleSmall
                   ?.copyWith(color: muted, fontWeight: FontWeight.w500),
             ),
-            const SizedBox(height: 20),
-            FilledButton.icon(
-              onPressed: onRetry,
-              icon: const Icon(Icons.refresh, size: 18),
-              label: Text(retryLabel),
-            ),
+            if (action != null) ...[
+              const SizedBox(height: 20),
+              FilledButton.icon(
+                onPressed: action,
+                icon: Icon(actionIcon, size: 18),
+                label: Text(actionLabel),
+              ),
+            ],
           ],
         ),
       ),

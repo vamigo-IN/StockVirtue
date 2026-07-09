@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/error_mapper.dart';
 import '../../home/home_providers.dart';
 import '../../home/indices_universe.dart';
 import '../../home/recently_viewed_storage.dart';
@@ -154,7 +155,10 @@ class _StockSearchScreenState extends ConsumerState<StockSearchScreen> {
                   return const Center(child: CircularProgressIndicator());
                 }
                 if (snapshot.hasError) {
-                  return _Hint(icon: Icons.error, text: '${snapshot.error}');
+                  return _Hint(
+                    icon: Icons.error_outline,
+                    text: friendlyError(snapshot.error),
+                  );
                 }
                 final results = snapshot.data ?? const [];
                 if (results.isEmpty) {

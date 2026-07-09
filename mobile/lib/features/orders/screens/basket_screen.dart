@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/company_names.dart';
 import '../../../core/error_mapper.dart';
 import '../../../data/models/order.dart';
+import '../../../widgets/error_retry_view.dart';
 import '../../market/market_repository.dart';
 import '../../notifications/notifications_provider.dart';
 import '../../portfolio/portfolio_providers.dart';
@@ -620,7 +621,10 @@ class _PickSymbolBodyState extends ConsumerState<_PickSymbolBody> {
                   return const Center(child: CircularProgressIndicator());
                 }
                 if (snap.hasError) {
-                  return Center(child: Text('${snap.error}'));
+                  return ErrorRetryView(
+                    error: snap.error,
+                    onRetry: _runSearch,
+                  );
                 }
                 final list = snap.data ?? const [];
                 if (list.isEmpty) {

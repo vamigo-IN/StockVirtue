@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/market_hours.dart';
 import '../../../data/models/candle.dart';
+import '../../../widgets/error_retry_view.dart';
 import '../../chart/screens/chart_screen.dart';
 import '../../market/market_repository.dart';
 import '../../ticks/ticks_providers.dart';
@@ -1893,7 +1894,11 @@ class _CompareSearchSheetState extends ConsumerState<_CompareSearchSheet> {
                             );
                           }
                           if (snap.hasError) {
-                            return Center(child: Text('${snap.error}'));
+                            return ErrorRetryView(
+                              error: snap.error,
+                              compact: true,
+                              onRetry: _runSearch,
+                            );
                           }
                           final list = snap.data ?? const [];
                           if (list.isEmpty) {
