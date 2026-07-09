@@ -7,6 +7,14 @@ import { AppModule } from './app.module';
 import { AppConfig } from './config/configuration';
 import { AllExceptionsFilter } from './common/all-exceptions.filter';
 
+// Render server-side dates/logs in IST (UTC+5:30) — the timezone this app's
+// users and operators work in. Set before anything formats a date so the Nest
+// Logger's timestamps and any locale formatting read IST. Storage stays UTC
+// (Postgres timestamptz / toISOString), and time-sensitive business logic
+// computes IST via explicit offsets (see common/market-hours.ts), so this only
+// affects display + logging. An explicit TZ from the environment still wins.
+process.env.TZ = process.env.TZ || 'Asia/Kolkata';
+
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
   const logger = new Logger('Bootstrap');

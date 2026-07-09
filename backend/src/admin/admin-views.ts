@@ -18,6 +18,18 @@ export function esc(value: unknown): string {
     .replace(/'/g, '&#39;');
 }
 
+const IST_OFFSET_MS = (5 * 60 + 30) * 60 * 1000;
+
+/// Renders a timestamp in IST (UTC+5:30) as an ISO-8601-style string
+/// ("YYYY-MM-DDTHH:MM:SS.sssZ"), so the existing `.slice()` / `.replace()`
+/// display code reads IST. `toISOString()` always renders UTC regardless of
+/// the process TZ, so admin timestamps must be shifted explicitly here.
+/// Accepts a Date, a UTC ISO string, or an epoch-ms number.
+export function istIso(d: Date | string | number): string {
+  const date = d instanceof Date ? d : new Date(d);
+  return new Date(date.getTime() + IST_OFFSET_MS).toISOString();
+}
+
 /// Indian-rupee formatting for stat cards. Matches the mobile client's
 /// formatInr() output ("₹12,34,567.89"), abbreviated to L/Cr above 1 lakh.
 export function inr(value: number, opts: { compact?: boolean } = {}): string {
@@ -136,7 +148,7 @@ export function layout(opts: LayoutOpts): string {
   <main class="flex-1 overflow-y-auto">
     <header class="px-8 py-5 border-b border-zinc-800 flex items-center gap-4 sticky top-0 bg-zinc-950/85 backdrop-blur z-10">
       <h1 class="text-xl font-bold tracking-tight">${esc(opts.title)}</h1>
-      <span class="text-zinc-600 text-xs">${new Date().toISOString().replace('T', ' ').slice(0, 19)} UTC</span>
+      <span class="text-zinc-600 text-xs">${istIso(new Date()).replace('T', ' ').slice(0, 19)} IST</span>
     </header>
     <div class="p-8">${opts.body}</div>
   </main>
@@ -266,10 +278,10 @@ export function dashboardBody(s: Overview): string {
 
   const lastSnap = s.lastSnapshot
     ? `Last run for ${esc(
-        s.lastSnapshot.asOfDate.toISOString().slice(0, 10),
+        istIso(s.lastSnapshot.asOfDate).slice(0, 10),
       )} at ${esc(
-        s.lastSnapshot.createdAt.toISOString().replace('T', ' ').slice(0, 19),
-      )} UTC`
+        istIso(s.lastSnapshot.createdAt).replace('T', ' ').slice(0, 19),
+      )} IST`
     : 'No snapshots have run yet';
 
   return `
@@ -352,7 +364,7 @@ export function usersBody(list: {
         <td class="px-3 py-3 text-right">${u.positionCount}</td>
         <td class="px-3 py-3 text-right">${u.referralCount}</td>
         <td class="px-3 py-3 font-mono text-[11px] text-zinc-500">${esc(u.referralCode ?? '—')}</td>
-        <td class="px-3 py-3 text-[11px] text-zinc-500">${esc(u.createdAt.slice(0, 10))}</td>
+        <td class="px-3 py-3 text-[11px] text-zinc-500">${esc(istIso(u.createdAt).slice(0, 10))}</td>
       </tr>`;
     })
     .join('');
@@ -434,7 +446,7 @@ export function userDetailBody(u: NonNullable<UserDetailLike>): string {
         <td class="px-3 py-2 text-right">${o.quantity}</td>
         <td class="px-3 py-2 text-right">${o.fillPrice ? esc(inr(o.fillPrice)) : o.limitPrice ? esc(inr(o.limitPrice)) : '—'}</td>
         <td class="px-3 py-2 text-right text-zinc-400">${esc(inr(o.fees))}</td>
-        <td class="px-3 py-2 text-[11px] text-zinc-500">${esc(o.createdAt.slice(0, 16).replace('T', ' '))}</td>
+        <td class="px-3 py-2 text-[11px] text-zinc-500">${esc(istIso(o.createdAt).slice(0, 16).replace('T', ' '))}</td>
       </tr>`,
     )
     .join('');
@@ -460,8 +472,8 @@ export function userDetailBody(u: NonNullable<UserDetailLike>): string {
         <div class="text-xs text-zinc-500 mt-0.5">${esc(u.phone ?? '')} · ${esc(u.emailAlias ?? 'no email')}</div>
         <div class="mt-4 grid grid-cols-3 gap-3">
           <div><div class="text-[10px] uppercase tracking-wider text-zinc-500">Status</div><div class="mt-1 text-sm font-bold">${esc(u.status)}</div></div>
-          <div><div class="text-[10px] uppercase tracking-wider text-zinc-500">Joined</div><div class="mt-1 text-sm">${esc(u.createdAt.toISOString().slice(0, 10))}</div></div>
-          <div><div class="text-[10px] uppercase tracking-wider text-zinc-500">Last login</div><div class="mt-1 text-sm">${esc(u.lastLoginAt ? u.lastLoginAt.toISOString().slice(0, 10) : '—')}</div></div>
+          <div><div class="text-[10px] uppercase tracking-wider text-zinc-500">Joined</div><div class="mt-1 text-sm">${esc(istIso(u.createdAt).slice(0, 10))}</div></div>
+          <div><div class="text-[10px] uppercase tracking-wider text-zinc-500">Last login</div><div class="mt-1 text-sm">${esc(u.lastLoginAt ? istIso(u.lastLoginAt).slice(0, 10) : '—')}</div></div>
           <div><div class="text-[10px] uppercase tracking-wider text-zinc-500">Referral code</div><div class="mt-1 text-sm font-mono">${esc(u.referralCode ?? '—')}</div></div>
           <div><div class="text-[10px] uppercase tracking-wider text-zinc-500">Referred by</div><div class="mt-1 text-sm">${referredBy}</div></div>
           <div><div class="text-[10px] uppercase tracking-wider text-zinc-500">Invited</div><div class="mt-1 text-sm font-bold">${u.referralsCount}</div></div>
@@ -604,7 +616,7 @@ export function tradingBody(opts: {
         <td class="px-3 py-2 text-right">${o.quantity}</td>
         <td class="px-3 py-2 text-right">${o.fillPrice ? esc(inr(o.fillPrice)) : o.limitPrice ? esc(inr(o.limitPrice)) : '—'}</td>
         <td class="px-3 py-2 text-right text-zinc-400">${esc(inr(o.fees))}</td>
-        <td class="px-3 py-2 text-[11px] text-zinc-500">${esc(o.createdAt.slice(0, 16).replace('T', ' '))}</td>
+        <td class="px-3 py-2 text-[11px] text-zinc-500">${esc(istIso(o.createdAt).slice(0, 16).replace('T', ' '))}</td>
       </tr>`,
     )
     .join('');
@@ -655,7 +667,7 @@ export function roomsBody(
         : '';
       const window =
         r.isTournament && r.startsAt && r.endsAt
-          ? `${esc(r.startsAt.slice(0, 10))} → ${esc(r.endsAt.slice(0, 10))}`
+          ? `${esc(istIso(r.startsAt).slice(0, 10))} → ${esc(istIso(r.endsAt).slice(0, 10))}`
           : '—';
       const limit = r.maxMembers === 0 ? '∞' : r.maxMembers;
       return `<tr class="border-b border-zinc-800">
@@ -664,7 +676,7 @@ export function roomsBody(
         <td class="px-3 py-3 text-right font-bold">${r.memberCount} / ${limit}</td>
         <td class="px-3 py-3 text-zinc-300">${esc(r.ownerName)}</td>
         <td class="px-3 py-3 text-[11px] text-zinc-500">${esc(window)}</td>
-        <td class="px-3 py-3 text-[11px] text-zinc-500">${esc(r.createdAt.slice(0, 10))}</td>
+        <td class="px-3 py-3 text-[11px] text-zinc-500">${esc(istIso(r.createdAt).slice(0, 10))}</td>
       </tr>`;
     })
     .join('');
@@ -963,7 +975,7 @@ export function monitoringBody(opts: {
     ? opts.flags
         .map(
           (f) => `<tr class="border-t border-zinc-800">
-        <td class="px-3 py-2 text-[11px] text-zinc-400">${esc(new Date(f.createdAt).toISOString().slice(5, 16).replace('T', ' '))}</td>
+        <td class="px-3 py-2 text-[11px] text-zinc-400">${esc(istIso(f.createdAt).slice(5, 16).replace('T', ' '))}</td>
         <td class="px-3 py-2"><span class="text-[10px] px-2 py-0.5 rounded bg-amber-500/15 text-amber-300 font-bold">${esc(f.kind)}</span></td>
         <td class="px-3 py-2 font-mono text-[11px]">${esc(f.subjectType)}:${esc(f.subject)}</td>
         <td class="px-3 py-2 text-right">${f.count}/${f.threshold}</td>
@@ -982,7 +994,7 @@ export function monitoringBody(opts: {
     .slice(0, 60)
     .map(
       (r) => `<tr class="border-t border-zinc-800/60">
-      <td class="px-3 py-1.5 text-[11px] text-zinc-500">${esc(new Date(r.ts).toISOString().slice(11, 19))}</td>
+      <td class="px-3 py-1.5 text-[11px] text-zinc-500">${esc(istIso(r.ts).slice(11, 19))}</td>
       <td class="px-3 py-1.5 font-mono text-[11px]">${esc(r.method)} ${esc(r.route)}</td>
       <td class="px-3 py-1.5 text-right ${httpStatusTone(r.status)}">${r.status}</td>
       <td class="px-3 py-1.5 text-right text-zinc-400">${r.latencyMs}ms</td>
@@ -1044,7 +1056,7 @@ export function monitoringActorBody(opts: {
     ? opts.flags
         .map(
           (f) => `<tr class="border-t border-zinc-800">
-        <td class="px-3 py-2 text-[11px] text-zinc-400">${esc(new Date(f.createdAt).toISOString().slice(5, 16).replace('T', ' '))}</td>
+        <td class="px-3 py-2 text-[11px] text-zinc-400">${esc(istIso(f.createdAt).slice(5, 16).replace('T', ' '))}</td>
         <td class="px-3 py-2">${esc(f.kind)}</td>
         <td class="px-3 py-2 text-right">${f.count}/${f.threshold}</td>
         <td class="px-3 py-2 text-[11px] text-zinc-400">${esc(f.detail ?? '')}</td>
@@ -1057,7 +1069,7 @@ export function monitoringActorBody(opts: {
     ? opts.logs
         .map(
           (r) => `<tr class="border-t border-zinc-800/60">
-        <td class="px-3 py-1.5 text-[11px] text-zinc-500">${esc(new Date(r.ts).toISOString().slice(5, 19).replace('T', ' '))}</td>
+        <td class="px-3 py-1.5 text-[11px] text-zinc-500">${esc(istIso(r.ts).slice(5, 19).replace('T', ' '))}</td>
         <td class="px-3 py-1.5 font-mono text-[11px]">${esc(r.method)} ${esc(r.route)}</td>
         <td class="px-3 py-1.5 text-right ${httpStatusTone(r.status)}">${r.status}</td>
         <td class="px-3 py-1.5 text-right text-zinc-400">${r.latencyMs}ms</td>
@@ -1107,7 +1119,7 @@ export function auditBody(
   const body = rows
     .map(
       (r) => `<tr class="border-b border-zinc-800">
-        <td class="px-3 py-2 text-[11px] text-zinc-500 whitespace-nowrap">${esc(r.createdAt.toISOString().replace('T', ' ').slice(0, 19))}</td>
+        <td class="px-3 py-2 text-[11px] text-zinc-500 whitespace-nowrap">${esc(istIso(r.createdAt).replace('T', ' ').slice(0, 19))}</td>
         <td class="px-3 py-2">${esc(r.adminEmail)}</td>
         <td class="px-3 py-2"><span class="text-[10px] px-2 py-0.5 rounded-md bg-indigo-500/15 text-indigo-300 font-bold tracking-wider">${esc(r.action)}</span></td>
         <td class="px-3 py-2 font-mono text-[11px] text-zinc-400">${esc(r.target ?? '—')}</td>
@@ -1121,7 +1133,7 @@ export function auditBody(
     <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl overflow-hidden">
       <table class="w-full text-sm">
         <thead class="text-[11px] uppercase tracking-wider text-zinc-500 border-b border-zinc-800"><tr>
-          <th class="px-3 py-3 text-left">When (UTC)</th>
+          <th class="px-3 py-3 text-left">When (IST)</th>
           <th class="px-3 py-3 text-left">Admin</th>
           <th class="px-3 py-3 text-left">Action</th>
           <th class="px-3 py-3 text-left">Target</th>
@@ -1282,7 +1294,7 @@ export function messagesBody(list: {
         </td>
         <td class="px-3 py-3 text-zinc-300">${esc(m.subject || '—')}<div class="text-[11px] text-zinc-500">${esc(snippet)}</div></td>
         <td class="px-3 py-3"><span class="text-[10px] px-2 py-0.5 rounded-md font-bold tracking-wider ${statusTone(m.status)}">${esc(m.status)}</span></td>
-        <td class="px-3 py-3 text-[11px] text-zinc-500 whitespace-nowrap">${esc(m.createdAt.slice(0, 16).replace('T', ' '))}</td>
+        <td class="px-3 py-3 text-[11px] text-zinc-500 whitespace-nowrap">${esc(istIso(m.createdAt).slice(0, 16).replace('T', ' '))}</td>
         <td class="px-3 py-3 text-right"><a href="/admin/messages/${esc(m.id)}" class="text-xs text-indigo-300 hover:underline">Open →</a></td>
       </tr>`;
         })
@@ -1330,14 +1342,14 @@ export function messageDetailBody(
           <div class="text-sm text-zinc-400 mt-1">
             From <span class="text-zinc-200 font-medium">${esc(m.name)}</span>
             &lt;<a href="mailto:${esc(m.email)}" class="text-indigo-300 hover:underline">${esc(m.email)}</a>&gt;
-            · ${esc(m.createdAt.slice(0, 16).replace('T', ' '))} UTC
+            · ${esc(istIso(m.createdAt).slice(0, 16).replace('T', ' '))} IST
           </div>
           <div class="mt-5 whitespace-pre-wrap text-zinc-200 leading-relaxed">${esc(m.message)}</div>
         </div>
         ${
           m.reply
             ? `<div class="bg-emerald-500/5 border border-emerald-500/30 rounded-2xl p-6">
-                <div class="text-xs uppercase tracking-wider text-emerald-300 font-bold mb-2">Your reply${m.repliedAt ? ` · ${esc(m.repliedAt.slice(0, 16).replace('T', ' '))} UTC` : ''}</div>
+                <div class="text-xs uppercase tracking-wider text-emerald-300 font-bold mb-2">Your reply${m.repliedAt ? ` · ${esc(istIso(m.repliedAt).slice(0, 16).replace('T', ' '))} IST` : ''}</div>
                 <div class="whitespace-pre-wrap text-zinc-200">${esc(m.reply)}</div>
               </div>`
             : ''
