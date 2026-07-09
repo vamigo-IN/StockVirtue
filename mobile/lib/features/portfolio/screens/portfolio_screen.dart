@@ -733,10 +733,14 @@ class _PositionTile extends ConsumerWidget {
       symboltoken: position.symboltoken,
       referencePrice: position.ltp,
       ownedQuantity: position.quantity,
+      // Units reserved by resting orders can't be sold again — the sheet caps
+      // the sell at (owned − reserved) and shows the reserved amount so an
+      // otherwise-confusing "insufficient quantity" rejection is pre-empted.
+      reservedQuantity: position.reservedQty,
       walletBalance: wallet,
       lotSize: position.lotSize,
-      // Default to closing the whole position (it's already a whole-lot qty).
-      initialQuantity: position.quantity.abs(),
+      // Default to closing the whole *available* (unreserved) position.
+      initialQuantity: position.availableQty.abs(),
     );
     if (order != null) {
       ref.invalidate(portfolioProvider);

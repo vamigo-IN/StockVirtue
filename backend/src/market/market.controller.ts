@@ -1,25 +1,19 @@
 import {
   BadRequestException,
-  Body,
   Controller,
   Get,
   Param,
-  Post,
   Query,
-  UseGuards,
 } from '@nestjs/common';
 import { Throttle } from '@nestjs/throttler';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { cacheJson } from '../common/redis-cache';
 import { RedisService } from '../redis/redis.service';
 import { Exchange, isExchange } from '../common/exchange';
 import {
-  BrokerageEstimateRequest,
   CandleInterval,
   CANDLE_INTERVALS,
   ExpiryBucket,
   GainersLosersType,
-  MarginPosition,
   OIBuildupType,
 } from '../smartapi/smartapi.types';
 import { CapSegment } from './cap-segments';
@@ -359,29 +353,6 @@ export class MarketController {
       interval,
       hours,
     );
-  }
-
-  // Margin preview for an F&O position — SPAN + exposure as the broker
-  // would compute it. Body shape mirrors SmartAPI's margin/v1/batch input.
-  @Post('margin-preview')
-  @UseGuards(JwtAuthGuard)
-  marginPreview(@Body() body: MarginPosition) {
-    if (!body || typeof body !== 'object') {
-      throw new BadRequestException('Invalid margin-preview body');
-    }
-    return this.market.getMarginPreview(body);
-  }
-
-  // Brokerage / taxes preview for one or more orders.
-  @Post('brokerage-preview')
-  @UseGuards(JwtAuthGuard)
-  brokeragePreview(@Body() body: BrokerageEstimateRequest) {
-    if (!body || !Array.isArray(body.orders) || body.orders.length === 0) {
-      throw new BadRequestException(
-        'brokerage-preview requires { orders: [...] }',
-      );
-    }
-    return this.market.getBrokeragePreview(body);
   }
 
   private parseGainersLosersType(value: string): GainersLosersType {

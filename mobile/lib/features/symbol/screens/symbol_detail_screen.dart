@@ -57,6 +57,10 @@ class _SymbolDetailScreenState extends ConsumerState<SymbolDetailScreen> {
   double? _initialYearLow;
   double? _initialUpperCircuit;
   double? _initialLowerCircuit;
+  // Last REST quote LTP for this symbol. Used as a price fallback when opening
+  // the trade sheet if no live tick has arrived yet (e.g. BSE index options or
+  // thin strikes off-hours), so the Buy/Sell CTA isn't stuck disabled at ₹0.
+  double? _restLtp;
 
   // Mutable so the NSE ↔ BSE toggle in the header can swap us to the
   // other listing without rebuilding the route. The chart, depth view,
@@ -121,9 +125,16 @@ class _SymbolDetailScreenState extends ConsumerState<SymbolDetailScreen> {
   void _attachToCurrentSymbol() {
     final sub = TickSubscription(symbol: _quoteSymbol, exchange: _exchange);
     _sub = sub;
-    _quoteFuture = ref
+    _restLtp = null;
+    final quoteFuture = ref
         .read(marketRepositoryProvider)
         .getRawQuote(_quoteSymbol, _exchange);
+    _quoteFuture = quoteFuture;
+    quoteFuture.then((raw) {
+      if (!mounted) return;
+      final l = (raw['ltp'] as num?)?.toDouble();
+      if (l != null && l > 0) setState(() => _restLtp = l);
+    }).catchError((_) {});
     ref
         .read(marketRepositoryProvider)
         .getSnapshot(_quoteSymbol, _exchange)
@@ -237,7 +248,15 @@ class _SymbolDetailScreenState extends ConsumerState<SymbolDetailScreen> {
     double walletBalance,
   ) async {
     final tick = ref.read(latestTicksProvider)[_key];
-    final price = tick?.ltp ?? quote?.ltp;
+    final snapLtp = (_snapshot?['ltp'] as num?)?.toDouble();
+    // Reference price for the sheet: prefer a live tick, then the FULL-quote
+    // snapshot LTP, then the REST quote LTP. Without this fallback the sheet
+    // showed ₹0 (disabling the CTA) for any contract not currently ticking —
+    // e.g. SENSEX/BANKEX index options and thin strikes off-hours.
+    final price = tick?.ltp ??
+        (snapLtp != null && snapLtp > 0 ? snapLtp : null) ??
+        _restLtp ??
+        quote?.ltp;
     final order = await showTradeSheet(
       context,
       side: side,
@@ -246,6 +265,9 @@ class _SymbolDetailScreenState extends ConsumerState<SymbolDetailScreen> {
       symboltoken: _symboltoken,
       referencePrice: price,
       ownedQuantity: position?.quantity ?? 0,
+      // Units locked by resting orders can't be sold twice — the sheet caps
+      // the sell at (owned − reserved) and surfaces the reserved amount.
+      reservedQuantity: position?.reservedQty ?? 0,
       walletBalance: walletBalance,
       lotSize: (_snapshot?['lotSize'] as num?)?.toInt() ?? 1,
     );

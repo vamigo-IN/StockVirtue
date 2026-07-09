@@ -10,7 +10,6 @@ import '../../../core/fees.dart';
 import '../../../core/preferences.dart';
 import '../../../data/models/order.dart';
 import '../../../data/models/tick.dart';
-import '../../market/market_repository.dart';
 import '../../notifications/notifications_provider.dart';
 import '../../portfolio/portfolio_providers.dart';
 import '../../ticks/ticks_providers.dart';
@@ -27,6 +26,7 @@ Future<OrderRecord?> showTradeSheet(
   required double? referencePrice,
   required int ownedQuantity,
   required double walletBalance,
+  int reservedQuantity = 0,
   int lotSize = 1,
   int? initialQuantity,
 }) {
@@ -46,6 +46,7 @@ Future<OrderRecord?> showTradeSheet(
         symboltoken: symboltoken,
         referencePrice: referencePrice,
         ownedQuantity: ownedQuantity,
+        reservedQuantity: reservedQuantity < 0 ? 0 : reservedQuantity,
         walletBalance: walletBalance,
         lotSize: lotSize < 1 ? 1 : lotSize,
         initialQuantity: initialQuantity,
@@ -62,6 +63,7 @@ class _TradeSheet extends ConsumerStatefulWidget {
     required this.symboltoken,
     required this.referencePrice,
     required this.ownedQuantity,
+    required this.reservedQuantity,
     required this.walletBalance,
     required this.lotSize,
     this.initialQuantity,
@@ -73,6 +75,10 @@ class _TradeSheet extends ConsumerStatefulWidget {
   final String symboltoken;
   final double? referencePrice;
   final int ownedQuantity;
+
+  /// Units of [ownedQuantity] already locked by resting SELL orders. The sheet
+  /// caps a sell at (owned − reserved) since reserved units can't be sold twice.
+  final int reservedQuantity;
   final double walletBalance;
 
   /// Contract lot size. 1 for cash equity; the F&O lot (e.g. 65) for
@@ -96,13 +102,6 @@ class _TradeSheetState extends ConsumerState<_TradeSheet> {
   late final TextEditingController _limitController;
   late final TextEditingController _triggerController;
   late final TextEditingController _trailController;
-
-  // Live-preview state — populated lazily when the user taps "Verify with
-  // broker preview" so we don't fire SmartAPI calls on every keystroke.
-  BrokeragePreview? _brokeragePreview;
-  MarginPreview? _marginPreview;
-  bool _previewLoading = false;
-  String? _previewError;
 
   bool get _isBuy => widget.side == OrderSide.buy;
   bool get _isLimit => _type == OrderType.limit;
@@ -144,70 +143,6 @@ class _TradeSheetState extends ConsumerState<_TradeSheet> {
   }
 
   double _livePrice(Tick? tick) => tick?.ltp ?? widget.referencePrice ?? 0;
-
-  Future<void> _loadPreview() async {
-    if (_previewLoading) return;
-    setState(() {
-      _previewLoading = true;
-      _previewError = null;
-    });
-    try {
-      final price = _reservationPrice > 0
-          ? _reservationPrice
-          : (widget.referencePrice ?? 0);
-      if (price <= 0 || _qty <= 0) {
-        throw StateError('Set price and quantity first');
-      }
-      final repo = ref.read(marketRepositoryProvider);
-      final tradeType = _isBuy ? 'BUY' : 'SELL';
-      // Map our OrderProduct to SmartAPI's expected vocabulary.
-      // CARRYFORWARD is the F&O equivalent of DELIVERY.
-      final isFno = widget.exchange == 'NFO' || widget.exchange == 'BFO';
-      final productType = _product == OrderProduct.intraday
-          ? 'INTRADAY'
-          : (isFno ? 'CARRYFORWARD' : 'DELIVERY');
-      final orderType = _isLimit
-          ? 'LIMIT'
-          : _isStopLoss
-          ? 'STOPLOSS_MARKET'
-          : _isStopLossLimit
-          ? 'STOPLOSS_LIMIT'
-          : 'MARKET';
-
-      final results = await Future.wait([
-        repo.getBrokeragePreview(
-          exchange: widget.exchange,
-          symbolName: widget.symbol,
-          token: widget.symboltoken,
-          quantity: _qty,
-          price: price,
-          productType: productType,
-          transactionType: tradeType,
-        ),
-        repo.getMarginPreview(
-          exchange: widget.exchange,
-          qty: _qty,
-          price: price,
-          productType: productType,
-          token: widget.symboltoken,
-          tradeType: tradeType,
-          orderType: orderType,
-          triggerPrice: _needsTrigger ? _triggerPrice : null,
-        ),
-      ]);
-      if (!mounted) return;
-      setState(() {
-        _brokeragePreview = results[0] as BrokeragePreview;
-        _marginPreview = results[1] as MarginPreview;
-      });
-    } catch (e) {
-      if (mounted) {
-        setState(() => _previewError = friendlyError(e, context: 'trade'));
-      }
-    } finally {
-      if (mounted) setState(() => _previewLoading = false);
-    }
-  }
 
   double get _limitPrice => double.tryParse(_limitController.text) ?? 0;
   double get _triggerPrice => double.tryParse(_triggerController.text) ?? 0;
@@ -321,11 +256,17 @@ class _TradeSheetState extends ConsumerState<_TradeSheet> {
     return raw ~/ _step * _step; // largest whole-lot quantity ≤ raw
   }
 
+  /// Sellable quantity = owned minus whatever resting orders have reserved.
+  int get _availableToSell {
+    final avail = widget.ownedQuantity - widget.reservedQuantity;
+    return avail < 0 ? 0 : avail;
+  }
+
   int get _rawMaxQty {
     if (!_isBuy) {
-      // Short-selling is disabled — you can only sell what you hold, so the
-      // sell quantity is capped at the owned position (0 ⇒ can't submit).
-      return widget.ownedQuantity;
+      // Short-selling is disabled — you can only sell what you hold, minus any
+      // units reserved by resting orders (0 ⇒ can't submit).
+      return _availableToSell;
     }
     final price = _reservationPrice;
     if (price <= 0) return 0;
@@ -384,6 +325,12 @@ class _TradeSheetState extends ConsumerState<_TradeSheet> {
       } else if (!_isBuy && _triggerPrice >= livePrice) {
         hint = 'Sell trigger usually sits BELOW current price.';
       }
+    }
+    // Whole position locked by resting orders — tell the user how to free it,
+    // instead of leaving the CTA silently disabled at "0 lots".
+    if (!_isBuy && widget.reservedQuantity > 0 && _availableToSell == 0) {
+      hint = 'All ${widget.ownedQuantity} units are reserved by open orders. '
+          'Cancel them from the Orders tab to sell.';
     }
 
     return Padding(
@@ -531,6 +478,9 @@ class _TradeSheetState extends ConsumerState<_TradeSheet> {
                   child: Text(
                     _isBuy
                         ? 'Available ₹${widget.walletBalance.toStringAsFixed(2)}'
+                        : widget.reservedQuantity > 0
+                        ? 'You hold ${widget.ownedQuantity} · '
+                            '${widget.reservedQuantity} reserved'
                         : 'You hold ${widget.ownedQuantity}',
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
@@ -713,17 +663,6 @@ class _TradeSheetState extends ConsumerState<_TradeSheet> {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 8),
-                      _LivePreviewSection(
-                        loading: _previewLoading,
-                        error: _previewError,
-                        brokerage: _brokeragePreview,
-                        margin: _marginPreview,
-                        isFno:
-                            widget.exchange == 'NFO' ||
-                            widget.exchange == 'BFO',
-                        onLoad: _loadPreview,
-                      ),
                     ],
                   ),
                 );
@@ -754,234 +693,6 @@ class _TradeSheetState extends ConsumerState<_TradeSheet> {
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-/// Fetches authoritative broker fee + margin numbers from SmartAPI when
-/// the user taps "Verify with broker preview". Folded into the existing
-/// summary card so the comparison sits next to our local estimate.
-class _LivePreviewSection extends StatelessWidget {
-  const _LivePreviewSection({
-    required this.loading,
-    required this.error,
-    required this.brokerage,
-    required this.margin,
-    required this.isFno,
-    required this.onLoad,
-  });
-
-  final bool loading;
-  final String? error;
-  final BrokeragePreview? brokerage;
-  final MarginPreview? margin;
-  final bool isFno;
-  final VoidCallback onLoad;
-
-  @override
-  Widget build(BuildContext context) {
-    if (brokerage == null && margin == null && error == null) {
-      return Padding(
-        padding: const EdgeInsets.only(top: 4),
-        child: SizedBox(
-          width: double.infinity,
-          child: OutlinedButton.icon(
-            onPressed: loading ? null : onLoad,
-            icon: loading
-                ? const SizedBox(
-                    width: 14,
-                    height: 14,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : const Icon(Icons.verified_outlined, size: 16),
-            label: const Text(
-              'Verify with broker preview',
-              style: TextStyle(fontWeight: FontWeight.w600),
-            ),
-            style: OutlinedButton.styleFrom(
-              minimumSize: const Size.fromHeight(38),
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
-              ),
-            ),
-          ),
-        ),
-      );
-    }
-    if (error != null) {
-      return Padding(
-        padding: const EdgeInsets.only(top: 8),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-          decoration: BoxDecoration(
-            color: Colors.redAccent.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Row(
-            children: [
-              const Icon(
-                Icons.error_outline,
-                color: Colors.redAccent,
-                size: 14,
-              ),
-              const SizedBox(width: 6),
-              Expanded(
-                child: Text(
-                  error!,
-                  style: const TextStyle(
-                    color: Colors.redAccent,
-                    fontSize: 11.5,
-                  ),
-                ),
-              ),
-              TextButton(
-                onPressed: onLoad,
-                style: TextButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 6,
-                    vertical: 2,
-                  ),
-                  minimumSize: const Size(0, 24),
-                ),
-                child: const Text('Retry', style: TextStyle(fontSize: 11)),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-    return Padding(
-      padding: const EdgeInsets.only(top: 10),
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
-        decoration: BoxDecoration(
-          color: const Color(0xFF06B6D4).withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: const Color(0xFF06B6D4).withValues(alpha: 0.3),
-          ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                const Icon(
-                  Icons.verified_outlined,
-                  color: Color(0xFF06B6D4),
-                  size: 14,
-                ),
-                const SizedBox(width: 6),
-                const Text(
-                  'Broker preview',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0.4,
-                    color: Color(0xFF06B6D4),
-                  ),
-                ),
-                const Spacer(),
-                Text(
-                  'via SmartAPI',
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: Colors.white.withValues(alpha: 0.45),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            if (brokerage != null) ...[
-              _PreviewRow(
-                label: 'Total charges',
-                value: '₹${brokerage!.totalCharges.toStringAsFixed(2)}',
-                bold: true,
-              ),
-              _PreviewRow(
-                label: 'Brokerage',
-                value: '₹${brokerage!.brokerage.toStringAsFixed(2)}',
-              ),
-              _PreviewRow(
-                label: 'STT',
-                value: '₹${brokerage!.stt.toStringAsFixed(2)}',
-              ),
-              _PreviewRow(
-                label: 'Exchange + SEBI',
-                value:
-                    '₹${(brokerage!.transactionCharges + brokerage!.sebiCharges).toStringAsFixed(2)}',
-              ),
-              _PreviewRow(
-                label: 'GST',
-                value: '₹${brokerage!.gst.toStringAsFixed(2)}',
-              ),
-              _PreviewRow(
-                label: 'Stamp duty',
-                value: '₹${brokerage!.stampDuty.toStringAsFixed(2)}',
-              ),
-            ],
-            if (isFno && margin != null) ...[
-              const SizedBox(height: 4),
-              Container(
-                height: 1,
-                color: Colors.white.withValues(alpha: 0.08),
-                margin: const EdgeInsets.symmetric(vertical: 4),
-              ),
-              _PreviewRow(
-                label: 'Margin required',
-                value: '₹${margin!.totalMarginRequired.toStringAsFixed(2)}',
-                bold: true,
-              ),
-              if (margin!.spanMargin > 0)
-                _PreviewRow(
-                  label: 'SPAN',
-                  value: '₹${margin!.spanMargin.toStringAsFixed(2)}',
-                ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _PreviewRow extends StatelessWidget {
-  const _PreviewRow({
-    required this.label,
-    required this.value,
-    this.bold = false,
-  });
-  final String label;
-  final String value;
-  final bool bold;
-
-  @override
-  Widget build(BuildContext context) {
-    final muted = Colors.white.withValues(alpha: 0.65);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 2),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 11.5,
-              color: bold ? null : muted,
-              fontWeight: bold ? FontWeight.w700 : FontWeight.w500,
-            ),
-          ),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: bold ? FontWeight.w800 : FontWeight.w600,
-              color: bold ? null : muted,
-            ),
-          ),
-        ],
       ),
     );
   }

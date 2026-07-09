@@ -365,68 +365,6 @@ class CandleOI {
       );
 }
 
-class MarginPreview {
-  final double totalMarginRequired;
-  final double spanMargin;
-  final double netPremium;
-  final double deliveryMargin;
-  const MarginPreview({
-    required this.totalMarginRequired,
-    required this.spanMargin,
-    required this.netPremium,
-    required this.deliveryMargin,
-  });
-  factory MarginPreview.fromJson(Map<String, dynamic> json) {
-    final c = (json['components'] as Map<String, dynamic>?) ?? const {};
-    return MarginPreview(
-      totalMarginRequired:
-          (json['totalMarginRequired'] as num?)?.toDouble() ?? 0,
-      spanMargin: (c['spanMargin'] as num?)?.toDouble() ?? 0,
-      netPremium: (c['netPremium'] as num?)?.toDouble() ?? 0,
-      deliveryMargin: (c['deliveryMargin'] as num?)?.toDouble() ?? 0,
-    );
-  }
-}
-
-class BrokeragePreview {
-  final double totalCharges;
-  final double tradeValue;
-  final double brokerage;
-  final double stt;
-  final double transactionCharges;
-  final double gst;
-  final double sebiCharges;
-  final double stampDuty;
-  final double ipft;
-  const BrokeragePreview({
-    required this.totalCharges,
-    required this.tradeValue,
-    required this.brokerage,
-    required this.stt,
-    required this.transactionCharges,
-    required this.gst,
-    required this.sebiCharges,
-    required this.stampDuty,
-    required this.ipft,
-  });
-  factory BrokeragePreview.fromJson(Map<String, dynamic> json) {
-    final s = (json['summary'] as Map<String, dynamic>?) ?? const {};
-    final b = (s['breakup'] as Map<String, dynamic>?) ?? const {};
-    return BrokeragePreview(
-      totalCharges: (s['totalCharges'] as num?)?.toDouble() ?? 0,
-      tradeValue: (s['tradeValue'] as num?)?.toDouble() ?? 0,
-      brokerage: (b['brokerage'] as num?)?.toDouble() ?? 0,
-      stt: (b['stt'] as num?)?.toDouble() ?? 0,
-      transactionCharges:
-          (b['transactionCharges'] as num?)?.toDouble() ?? 0,
-      gst: (b['gst'] as num?)?.toDouble() ?? 0,
-      sebiCharges: (b['sebiCharges'] as num?)?.toDouble() ?? 0,
-      stampDuty: (b['stampDuty'] as num?)?.toDouble() ?? 0,
-      ipft: (b['ipft'] as num?)?.toDouble() ?? 0,
-    );
-  }
-}
-
 /// One row from /market/scanners — works for volume, 52w-high and 52w-low.
 class ScannerHit {
   final String symbol;
@@ -618,62 +556,6 @@ class MarketRepository {
     );
     final raw = (res.data!['candles'] as List).cast<Map<String, dynamic>>();
     return raw.map(CandleOI.fromJson).toList();
-  }
-
-  Future<MarginPreview> getMarginPreview({
-    required String exchange,
-    required int qty,
-    required double price,
-    required String productType, // INTRADAY | DELIVERY | CARRYFORWARD
-    required String token,
-    required String tradeType, // BUY | SELL
-    String orderType = 'MARKET',
-    double? triggerPrice,
-  }) async {
-    final body = <String, dynamic>{
-      'exchange': exchange,
-      'qty': qty,
-      'price': price,
-      'productType': productType,
-      'token': token,
-      'tradeType': tradeType,
-      'orderType': orderType,
-      'triggerPrice': ?triggerPrice,
-    };
-    final res = await _dio.post<Map<String, dynamic>>(
-      '/market/margin-preview',
-      data: body,
-    );
-    return MarginPreview.fromJson(res.data!);
-  }
-
-  Future<BrokeragePreview> getBrokeragePreview({
-    required String exchange,
-    required String symbolName,
-    required String token,
-    required int quantity,
-    required double price,
-    required String productType, // DELIVERY | INTRADAY | CARRYFORWARD
-    required String transactionType, // BUY | SELL
-  }) async {
-    final body = {
-      'orders': [
-        {
-          'productType': productType,
-          'transactionType': transactionType,
-          'quantity': '$quantity',
-          'price': price.toStringAsFixed(2),
-          'exchange': exchange,
-          'symbolName': symbolName,
-          'token': token,
-        },
-      ],
-    };
-    final res = await _dio.post<Map<String, dynamic>>(
-      '/market/brokerage-preview',
-      data: body,
-    );
-    return BrokeragePreview.fromJson(res.data!);
   }
 
   Future<List<MoverQuote>> getMovers({

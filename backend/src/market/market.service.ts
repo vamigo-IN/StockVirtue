@@ -5,14 +5,11 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { Exchange } from '../common/exchange';
-import { computeFees } from '../common/fees';
 import { SmartApiService } from '../smartapi/smartapi.service';
 import { CandleInterval, CandleRow } from '../smartapi/smartapi.types';
 import {
-  BrokerageEstimateRequest,
   ExpiryBucket,
   GainersLosersType,
-  MarginPosition,
   MultiQuoteFetched,
   OIBuildupType,
 } from '../smartapi/smartapi.types';
@@ -691,70 +688,6 @@ export class MarketService {
         tradingsymbol: r.tradingSymbol,
         pcr: r.pcr,
       })),
-      fetchedAt: new Date().toISOString(),
-    };
-  }
-
-  /** Margin preview for a single position — UI-side wrapper. */
-  async getMarginPreview(position: MarginPosition) {
-    const preview = await this.smartapi.getMarginBatch([position]);
-    return {
-      totalMarginRequired: preview.totalMarginRequired,
-      components: preview.marginComponents,
-      perOrder: preview.marginsForOrders,
-      fetchedAt: new Date().toISOString(),
-    };
-  }
-
-  /**
-   * Brokerage / taxes preview. Computed with the same local fee schedule
-   * (common/fees.ts) used for real fills — this is a simulator, so it doesn't
-   * need (or want) the live SmartAPI brokerage calculator, and computing
-   * locally keeps the preview identical to what's actually charged at fill.
-   * All math in paise, summed across the requested orders.
-   */
-  getBrokeragePreview(req: BrokerageEstimateRequest) {
-    let brokerageP = 0n;
-    let sttP = 0n;
-    let exchangeP = 0n;
-    let sebiP = 0n;
-    let stampP = 0n;
-    let gstP = 0n;
-    let tradeValueP = 0n;
-    for (const o of req.orders) {
-      const priceP = BigInt(Math.round(Number(o.price) * 100));
-      const qty = BigInt(Math.trunc(Number(o.quantity)));
-      const notionalP = priceP * qty;
-      tradeValueP += notionalP;
-      const f = computeFees({
-        side: o.transactionType === 'SELL' ? 'SELL' : 'BUY',
-        exchange: o.exchange,
-        notionalP,
-        intraday: o.productType === 'INTRADAY',
-      });
-      brokerageP += f.brokerage;
-      sttP += f.stt;
-      exchangeP += f.exchange;
-      sebiP += f.sebi;
-      stampP += f.stampDuty;
-      gstP += f.gst;
-    }
-    const totalP = brokerageP + sttP + exchangeP + sebiP + stampP + gstP;
-    const toRupees = (p: bigint) => Number(p) / 100;
-    return {
-      summary: {
-        totalCharges: toRupees(totalP),
-        tradeValue: toRupees(tradeValueP),
-        breakup: {
-          brokerage: toRupees(brokerageP),
-          stt: toRupees(sttP),
-          transactionCharges: toRupees(exchangeP),
-          gst: toRupees(gstP),
-          sebiCharges: toRupees(sebiP),
-          stampDuty: toRupees(stampP),
-          ipft: 0,
-        },
-      },
       fetchedAt: new Date().toISOString(),
     };
   }
