@@ -19,6 +19,7 @@ import { Exchange, isExchange } from '../common/exchange';
 import { paiseToRupees } from '../common/money';
 import { AutoSquareService } from './auto-square.service';
 import { BasketOrderDto } from './dto/basket-order.dto';
+import { ModifyOrderDto } from './dto/modify-order.dto';
 import { PlaceOrderDto } from './dto/place-order.dto';
 import { LimitWatcherService } from './limit-watcher.service';
 import { serializeOrder } from './order.serializer';
@@ -123,8 +124,7 @@ export class OrdersController {
   async modify(
     @CurrentUser() user: User,
     @Param('id') id: string,
-    @Body()
-    body: { quantity?: number; limitPrice?: number; triggerPrice?: number },
+    @Body() body: ModifyOrderDto,
   ) {
     const order = await this.orders.modify(user.id, id, body);
     // Pull the watcher off the old snapshot, then re-track with the

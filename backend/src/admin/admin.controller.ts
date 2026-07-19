@@ -34,6 +34,7 @@ import {
 } from './admin-session';
 import {
   auditBody,
+  esc,
   dashboardBody,
   healthBody,
   layout,
@@ -476,7 +477,7 @@ export class AdminController {
             title: 'User not found',
             current: 'users',
             adminEmail,
-            body: `<div class="text-zinc-400">No user with id <code>${id}</code>.</div>`,
+            body: `<div class="text-zinc-400">No user with id <code>${esc(id)}</code>.</div>`,
           }),
         );
       return;
@@ -620,7 +621,7 @@ export class AdminController {
             title: 'Message not found',
             current: 'messages',
             adminEmail,
-            body: `<a href="/admin/messages" class="text-indigo-300">← Back</a><div class="text-zinc-400 mt-4">No message with id <code>${id}</code>.</div>`,
+            body: `<a href="/admin/messages" class="text-indigo-300">← Back</a><div class="text-zinc-400 mt-4">No message with id <code>${esc(id)}</code>.</div>`,
           }),
         );
       return;
