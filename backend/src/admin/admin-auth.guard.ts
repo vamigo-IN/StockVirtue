@@ -80,6 +80,11 @@ export class AdminGuard implements CanActivate {
     const csrf = csrfToken(session.id, this.auth.sessionSecret);
     attachCsrfInjection(res, csrf);
 
+    // Authenticated admin HTML must never be cached: it carries session state,
+    // and a back-button or shared-proxy replay would be a disclosure. Set here
+    // rather than per-handler so no protected route can forget it.
+    res.setHeader('Cache-Control', 'no-store, max-age=0');
+
     const r = req as Request & {
       adminId?: string;
       adminSessionId?: string;

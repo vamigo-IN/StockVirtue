@@ -305,6 +305,17 @@ export class AdminShieldService {
       body,
       `Admin login attempt. Verification code: ${emailed}. IP ${ctx.ip}, ${ctx.browser} on ${ctx.os}. Session ${session.id}. If this wasn't you, do not continue.`,
     );
+
+    // Local-development affordance: with no SMTP transport the email is
+    // discarded, which would make the admin panel impossible to sign into on a
+    // dev machine. Mirrors MailService's own [DEV-EMAIL] fallback. Gated on
+    // `!configured`, and MailService THROWS rather than falling back when
+    // NODE_ENV=production, so this can never disclose a code in production.
+    if (!this.mail.configured) {
+      this.logger.warn(
+        `[DEV-OTP] session ${session.id} — emailed code ${emailed}`,
+      );
+    }
   }
 
   /// Re-issues the OTP for an in-flight session and re-sends the email.
