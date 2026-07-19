@@ -1,0 +1,14 @@
+-- Enforce, in the DATABASE, that at most one admin account can ever exist.
+--
+-- Application-level checks only bind code that chooses to call them; a unique
+-- index on a constant expression binds everything, including raw SQL run by
+-- someone with a psql prompt. Any second INSERT into "admins" now fails with a
+-- unique-violation regardless of how it is issued.
+--
+-- This is the real control behind "only one admin account". Deleting the
+-- provisioning script did not provide it: that script required DATABASE_URL and
+-- shell access, and anyone holding those could always have INSERTed directly.
+--
+-- If a future requirement genuinely needs multiple admins, drop it explicitly:
+--   DROP INDEX "admins_singleton";
+CREATE UNIQUE INDEX "admins_singleton" ON "admins" ((true));

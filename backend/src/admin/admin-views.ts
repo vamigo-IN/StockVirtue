@@ -936,9 +936,34 @@ export function referralsBody(
 export function settingsBody(opts: {
   mobileOtp: { key: string; enabled: boolean };
   tradingHalted: { key: string; enabled: boolean };
+  /// Result of a password-change attempt, echoed back after the redirect.
+  passwordNotice?: { ok: boolean; message: string } | null;
 }): string {
+  const pw = opts.passwordNotice;
   return `
     <div class="max-w-2xl space-y-6">
+      <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">
+        <h2 class="font-bold mb-1">Admin password</h2>
+        <p class="text-xs text-zinc-500 mb-5">The only way to rotate this credential. Changing it signs out every other session.</p>
+        ${
+          pw
+            ? `<div class="mb-4 text-xs px-3 py-2 rounded-lg ${
+                pw.ok
+                  ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
+                  : 'bg-rose-500/15 text-rose-300 border border-rose-500/30'
+              }">${esc(pw.message)}</div>`
+            : ''
+        }
+        <form method="post" action="/admin/settings/password" class="space-y-3">
+          <input type="password" name="current" required autocomplete="current-password" placeholder="Current password"
+            class="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-500" />
+          <input type="password" name="next" required minlength="12" autocomplete="new-password" placeholder="New password (min 12 characters)"
+            class="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-500" />
+          <input type="password" name="confirm" required minlength="12" autocomplete="new-password" placeholder="Confirm new password"
+            class="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-500" />
+          <button type="submit" class="bg-indigo-500 hover:bg-indigo-400 transition text-white font-bold text-sm px-4 py-2.5 rounded-lg">Update password</button>
+        </form>
+      </div>
       <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">
         <h2 class="font-bold mb-1">Authentication methods</h2>
         <p class="text-xs text-zinc-500 mb-5">Control which sign-in options the mobile app offers. Changes take effect the next time the app launches or refreshes its config.</p>

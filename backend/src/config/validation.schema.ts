@@ -54,7 +54,7 @@ export const validationSchema = Joi.object({
     .default('StockVirtue <no-reply@stockvirtue.com>'),
 
   // The admin ACCOUNT no longer comes from env — it lives only in the
-  // `admins` table, created once via `npm run admin:create`. ADMIN_EMAIL is
+  // `admins` table and rotated from Settings in the panel. ADMIN_EMAIL is
   // retained solely as the default recipient for site contact-form mail;
   // ADMIN_PASSWORD is no longer read by anything and should be deleted from
   // .env (a stale copy is a credential sitting in a file for no reason).

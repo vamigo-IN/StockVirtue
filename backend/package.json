@@ -8,7 +8,6 @@
   "scripts": {
     "build": "nest build",
     "postinstall": "prisma generate",
-    "admin:create": "ts-node scripts/create-admin.ts",
     "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
     "start": "nest start",
     "start:dev": "nest start --watch",

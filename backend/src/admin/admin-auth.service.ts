@@ -17,6 +17,15 @@ import {
   verifyAdminSession,
 } from './admin-session';
 
+/// Password rules for the admin credential. Length is the lever that actually
+/// matters against offline cracking; composition rules mostly produce
+/// predictable substitutions.
+function passwordProblem(v: string): string | null {
+  if (!v || v.length < 12) return 'Password must be at least 12 characters.';
+  if (/^\d+$/.test(v)) return 'Password must not be only digits.';
+  return null;
+}
+
 export interface SessionContext {
   ip?: string | null;
   userAgent?: string | null;
@@ -43,11 +52,12 @@ export class AdminAuthService implements OnModuleInit {
     this.cfg = config.get('admin', { infer: true });
   }
 
-  /// The admin ACCOUNT is not managed from env any more. It is created once
-  /// with `npm run admin:create` and lives only in the `admins` table, so the
-  /// password exists solely as a scrypt hash in the database — never in a
-  /// file, a process environment, or a deploy pipeline. Rotate it by re-running
-  /// that script, not by editing .env and restarting.
+  /// The admin ACCOUNT is not managed from env, and there is no provisioning
+  /// script. It exists only as a row in `admins`, so the password lives solely
+  /// as a scrypt hash in the database — never in a file, a process environment,
+  /// or a deploy pipeline. A DB-level unique index (`admins_singleton`) makes a
+  /// second admin row impossible even via raw SQL. Rotate the password from
+  /// Settings inside the authenticated panel; that is the only supported path.
   async onModuleInit() {
     if (!this.cfg.sessionSecret) {
       this.logger.error(
@@ -63,7 +73,7 @@ export class AdminAuthService implements OnModuleInit {
     const count = await this.prisma.admin.count();
     if (count === 0) {
       this.logger.warn(
-        'No admin account exists — run `npm run admin:create` to create one',
+        'No admin account exists in the `admins` table — the panel cannot be signed into until one is restored from backup',
       );
     }
   }
@@ -167,6 +177,61 @@ export class AdminAuthService implements OnModuleInit {
   /// cookie with the same key, without a second secret to rotate.
   get sessionSecret(): string {
     return this.cfg.sessionSecret;
+  }
+
+  /// Rotates the admin password from inside the authenticated panel.
+  ///
+  /// This is the ONLY rotation path: there is no provisioning script and no
+  /// env seeding. That is deliberately stronger than a CLI — rotating now
+  /// requires a live session, which means the password AND the emailed code
+  /// AND the passcode, whereas a script only ever required shell access.
+  ///
+  /// Proving knowledge of the CURRENT password matters even though the caller
+  /// is authenticated: it stops someone who walked up to an unlocked browser
+  /// (or rode a stolen cookie) from silently taking ownership of the account.
+  async changePassword(
+    adminId: string,
+    currentPassword: string,
+    newPassword: string,
+    keepSessionId?: string,
+  ): Promise<{ ok: boolean; message: string }> {
+    const admin = await this.prisma.admin.findUnique({
+      where: { id: adminId },
+    });
+    if (!admin) return { ok: false, message: 'Account not found.' };
+
+    if (!(await verifyAdminPassword(currentPassword, admin.passwordHash))) {
+      return { ok: false, message: 'Current password is incorrect.' };
+    }
+    const problem = passwordProblem(newPassword);
+    if (problem) return { ok: false, message: problem };
+    if (currentPassword === newPassword) {
+      return {
+        ok: false,
+        message: 'New password must differ from the current one.',
+      };
+    }
+
+    await this.prisma.admin.update({
+      where: { id: adminId },
+      data: { passwordHash: await hashAdminPassword(newPassword) },
+    });
+    // Every other session was authorised by the OLD credential — end them.
+    const revoked = await this.revokeAllSessions(
+      adminId,
+      'admin password changed',
+      keepSessionId,
+    );
+    this.logger.log(
+      `admin password rotated; ${revoked} other session(s) signed out`,
+    );
+    return {
+      ok: true,
+      message:
+        revoked > 0
+          ? `Password updated. ${revoked} other session(s) were signed out.`
+          : 'Password updated.',
+    };
   }
 
   verifySessionCookie(token: string | null): AdminSessionPayload | null {

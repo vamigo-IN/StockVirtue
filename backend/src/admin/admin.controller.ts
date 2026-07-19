@@ -698,7 +698,12 @@ export class AdminController {
 
   @Get('settings')
   @UseGuards(AdminGuard)
-  async settings(@Req() req: Request, @Res() res: Response) {
+  async settings(
+    @Req() req: Request,
+    @Res() res: Response,
+    @Query('pw') pw?: string,
+    @Query('ok') ok?: string,
+  ) {
     const adminEmail = await this.currentAdminEmail(req);
     res.type('html').send(
       layout({
@@ -706,6 +711,8 @@ export class AdminController {
         current: 'settings',
         adminEmail,
         body: settingsBody({
+          // Echoed from the password-change redirect. esc()'d in the view.
+          passwordNotice: pw ? { ok: ok === '1', message: pw } : null,
           mobileOtp: {
             key: FEATURE_MOBILE_OTP,
             enabled: this.flags.isEnabled(FEATURE_MOBILE_OTP, false),
@@ -721,6 +728,44 @@ export class AdminController {
 
   /// Toggle an auth-method feature flag. Only known keys are accepted so the
   /// form can't be used to write arbitrary flags. Bounces back to /settings.
+  /// The ONLY admin password-rotation path (the provisioning script is gone).
+  /// Guarded, CSRF-checked, and requires the CURRENT password even though the
+  /// caller is already authenticated — so an unlocked browser or a stolen
+  /// cookie cannot silently take ownership of the account.
+  @Post('settings/password')
+  @UseGuards(AdminGuard)
+  async changeAdminPassword(
+    @Req() req: Request,
+    @Body() body: { current?: string; next?: string; confirm?: string },
+    @Res() res: Response,
+  ) {
+    const r = req as Request & { adminId?: string; adminSessionId?: string };
+    if (!r.adminId) {
+      res.redirect('/admin/login');
+      return;
+    }
+    let outcome: { ok: boolean; message: string };
+    if (!body.next || body.next !== body.confirm) {
+      outcome = { ok: false, message: 'New passwords do not match.' };
+    } else {
+      outcome = await this.auth.changePassword(
+        r.adminId,
+        body.current ?? '',
+        body.next,
+        r.adminSessionId,
+      );
+    }
+    await this.auditAction(
+      req,
+      'admin.password.change',
+      undefined,
+      outcome.ok ? 'success' : `rejected: ${outcome.message}`,
+    );
+    res.redirect(
+      `/admin/settings?pw=${encodeURIComponent(outcome.message)}&ok=${outcome.ok ? '1' : '0'}`,
+    );
+  }
+
   @Post('settings/feature-flag')
   @UseGuards(AdminGuard)
   async setFeatureFlag(
