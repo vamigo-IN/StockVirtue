@@ -26,7 +26,7 @@ import { UsersService } from '../users/users.service';
 
 /// Accepted JWT signing algorithm. Pinned on every verify so a token can't be
 /// smuggled in under a different alg (e.g. an "alg: none" or RS/HS confusion).
-export const JWT_ALG: 'HS256' = 'HS256';
+export const JWT_ALG = 'HS256' as const;
 
 /// Email-OTP lifetime for sign-up verification.
 const EMAIL_OTP_TTL = 10 * 60; // 10 minutes
