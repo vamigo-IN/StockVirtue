@@ -22,6 +22,12 @@ String _fromDio(DioException error, String? context) {
     case DioExceptionType.connectionTimeout:
     case DioExceptionType.sendTimeout:
     case DioExceptionType.receiveTimeout:
+    // transformTimeout is client-side (decoding the response outran its
+    // budget) rather than the server being slow, but the user-visible
+    // situation is identical — it took too long and retrying is the right
+    // move — so it shares the copy rather than falling through to the
+    // generic "something went wrong".
+    case DioExceptionType.transformTimeout:
       return 'The server is taking too long to respond. Please try again.';
     case DioExceptionType.connectionError:
       return 'Can’t reach the server. Check your internet connection and try again.';
