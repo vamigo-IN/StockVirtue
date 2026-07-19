@@ -121,8 +121,7 @@ export class UsersService {
     user: Pick<User, 'displayName' | 'emailAlias' | 'phone'>,
   ): boolean {
     const name = user.displayName?.trim() ?? '';
-    const hasRealName =
-      name.length > 0 && !/^Trader-[A-Z0-9]{4}$/.test(name);
+    const hasRealName = name.length > 0 && !/^Trader-[A-Z0-9]{4}$/.test(name);
     return hasRealName && !!user.emailAlias && !!user.phone;
   }
 
@@ -206,6 +205,17 @@ export class UsersService {
    * create new. When a non-Firebase row already has the phone/email, we link
    * it to firebaseUid rather than create a duplicate.
    */
+  /// Releases an UNVERIFIED claim on an email address. A bare alias carries no
+  /// proof of ownership, so it must never block — or capture — the address's
+  /// rightful owner once they prove it via OTP or a federated provider.
+  async releaseUnverifiedAlias(email: string): Promise<number> {
+    const res = await this.prisma.user.updateMany({
+      where: { emailAlias: email, emailVerified: false },
+      data: { emailAlias: null },
+    });
+    return res.count;
+  }
+
   async findOrCreateByFirebase(args: {
     firebaseUid: string;
     phone: string | null;
@@ -221,7 +231,10 @@ export class UsersService {
     if (existingByUid) {
       // Returning user — backfill name/avatar from the provider so we don't
       // keep treating a Google account as an incomplete profile.
-      return this.applyProviderProfile(existingByUid, { displayName, avatarUrl });
+      return this.applyProviderProfile(existingByUid, {
+        displayName,
+        avatarUrl,
+      });
     }
 
     const existingByPhone = phone
@@ -236,8 +249,17 @@ export class UsersService {
       });
     }
 
+    // SECURITY: only a VERIFIED alias may capture a federated sign-in.
+    //
+    // `emailAlias` can be set without proof of ownership (a phone user may add
+    // a contact address via PATCH /auth/me), so matching on it unconditionally
+    // let an attacker pre-claim a victim's address and have the victim's later
+    // Google sign-in linked straight into the attacker's account. Requiring
+    // emailVerified means an unverified self-claim can never capture anyone.
     const existingByEmail = email
-      ? await this.prisma.user.findUnique({ where: { emailAlias: email } })
+      ? await this.prisma.user.findFirst({
+          where: { emailAlias: email, emailVerified: true },
+        })
       : null;
     if (existingByEmail) {
       return this.applyProviderProfile(existingByEmail, {
@@ -245,6 +267,17 @@ export class UsersService {
         avatarUrl,
         firebaseUid,
         phone: phone ?? existingByEmail.phone,
+      });
+    }
+
+    // A provider-verified email outranks an unverified self-claim. If someone
+    // squatted this address as a bare alias, release it here — otherwise the
+    // unique index would reject the rightful owner's first sign-in (turning
+    // the takeover bug into a denial-of-registration bug).
+    if (email) {
+      await this.prisma.user.updateMany({
+        where: { emailAlias: email, emailVerified: false },
+        data: { emailAlias: null },
       });
     }
 

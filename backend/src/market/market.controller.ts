@@ -338,6 +338,7 @@ export class MarketController {
   }
 
   // Candles with open-interest column (F&O only).
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @Get('candles-oi/:symbol')
   candlesOI(
     @Param('symbol') symbol: string,
@@ -346,7 +347,7 @@ export class MarketController {
     @Query('hours') hoursRaw = '720',
   ) {
     const interval = this.parseInterval(intervalRaw);
-    const hours = Math.min(Math.max(parseInt(hoursRaw, 10) || 720, 1), 48000);
+    const hours = this.quantiseHours(hoursRaw, 720);
     return this.market.getCandlesWithOI(
       symbol,
       this.parseExchange(exchangeRaw),
@@ -377,6 +378,26 @@ export class MarketController {
     return upper;
   }
 
+  /// Snaps an arbitrary `hours` value onto the fixed ladder the client actually
+  /// requests. These routes are UNAUTHENTICATED and are not fronted by
+  /// cacheJson, so their only de-duplication is SmartApiService's signature
+  /// cache — which is keyed on the derived from/to timestamps. A free-varying
+  /// `hours` therefore produced a distinct key per request, missing the cache
+  /// every time and spending the shared broker's historical-data budget. The
+  /// rate limiter SLEEPS rather than rejecting, so that excess became an
+  /// unbounded queue and real users' charts stalled behind it.
+  ///
+  /// Quantising caps the number of distinct upstream calls at the ladder size,
+  /// while still honouring what the client asked for (rounded up).
+  private quantiseHours(raw: string, fallback: number): number {
+    const LADDER = [4, 24, 120, 720, 2160, 8760, 17520, 48000];
+    const asked = Math.min(Math.max(parseInt(raw, 10) || fallback, 1), 48000);
+    return LADDER.find((h) => asked <= h) ?? LADDER[LADDER.length - 1];
+  }
+
+  // Tighter than the class default: these are the heaviest unauthenticated
+  // routes and each miss costs a shared-broker historical call.
+  @Throttle({ default: { limit: 20, ttl: 60_000 } })
   @Get('candles/:symbol')
   candles(
     @Param('symbol') symbol: string,
@@ -388,7 +409,7 @@ export class MarketController {
     // ~5.5 years on daily candles. The effective range still depends on
     // SmartAPI's per-interval limits (1m/5m capped to ~30 days, 1h to ~400d,
     // 1d to ~2000d) but the controller no longer truncates ahead of time.
-    const hours = Math.min(Math.max(parseInt(hoursRaw, 10) || 4, 1), 48000);
+    const hours = this.quantiseHours(hoursRaw, 4);
     return this.market.getCandles(
       symbol,
       this.parseExchange(exchangeRaw),

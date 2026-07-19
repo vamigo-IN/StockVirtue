@@ -119,8 +119,20 @@ export class AuthService {
         'An account with this email already exists. Please sign in.',
       );
     }
+    // SECURITY: only RESUME an unverified signup that belongs to this email
+    // flow. An account that merely carries an unverified alias while holding a
+    // different login identity (phone or federated) is a squatter — attaching
+    // the registrant's password to it would hand them someone else's account,
+    // with the squatter's own login still attached. Release the alias and
+    // start a clean account instead.
+    const resumable = Boolean(
+      existing && !existing.firebaseUid && !existing.phone,
+    );
+    if (existing && !resumable) {
+      await this.users.releaseUnverifiedAlias(email);
+    }
     const passwordHash = await hashPassword(password);
-    if (existing) {
+    if (resumable && existing) {
       await this.users.setPassword(existing.id, passwordHash);
     } else {
       await this.users.createEmailUser({ email, passwordHash });
