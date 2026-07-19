@@ -39,11 +39,31 @@ export interface SmtpConfig {
   from: string;
 }
 
+/// Admin Shield — the hardened second-factor login for the admin panel.
+/// See admin-shield.crypto.ts for the OTP transform + passcode derivation.
+export interface AdminShieldConfig {
+  /// Kill switch. When false the panel falls back to password-only login,
+  /// without a redeploy — the break-glass path if SMTP fails.
+  enabled: boolean;
+  /// 6-digit per-position key for the emailed-OTP transform. Blank = no
+  /// transform (the emailed OTP is the real one).
+  otpKey: string;
+  /// OTP + passcode validity, seconds.
+  otpTtl: number;
+  /// Idle-session timeout, seconds (absolute lifetime is `sessionTtl`).
+  idleTimeout: number;
+  deviceBlockMinutes: number;
+  deviceFailThreshold: number;
+  /// Recipient for security notifications.
+  alertEmail: string;
+}
+
 export interface AdminConfig {
   email: string;
   password: string;
   sessionSecret: string;
   sessionTtl: number;
+  shield: AdminShieldConfig;
 }
 
 /// Marketing website (stockvirtue.com) integration. `adminKey` authenticates
@@ -130,6 +150,39 @@ export default (): AppConfig => ({
         : (process.env.JWT_REFRESH_SECRET ?? '')),
     // 8 hours — a working shift. Re-login required after that.
     sessionTtl: parseInt(process.env.ADMIN_SESSION_TTL ?? '28800', 10),
+
+    // ─── Admin Shield ───────────────────────────────────────────────────
+    // Second-factor login (transformed OTP + time passcode), device
+    // fingerprint blocking, single active session, security emails.
+    shield: {
+      // Kill switch. ON by default (hard cutover). Set ADMIN_SHIELD=false to
+      // fall back to password-only login WITHOUT a redeploy — the break-glass
+      // path if SMTP dies and the OTP email can't reach you.
+      enabled: (process.env.ADMIN_SHIELD ?? 'true') !== 'false',
+      // Per-digit key for the OTP transform: emailed[i] = (real[i] + key[i]) %
+      // 10, so you recover real[i] = (emailed[i] - key[i] + 10) % 10. Blank
+      // disables the transform (the emailed OTP is then the real one).
+      otpKey: (process.env.ADMIN_OTP_KEY ?? '').trim(),
+      // OTP + passcode validity. Spec says 2 minutes.
+      otpTtl: parseInt(process.env.ADMIN_OTP_TTL ?? '120', 10),
+      // Idle timeout (30 min) — absolute lifetime is `sessionTtl` above (8h).
+      idleTimeout: parseInt(process.env.ADMIN_IDLE_TIMEOUT ?? '1800', 10),
+      // How long a device fingerprint stays blocked after repeated failures.
+      deviceBlockMinutes: parseInt(
+        process.env.ADMIN_DEVICE_BLOCK_MINUTES ?? '30',
+        10,
+      ),
+      // Failed login sessions from one fingerprint before it is blocked.
+      deviceFailThreshold: parseInt(
+        process.env.ADMIN_DEVICE_FAIL_THRESHOLD ?? '5',
+        10,
+      ),
+      // Where security notifications go. Defaults to the admin's own address.
+      alertEmail:
+        process.env.ADMIN_ALERT_EMAIL ||
+        process.env.ADMIN_EMAIL ||
+        'admin@stockvirtue.local',
+    },
   },
   site: {
     adminKey: process.env.SITE_ADMIN_KEY ?? '',

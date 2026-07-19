@@ -96,6 +96,111 @@ model AdminAuditLog {
   @@map("admin_audit_logs")
 }
 
+/// Lifecycle of a single admin login ATTEMPT.
+enum AdminLoginStatus {
+  PENDING /// password accepted; awaiting OTP + passcode
+  OTP_SENT /// transformed OTP emailed
+  VERIFIED /// BOTH factors verified; awaiting session issue
+  SUCCESS /// session issued
+  FAILED /// attempts exhausted / bad credentials
+  LOCKED /// device or IP blocked mid-flow
+  EXPIRED /// OTP / passcode window elapsed
+  TERMINATED /// superseded by a newer attempt, or killed
+}
+
+/// One row per admin login attempt ("Login Session" in Admin Shield terms).
+/// Holds the single-use OTP + passcode as scrypt hashes (never plaintext, and
+/// the transformed/emailed OTP is never stored at all), the device + network
+/// context captured when the attempt started, and per-factor attempt counters.
+///
+/// Deliberately carries no FK to `admins` — same precedent as admin_audit_logs
+/// — so the forensic record survives an admin row being rotated.
+model AdminLoginSession {
+  id      String  @id @default(cuid())
+  adminId String?
+  email   String
+
+  /// scrypt hash of the REAL otp (the emailed, transformed value is never stored)
+  otpHash            String?
+  otpExpiresAt       DateTime?
+  otpVerifiedAt      DateTime?
+  otpAttempts        Int       @default(0)
+  otpResends         Int       @default(0)
+  passcodeHash       String?
+  passcodeExpiresAt  DateTime?
+  passcodeVerifiedAt DateTime?
+  passcodeAttempts   Int       @default(0)
+  passcodeResends    Int       @default(0)
+  passwordAttempts   Int       @default(0)
+
+  ip          String?
+  userAgent   String?
+  browser     String?
+  os          String?
+  device      String?
+  fingerprint String?
+  timezone    String?
+  /// Populated only if an IP-geolocation provider is configured; null otherwise.
+  country     String?
+  city        String?
+  isp         String?
+
+  status           AdminLoginStatus @default(PENDING)
+  terminatedReason String?
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  expiresAt   DateTime
+  succeededAt DateTime?
+
+  @@index([email, createdAt])
+  @@index([fingerprint])
+  @@index([status])
+  @@map("admin_login_sessions")
+}
+
+/// An ACTIVE authenticated admin session. The auth cookie carries this row's
+/// id, which is what makes a session revocable server-side — required for
+/// "one active session only", idle/absolute timeout, and hijack detection.
+/// (The previous cookie was stateless, so nothing could be terminated.)
+model AdminSession {
+  id             String    @id @default(cuid())
+  adminId        String
+  loginSessionId String?
+  fingerprint    String?
+  ip             String?
+  userAgent      String?
+  createdAt      DateTime  @default(now())
+  lastSeenAt     DateTime  @default(now())
+  expiresAt      DateTime
+  revokedAt      DateTime?
+  revokedReason  String?
+
+  @@index([adminId, revokedAt])
+  @@index([expiresAt])
+  @@map("admin_sessions")
+}
+
+/// Device-fingerprint reputation + blocking. Admin Shield never locks the
+/// admin ACCOUNT (that would be a trivial self-DoS); it blocks the offending
+/// device fingerprint instead.
+model AdminDevice {
+  id             String    @id @default(cuid())
+  fingerprint    String    @unique
+  label          String?
+  lastIp         String?
+  lastUserAgent  String?
+  failedSessions Int       @default(0)
+  blockedUntil   DateTime?
+  blockReason    String?
+  trusted        Boolean   @default(false)
+  firstSeenAt    DateTime  @default(now())
+  lastSeenAt     DateTime  @default(now())
+
+  @@index([blockedUntil])
+  @@map("admin_devices")
+}
+
 // ─── Traffic monitoring & data-misuse detection ─────────────────────────────
 
 enum AbuseSubjectType {

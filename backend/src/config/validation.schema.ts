@@ -74,6 +74,31 @@ export const validationSchema = Joi.object({
   }),
   ADMIN_SESSION_TTL: Joi.number().default(28800),
 
+  // ─── Admin Shield ─────────────────────────────────────────────────────
+  // Deliberately optional-with-default, NOT prod-required: ConfigModule
+  // validation runs at boot for the WHOLE app, so a `.required()` here would
+  // take the entire API down (not just /admin) if the value were missing on
+  // deploy. A blank ADMIN_OTP_KEY degrades to "no transform" and is warned
+  // about at boot instead.
+  ADMIN_SHIELD: Joi.string().valid('true', 'false').default('true'),
+  // Exactly 6 digits — the per-position shift applied to the emailed OTP.
+  // Must be distinct from every other secret so one leak can't imply another.
+  ADMIN_OTP_KEY: Joi.string()
+    .pattern(/^\d{6}$/)
+    .allow('')
+    .default('')
+    .invalid(
+      Joi.ref('JWT_ACCESS_SECRET'),
+      Joi.ref('JWT_REFRESH_SECRET'),
+      Joi.ref('ADMIN_SESSION_SECRET'),
+      Joi.ref('ADMIN_PASSWORD'),
+    ),
+  ADMIN_OTP_TTL: Joi.number().min(30).max(900).default(120),
+  ADMIN_IDLE_TIMEOUT: Joi.number().min(60).default(1800),
+  ADMIN_DEVICE_BLOCK_MINUTES: Joi.number().min(1).default(30),
+  ADMIN_DEVICE_FAIL_THRESHOLD: Joi.number().min(2).default(5),
+  ADMIN_ALERT_EMAIL: Joi.string().email().allow('').default(''),
+
   // Marketing website (stockvirtue.com). SITE_ADMIN_KEY authenticates the
   // website server when saving site settings; blank disables that write
   // endpoint. SITE_CONTACT_TO receives contact-form emails (defaults to
