@@ -24,7 +24,14 @@ import { AdminAuthService } from './admin-auth.service';
 import { AdminGuard } from './admin-auth.guard';
 import { AdminHealthService } from './admin-health.service';
 import { AdminStatsService } from './admin-stats.service';
-import { ADMIN_COOKIE_NAME, readCookie } from './admin-session';
+import { AdminShieldService } from './admin-shield.service';
+import {
+  ADMIN_COOKIE_NAME,
+  ADMIN_PENDING_COOKIE_NAME,
+  readCookie,
+  signPendingLogin,
+  verifyPendingLogin,
+} from './admin-session';
 import {
   auditBody,
   dashboardBody,
@@ -32,6 +39,7 @@ import {
   layout,
   learningBody,
   loginPage,
+  verifyPage,
   messageDetailBody,
   messagesBody,
   monitoringActorBody,
@@ -49,6 +57,13 @@ import { MonitoringService } from '../monitoring/monitoring.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { SiteService } from '../site/site.service';
 
+/// Deliberate, blocking delay used for the progressive wrong-password back-off
+/// (spec §10). Bounded by PASSWORD_DELAYS_MS, so it cannot be used to pin
+/// request handlers indefinitely.
+function sleep(ms: number): Promise<void> {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
 @Controller('admin')
 export class AdminController {
   constructor(
@@ -63,61 +78,328 @@ export class AdminController {
     private readonly site: SiteService,
     private readonly notifications: NotificationsService,
     private readonly monitoringSvc: MonitoringService,
+    private readonly shield: AdminShieldService,
   ) {}
 
   // ─── Login / logout ──────────────────────────────────────────────
 
+  /// Cookie options shared by the auth + pending-login cookies. `path:'/admin'`
+  /// is load-bearing — a cookie set on any other path is silently never sent
+  /// back, and a clearCookie with a mismatched path leaves a valid cookie live.
+  private cookieOpts(maxAgeMs: number) {
+    return {
+      httpOnly: true,
+      // 'strict' (not 'lax'): the admin panel never needs cross-site
+      // navigation, and this is a primary CSRF defence — a cross-site POST
+      // won't carry the cookie at all. Synchroniser tokens back it up.
+      sameSite: 'strict' as const,
+      secure: process.env.NODE_ENV === 'production',
+      maxAge: maxAgeMs,
+      path: '/admin',
+    };
+  }
+
+  /// Admin HTML must never be cached: these pages carry session state and the
+  /// OTP challenge, and a back-button replay from a shared proxy would be a
+  /// disclosure. AllExceptionsFilter renders JSON, so every handler below
+  /// try/catches rather than letting an exception escape.
+  private sendHtml(res: Response, body: string, status = HttpStatus.OK) {
+    res.status(status).type('html');
+    res.setHeader('Cache-Control', 'no-store, max-age=0');
+    res.send(body);
+  }
+
+  private shieldCtx(req: Request, fp?: string) {
+    return this.shield.buildContext(
+      req.ip,
+      req.headers['user-agent'],
+      fp ?? null,
+    );
+  }
+
   @Get('login')
   loginPage(@Query('back') back: string | undefined, @Res() res: Response) {
-    res.type('html').send(loginPage({ back: back ?? '/admin' }));
+    this.sendHtml(res, loginPage({ back: back ?? '/admin' }));
   }
 
   @Post('login')
   async login(
-    @Body() body: { email?: string; password?: string; back?: string },
+    @Body()
+    body: { email?: string; password?: string; back?: string; fp?: string },
     @Req() req: Request,
     @Res() res: Response,
   ) {
+    const back = (body.back ?? '/admin').startsWith('/admin')
+      ? (body.back ?? '/admin')
+      : '/admin';
+    const ctx = this.shieldCtx(req, body.fp);
     try {
-      const { admin, token, ttlSeconds } = await this.auth.login(
+      // Device blocking precedes credential work: a blocked fingerprint must
+      // not be able to spend scrypt cycles or probe which emails exist.
+      const blockedUntil = await this.shield.deviceBlockedUntil(
+        ctx.fingerprint,
+      );
+      if (blockedUntil) {
+        this.sendHtml(
+          res,
+          loginPage({
+            error:
+              'This device is temporarily blocked after repeated failed sign-ins. Try again later.',
+            back,
+          }),
+          HttpStatus.TOO_MANY_REQUESTS,
+        );
+        return;
+      }
+
+      const admin = await this.auth.verifyCredentials(
         body.email ?? '',
         body.password ?? '',
         req.ip,
       );
-      res.cookie(ADMIN_COOKIE_NAME, token, {
-        httpOnly: true,
-        // 'strict' (not 'lax'): the admin panel never needs cross-site
-        // navigation, and this is a primary CSRF defence — a cross-site POST
-        // won't carry the cookie at all.
-        sameSite: 'strict',
-        secure: process.env.NODE_ENV === 'production',
-        maxAge: ttlSeconds * 1000,
-        path: '/admin',
-      });
-      await this.audit.log({
-        adminId: admin.id,
-        adminEmail: admin.email,
-        action: 'login',
-        ip: req.ip ?? null,
-      });
-      const back = (body.back ?? '/admin').startsWith('/admin')
-        ? (body.back ?? '/admin')
-        : '/admin';
-      res.redirect(back);
+
+      // Break-glass: with ADMIN_SHIELD=false the panel falls back to
+      // password-only login so an SMTP outage can't strand the operator.
+      if (!this.shield.enabled) {
+        const issued = await this.auth.issueSession(admin, {
+          ip: ctx.ip,
+          userAgent: ctx.userAgent,
+          fingerprint: ctx.fingerprint,
+        });
+        res.cookie(
+          ADMIN_COOKIE_NAME,
+          issued.token,
+          this.cookieOpts(issued.ttlSeconds * 1000),
+        );
+        await this.auth.clearLoginThrottles(admin.email, ctx.ip);
+        await this.audit.log({
+          adminId: admin.id,
+          adminEmail: admin.email,
+          action: 'login',
+          detail: 'shield disabled',
+          ip: req.ip ?? null,
+        });
+        res.redirect(back);
+        return;
+      }
+
+      const session = await this.shield.beginLoginSession(admin, ctx);
+      res.cookie(
+        ADMIN_PENDING_COOKIE_NAME,
+        signPendingLogin(session.id, 15 * 60, this.auth.sessionSecret),
+        this.cookieOpts(15 * 60 * 1000),
+      );
+      await this.shield.clearPasswordFailures(ctx.ip);
+      res.redirect(`/admin/login/verify?back=${encodeURIComponent(back)}`);
     } catch (err) {
+      // Progressive back-off (spec §10): the account is NEVER locked, the
+      // attempt just gets slower, and the 5th terminates the login session.
+      const delay = await this.shield.passwordFailureDelayMs(ctx);
+      await sleep(delay);
       const msg =
         err && typeof err === 'object' && 'message' in err
           ? String((err as Error).message)
           : 'Sign-in failed';
-      res
-        .status(HttpStatus.UNAUTHORIZED)
-        .type('html')
-        .send(loginPage({ error: msg, back: body.back ?? '/admin' }));
+      this.sendHtml(
+        res,
+        loginPage({ error: msg, back }),
+        HttpStatus.UNAUTHORIZED,
+      );
     }
   }
 
+  // ─── Second factor: OTP + passcode, verified independently ───────────
+  //
+  // These routes must NOT carry AdminGuard: no auth cookie exists yet, so the
+  // guard would redirect to /admin/login and loop forever. They authorise off
+  // the short-lived pending-login cookie instead, which grants nothing except
+  // the right to submit factors for one login session.
+
+  private async pendingSession(req: Request) {
+    const token = readCookie(
+      req.headers.cookie,
+      ADMIN_PENDING_COOKIE_NAME,
+    );
+    const payload = verifyPendingLogin(token, this.auth.sessionSecret);
+    if (!payload) return null;
+    return this.shield.loadLoginSession(payload.lsid);
+  }
+
+  private async renderVerify(
+    req: Request,
+    res: Response,
+    back: string,
+    msg: { otp?: string; passcode?: string; error?: string } = {},
+    status = HttpStatus.OK,
+  ) {
+    const session = await this.pendingSession(req);
+    if (!session) {
+      res.redirect('/admin/login');
+      return;
+    }
+    this.sendHtml(
+      res,
+      verifyPage({
+        back,
+        otpVerified: Boolean(session.otpVerifiedAt),
+        passcodeVerified: Boolean(session.passcodeVerifiedAt),
+        sessionId: session.id,
+        otpMessage: msg.otp,
+        passcodeMessage: msg.passcode,
+        error: msg.error,
+      }),
+      status,
+    );
+  }
+
+  @Get('login/verify')
+  async loginVerifyPage(
+    @Query('back') back: string | undefined,
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
+    await this.renderVerify(req, res, back ?? '/admin');
+  }
+
+  @Post('login/verify/otp')
+  async verifyOtp(
+    @Body() body: { code?: string; back?: string; fp?: string },
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
+    const back = body.back ?? '/admin';
+    const session = await this.pendingSession(req);
+    if (!session) {
+      res.redirect('/admin/login');
+      return;
+    }
+    const result = await this.shield.verifyOtp(
+      session,
+      (body.code ?? '').trim(),
+      this.shieldCtx(req, body.fp),
+    );
+    if (result.terminated) {
+      res.clearCookie(ADMIN_PENDING_COOKIE_NAME, { path: '/admin' });
+      this.sendHtml(
+        res,
+        loginPage({ error: result.message, back }),
+        HttpStatus.UNAUTHORIZED,
+      );
+      return;
+    }
+    await this.renderVerify(req, res, back, { otp: result.message });
+  }
+
+  @Post('login/verify/passcode')
+  async verifyPasscode(
+    @Body() body: { code?: string; back?: string; fp?: string },
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
+    const back = body.back ?? '/admin';
+    const session = await this.pendingSession(req);
+    if (!session) {
+      res.redirect('/admin/login');
+      return;
+    }
+    const result = await this.shield.verifyPasscode(
+      session,
+      (body.code ?? '').trim(),
+      this.shieldCtx(req, body.fp),
+    );
+    if (result.terminated) {
+      res.clearCookie(ADMIN_PENDING_COOKIE_NAME, { path: '/admin' });
+      this.sendHtml(
+        res,
+        loginPage({ error: result.message, back }),
+        HttpStatus.UNAUTHORIZED,
+      );
+      return;
+    }
+    await this.renderVerify(req, res, back, { passcode: result.message });
+  }
+
+  @Post('login/verify/resend-otp')
+  async resendOtp(
+    @Body() body: { back?: string; fp?: string },
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
+    const back = body.back ?? '/admin';
+    const session = await this.pendingSession(req);
+    if (!session) {
+      res.redirect('/admin/login');
+      return;
+    }
+    const r = await this.shield.resendOtp(session, this.shieldCtx(req, body.fp));
+    await this.renderVerify(req, res, back, { otp: r.message });
+  }
+
+  @Post('login/verify/resend-passcode')
+  async resendPasscode(
+    @Body() body: { back?: string },
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
+    const back = body.back ?? '/admin';
+    const session = await this.pendingSession(req);
+    if (!session) {
+      res.redirect('/admin/login');
+      return;
+    }
+    const r = await this.shield.resendPasscode(session);
+    await this.renderVerify(req, res, back, { passcode: r.message });
+  }
+
+  /// Final step — succeeds only when BOTH factors are verified.
+  @Post('login/verify/complete')
+  async completeLogin(
+    @Body() body: { back?: string; fp?: string },
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
+    const back = (body.back ?? '/admin').startsWith('/admin')
+      ? (body.back ?? '/admin')
+      : '/admin';
+    const session = await this.pendingSession(req);
+    if (!session) {
+      res.redirect('/admin/login');
+      return;
+    }
+    const issued = await this.shield.completeLogin(
+      session,
+      this.shieldCtx(req, body.fp),
+    );
+    if (!issued) {
+      await this.renderVerify(
+        req,
+        res,
+        back,
+        { error: 'Verify both the code and the passcode first.' },
+        HttpStatus.BAD_REQUEST,
+      );
+      return;
+    }
+    res.clearCookie(ADMIN_PENDING_COOKIE_NAME, { path: '/admin' });
+    res.cookie(
+      ADMIN_COOKIE_NAME,
+      issued.token,
+      this.cookieOpts(issued.ttlSeconds * 1000),
+    );
+    res.redirect(back);
+  }
+
   @Post('logout')
-  logout(@Res() res: Response) {
+  @UseGuards(AdminGuard)
+  async logout(@Req() req: Request, @Res() res: Response) {
+    const sid = (req as Request & { adminSessionId?: string }).adminSessionId;
+    if (sid) await this.auth.revokeSession(sid, 'signed out');
+    await this.audit.log({
+      adminId: (req as Request & { adminId?: string }).adminId ?? null,
+      adminEmail: await this.currentAdminEmail(req),
+      action: 'logout',
+      ip: req.ip ?? null,
+    });
     res.clearCookie(ADMIN_COOKIE_NAME, { path: '/admin' });
     res.redirect('/admin/login');
   }

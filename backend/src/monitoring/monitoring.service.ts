@@ -1,3 +1,8 @@
+/// Temporary IP blocks: a sorted set scored by the instant the block lapses,
+/// so refreshBlocklist() can expire them. (A plain SET plus an expiring marker
+/// key made every "temporary" block permanent.)
+const TEMP_BLOCK_KEY = 'mon:block:temp';
+
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AbuseStatus, AbuseSubjectType } from '@prisma/client';
@@ -74,28 +79,49 @@ export class MonitoringService implements OnModuleInit {
 
   private async refreshBlocklist(): Promise<void> {
     try {
-      const [blocked, allow] = await Promise.all([
+      // Drop lapsed temporary blocks first, so they actually expire.
+      await this.redis.client.zremrangebyscore(
+        TEMP_BLOCK_KEY,
+        0,
+        Date.now(),
+      );
+      const [blocked, temp, allow] = await Promise.all([
         this.redis.client.smembers('mon:block:ips'),
+        this.redis.client.zrange(TEMP_BLOCK_KEY, 0, -1),
         this.redis.client.smembers('mon:allow:ips'),
       ]);
-      this.blockedIps = new Set(blocked);
+      this.blockedIps = new Set([...blocked, ...temp]);
       this.allowIps = new Set(allow);
     } catch (err) {
       this.logger.warn(`blocklist refresh failed: ${(err as Error).message}`);
     }
   }
 
+  /// Blocks an IP. With a `ttlSec` the block is TEMPORARY and lifts itself.
+  ///
+  /// Previously a TTL block still did `SADD mon:block:ips` and only set a
+  /// separate expiring marker key — but nothing ever removed the IP from that
+  /// set (the retention job only prunes requestLog/trafficStat/abuseEvent), so
+  /// every "temporary" block was in fact permanent and could only be cleared
+  /// by hand. Temporary blocks now live in a sorted set scored by their expiry
+  /// instant, and refreshBlocklist() drops lapsed members on every pass.
   async blockIp(ip: string, ttlSec?: number): Promise<void> {
-    await this.redis.client.sadd('mon:block:ips', ip);
     if (ttlSec && ttlSec > 0) {
-      // Temp block: also stash an expiring marker the retention job clears.
-      await this.redis.client.set(`mon:block:ip:${ip}`, '1', 'EX', ttlSec);
+      await this.redis.client.zadd(
+        TEMP_BLOCK_KEY,
+        Date.now() + ttlSec * 1000,
+        ip,
+      );
+    } else {
+      await this.redis.client.sadd('mon:block:ips', ip);
     }
     this.blockedIps.add(ip);
   }
 
   async unblockIp(ip: string): Promise<void> {
     await this.redis.client.srem('mon:block:ips', ip);
+    await this.redis.client.zrem(TEMP_BLOCK_KEY, ip);
+    // Legacy marker from the pre-fix scheme; harmless if absent.
     await this.redis.client.del(`mon:block:ip:${ip}`);
     this.blockedIps.delete(ip);
   }

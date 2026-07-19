@@ -13,17 +13,79 @@ import { createHmac, randomBytes, timingSafeEqual } from 'node:crypto';
 
 export interface AdminSessionPayload {
   aid: string;
+  /// AdminSession row id. The cookie alone is no longer sufficient: the guard
+  /// looks this row up on every request, which is what makes a session
+  /// revocable server-side (single-active-session, idle timeout, hijack
+  /// response). Cookies minted before Admin Shield lack it and fail closed.
+  sid: string;
   iat: number;
   exp: number;
-  /// Random 96-bit nonce so two same-second logins produce different
-  /// tokens — handy for the audit log we'll eventually wire up.
+  /// Random 96-bit nonce so two same-second logins produce different tokens.
+  nonce: string;
+}
+
+/// Short-lived token identifying an in-progress login that has cleared the
+/// password stage but not yet OTP + passcode. It is NOT an auth cookie and
+/// grants nothing except the right to submit factors for one login session.
+export interface AdminPendingPayload {
+  /// AdminLoginSession row id.
+  lsid: string;
+  iat: number;
+  exp: number;
   nonce: string;
 }
 
 export const ADMIN_COOKIE_NAME = 'stockvirtue_admin_session';
+export const ADMIN_PENDING_COOKIE_NAME = 'stockvirtue_admin_pending';
+
+/// HMAC-signs an arbitrary payload object into `<payloadB64>.<sig>`.
+function sign<T extends object>(payload: T, secret: string): string {
+  const payloadB64 = Buffer.from(JSON.stringify(payload)).toString('base64url');
+  const sig = createHmac('sha256', secret)
+    .update(payloadB64)
+    .digest('base64url');
+  return `${payloadB64}.${sig}`;
+}
+
+/// Verifies the signature and expiry of a token produced by [sign].
+function verify<T extends { exp: number }>(
+  token: string | null | undefined,
+  secret: string,
+): T | null {
+  if (!token || !secret) return null;
+  const dot = token.indexOf('.');
+  if (dot < 0) return null;
+  const payloadB64 = token.slice(0, dot);
+  const sigPart = token.slice(dot + 1);
+  const expectedSig = createHmac('sha256', secret)
+    .update(payloadB64)
+    .digest();
+  // NOTE: Buffer.from(x,'base64url') never throws — it silently drops invalid
+  // characters — so the length guard below, not a try/catch, is what keeps
+  // timingSafeEqual from throwing on a malformed signature.
+  const actualSig = Buffer.from(sigPart, 'base64url');
+  if (
+    expectedSig.length !== actualSig.length ||
+    !timingSafeEqual(expectedSig, actualSig)
+  ) {
+    return null;
+  }
+  let payload: T;
+  try {
+    payload = JSON.parse(
+      Buffer.from(payloadB64, 'base64url').toString('utf-8'),
+    ) as T;
+  } catch {
+    return null;
+  }
+  if (!payload || typeof payload.exp !== 'number') return null;
+  if (payload.exp < Math.floor(Date.now() / 1000)) return null;
+  return payload;
+}
 
 export function signAdminSession(
   adminId: string,
+  sessionId: string,
   ttlSeconds: number,
   secret: string,
 ): { token: string; payload: AdminSessionPayload } {
@@ -33,51 +95,50 @@ export function signAdminSession(
   const now = Math.floor(Date.now() / 1000);
   const payload: AdminSessionPayload = {
     aid: adminId,
+    sid: sessionId,
     iat: now,
     exp: now + ttlSeconds,
     nonce: randomBytes(12).toString('base64url'),
   };
-  const payloadB64 = Buffer.from(JSON.stringify(payload)).toString('base64url');
-  const sig = createHmac('sha256', secret).update(payloadB64).digest('base64url');
-  return { token: `${payloadB64}.${sig}`, payload };
+  return { token: sign(payload, secret), payload };
 }
 
 export function verifyAdminSession(
   token: string | null | undefined,
   secret: string,
 ): AdminSessionPayload | null {
-  if (!token || !secret) return null;
-  const dot = token.indexOf('.');
-  if (dot < 0) return null;
-  const payloadB64 = token.slice(0, dot);
-  const sigPart = token.slice(dot + 1);
-  let expectedSig: Buffer;
-  let actualSig: Buffer;
-  try {
-    expectedSig = createHmac('sha256', secret)
-      .update(payloadB64)
-      .digest();
-    actualSig = Buffer.from(sigPart, 'base64url');
-  } catch {
-    return null;
-  }
-  if (
-    expectedSig.length !== actualSig.length ||
-    !timingSafeEqual(expectedSig, actualSig)
-  ) {
-    return null;
-  }
-  let payload: AdminSessionPayload;
-  try {
-    payload = JSON.parse(
-      Buffer.from(payloadB64, 'base64url').toString('utf-8'),
-    ) as AdminSessionPayload;
-  } catch {
-    return null;
+  const p = verify<AdminSessionPayload>(token, secret);
+  if (!p || typeof p.aid !== 'string' || !p.aid) return null;
+  return p;
+}
+
+export function signPendingLogin(
+  loginSessionId: string,
+  ttlSeconds: number,
+  secret: string,
+): string {
+  if (!secret) {
+    throw new Error('ADMIN_SESSION_SECRET (or JWT_REFRESH_SECRET) not set');
   }
   const now = Math.floor(Date.now() / 1000);
-  if (payload.exp < now) return null;
-  return payload;
+  return sign<AdminPendingPayload>(
+    {
+      lsid: loginSessionId,
+      iat: now,
+      exp: now + ttlSeconds,
+      nonce: randomBytes(12).toString('base64url'),
+    },
+    secret,
+  );
+}
+
+export function verifyPendingLogin(
+  token: string | null | undefined,
+  secret: string,
+): AdminPendingPayload | null {
+  const p = verify<AdminPendingPayload>(token, secret);
+  if (!p || typeof p.lsid !== 'string' || !p.lsid) return null;
+  return p;
 }
 
 /// Parses the first occurrence of [name] out of a raw `Cookie:` header

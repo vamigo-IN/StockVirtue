@@ -11,6 +11,7 @@ import { AdminAuditService } from './admin-audit.service';
 import { AdminAuthService } from './admin-auth.service';
 import { AdminGuard } from './admin-auth.guard';
 import { AdminHealthService } from './admin-health.service';
+import { AdminShieldService } from './admin-shield.service';
 import { AdminStatsService } from './admin-stats.service';
 import { AdminController } from './admin.controller';
 
@@ -31,6 +32,9 @@ import { AdminController } from './admin.controller';
     AdminAuthService,
     AdminGuard,
     AdminHealthService,
+    // MailModule / RedisModule / MonitoringModule are all @Global — no import
+    // needed for AdminShieldService to inject them.
+    AdminShieldService,
     AdminStatsService,
   ],
 })

@@ -203,9 +203,154 @@ export function loginPage(opts: {
           ? `<div class="mt-3 mb-2 text-xs px-3 py-2 rounded-lg bg-rose-500/15 text-rose-300 border border-rose-500/30">${esc(opts.error)}</div>`
           : ''
       }
+      <input type="hidden" name="fp" id="fp" />
       <button type="submit" class="mt-5 w-full bg-indigo-500 hover:bg-indigo-400 transition text-white font-bold py-2.5 rounded-lg">Sign in</button>
     </form>
   </div>
+${FP_SCRIPT}
+</body>
+</html>`;
+}
+
+/// Client-side device signals for the fingerprint. These are NEVER trusted for
+/// authorisation — the server only hashes them — so a forged value can make a
+/// device look NEW (triggering more verification) but never less.
+///
+/// NOTE: this is an inline script, which works only because helmet's CSP is
+/// disabled (main.ts). If CSP is ever enabled it needs a nonce or a static file.
+const FP_SCRIPT = `<script>
+(function(){try{
+  var o=Intl.DateTimeFormat().resolvedOptions();
+  var s=['tz='+(o&&o.timeZone||''),
+    'sr='+screen.width+'x'+screen.height+'x'+(screen.colorDepth||0),
+    'lang='+(navigator.language||''),
+    'plat='+(navigator.platform||''),
+    'hc='+(navigator.hardwareConcurrency||0)].join('&');
+  var f=document.querySelectorAll('input[name="fp"]');
+  for(var i=0;i<f.length;i++){f[i].value=s;}
+}catch(e){}})();
+</script>`;
+
+/// Second-factor page. The OTP and the passcode are verified INDEPENDENTLY —
+/// each has its own form, its own Verify button and its own Resend — and the
+/// final "Enter dashboard" action only unlocks once both are green.
+export function verifyPage(opts: {
+  back?: string;
+  otpVerified: boolean;
+  passcodeVerified: boolean;
+  sessionId: string;
+  otpMessage?: string | null;
+  passcodeMessage?: string | null;
+  error?: string | null;
+}): string {
+  const back = esc(opts.back ?? '/admin');
+  const both = opts.otpVerified && opts.passcodeVerified;
+
+  const tick = (done: boolean) =>
+    done
+      ? `<span class="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/30">Verified</span>`
+      : `<span class="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-zinc-700/40 text-zinc-400 border border-zinc-600/40">Pending</span>`;
+
+  const note = (msg?: string | null) =>
+    msg
+      ? `<div class="mt-2 text-[11px] px-3 py-2 rounded-lg bg-zinc-800/70 text-zinc-300 border border-zinc-700">${esc(msg)}</div>`
+      : '';
+
+  /// One factor card: label, input, Verify + Resend as two separate forms.
+  const factor = (o: {
+    title: string;
+    hint: string;
+    action: string;
+    resendAction: string;
+    resendLabel: string;
+    verified: boolean;
+    message?: string | null;
+    placeholder: string;
+  }) => `
+    <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5 mb-4">
+      <div class="flex items-center justify-between mb-1">
+        <h2 class="text-sm font-bold">${esc(o.title)}</h2>
+        ${tick(o.verified)}
+      </div>
+      <p class="text-[11px] text-zinc-500 mb-3">${esc(o.hint)}</p>
+      ${
+        o.verified
+          ? `<div class="text-xs text-emerald-300">This factor is confirmed.</div>`
+          : `<form method="post" action="${o.action}" class="flex gap-2">
+               <input type="text" name="code" inputmode="numeric" autocomplete="off"
+                 maxlength="6" pattern="[0-9]{6}" required placeholder="${esc(o.placeholder)}"
+                 class="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 tracking-[0.3em] text-center focus:outline-none focus:border-indigo-500" />
+               <input type="hidden" name="back" value="${back}" />
+               <input type="hidden" name="fp" />
+               <button type="submit" class="px-4 bg-indigo-500 hover:bg-indigo-400 transition text-white font-bold rounded-lg text-sm">Verify</button>
+             </form>
+             <form method="post" action="${o.resendAction}" class="mt-2">
+               <input type="hidden" name="back" value="${back}" />
+               <input type="hidden" name="fp" />
+               <button type="submit" class="text-[11px] text-zinc-400 hover:text-zinc-200 underline">${esc(o.resendLabel)}</button>
+             </form>`
+      }
+      ${note(o.message)}
+    </div>`;
+
+  return `<!doctype html>
+<html lang="en" class="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>StockVirtue admin · verification</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>body{font-family:Inter,system-ui,sans-serif}</style>
+</head>
+<body class="bg-zinc-950 text-zinc-100 min-h-screen flex items-center justify-center px-6 py-10">
+  <div class="w-full max-w-sm">
+    <div class="text-center mb-7">
+      <div class="inline-flex items-center gap-3">
+        <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-indigo-500 to-pink-500 flex items-center justify-center text-white text-lg font-black">N</div>
+        <div class="text-left">
+          <div class="font-bold text-lg">Two-step verification</div>
+          <div class="text-[11px] text-zinc-500 uppercase tracking-widest">Both factors required</div>
+        </div>
+      </div>
+    </div>
+    ${
+      opts.error
+        ? `<div class="mb-4 text-xs px-3 py-2 rounded-lg bg-rose-500/15 text-rose-300 border border-rose-500/30">${esc(opts.error)}</div>`
+        : ''
+    }
+    ${factor({
+      title: 'Email code',
+      hint: 'Enter the code after applying your decode key to the one we emailed.',
+      action: '/admin/login/verify/otp',
+      resendAction: '/admin/login/verify/resend-otp',
+      resendLabel: 'Resend code by email',
+      verified: opts.otpVerified,
+      message: opts.otpMessage,
+      placeholder: '000000',
+    })}
+    ${factor({
+      title: 'Time passcode',
+      hint: 'Date and time this sign-in began, as DDhhmm on a 12-hour clock (IST).',
+      action: '/admin/login/verify/passcode',
+      resendAction: '/admin/login/verify/resend-passcode',
+      resendLabel: 'Reset passcode to the current time',
+      verified: opts.passcodeVerified,
+      message: opts.passcodeMessage,
+      placeholder: 'DDhhmm',
+    })}
+    <form method="post" action="/admin/login/verify/complete">
+      <input type="hidden" name="back" value="${back}" />
+      <input type="hidden" name="fp" />
+      <button type="submit" ${both ? '' : 'disabled'}
+        class="w-full font-bold py-2.5 rounded-lg transition ${
+          both
+            ? 'bg-emerald-500 hover:bg-emerald-400 text-white'
+            : 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
+        }">Enter dashboard</button>
+    </form>
+    <div class="text-center mt-4 text-[10px] text-zinc-600">Login session ${esc(opts.sessionId.slice(0, 12))}</div>
+  </div>
+${FP_SCRIPT}
 </body>
 </html>`;
 }
