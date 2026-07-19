@@ -1,4 +1,6 @@
+import { randomBytes } from 'node:crypto';
 import { NestFactory } from '@nestjs/core';
+import type { NextFunction, Request, Response } from 'express';
 import { ConfigService } from '@nestjs/config';
 import { Logger, RequestMethod, ValidationPipe } from '@nestjs/common';
 import helmet from 'helmet';
@@ -42,6 +44,52 @@ async function bootstrap() {
   // helmet's hardening (HSTS, X-Frame-Options, no-sniff, etc.) without
   // the breakage.
   app.use(helmet({ contentSecurityPolicy: false }));
+
+  // Content-Security-Policy for the admin panel (Admin Shield spec §23).
+  //
+  // helmet's global CSP stays off: the mobile API returns only JSON, where a
+  // CSP buys nothing. The admin panel is different — it renders HTML that
+  // interpolates data, so a missed escape there is executable. This is what
+  // makes an XSS bug inert rather than exploitable.
+  //
+  // script-src deliberately omits 'unsafe-inline'. The panel's own inline
+  // scripts (device fingerprint, mail-status poller) are authorised by a
+  // per-request nonce injected below, so injected script — which cannot know
+  // the nonce — will not run. style-src keeps 'unsafe-inline' because the
+  // Tailwind CDN generates styles at runtime; injected CSS is a far smaller
+  // problem than injected script.
+  app.use('/admin', (req: Request, res: Response, next: NextFunction) => {
+    const nonce = randomBytes(16).toString('base64');
+    res.setHeader(
+      'Content-Security-Policy',
+      [
+        "default-src 'self'",
+        `script-src 'self' https://cdn.tailwindcss.com 'nonce-${nonce}'`,
+        "style-src 'self' 'unsafe-inline' https://cdn.tailwindcss.com",
+        "img-src 'self' data:",
+        "connect-src 'self'",
+        "font-src 'self' data:",
+        "object-src 'none'",
+        "base-uri 'self'",
+        "form-action 'self'",
+        "frame-ancestors 'none'",
+      ].join('; '),
+    );
+    // Stamp the nonce onto our own inline <script> tags. Done by wrapping send
+    // — the same seam the CSRF field uses — so no view has to thread a nonce
+    // through, and none can forget one. Tags carrying src= are left alone;
+    // they are authorised by the host allowlist above.
+    const original = res.send.bind(res);
+    res.send = (body: unknown) => {
+      if (typeof body === 'string' && body.includes('<script')) {
+        return original(
+          body.replace(/<script(?![^>]*src=)/gi, `<script nonce="${nonce}"`),
+        );
+      }
+      return original(body);
+    };
+    next();
+  });
   // gzip/deflate JSON responses. The mobile app pulls large payloads
   // (portfolios, option chains, leaderboards, scanners) over mobile networks;
   // compressing them cuts transfer size ~70-85% for a big latency win.
