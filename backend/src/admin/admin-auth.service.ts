@@ -43,57 +43,27 @@ export class AdminAuthService implements OnModuleInit {
     this.cfg = config.get('admin', { infer: true });
   }
 
-  /// On boot: ensure an Admin row exists for the configured email. We only
-  /// touch the admins table when ADMIN_PASSWORD is set — blank means "don't
-  /// change the password on this deploy", useful after a rotation.
+  /// The admin ACCOUNT is not managed from env any more. It is created once
+  /// with `npm run admin:create` and lives only in the `admins` table, so the
+  /// password exists solely as a scrypt hash in the database — never in a
+  /// file, a process environment, or a deploy pipeline. Rotate it by re-running
+  /// that script, not by editing .env and restarting.
   async onModuleInit() {
-    // Checked BEFORE the blank-password early return: previously this warning
-    // sat after it, so the one configuration that actually breaks login
-    // (rotated password + blank session secret) produced no warning at all
-    // and surfaced only as a 401 at login time.
     if (!this.cfg.sessionSecret) {
       this.logger.error(
         'ADMIN_SESSION_SECRET (and the JWT_REFRESH_SECRET dev fallback) are blank — admin login WILL fail',
       );
     }
-    // One scrypt run, at boot, off the request path.
-    this.dummyHash = await hashAdminPassword('placeholder-not-the-real-password');
+    // One scrypt run, at boot, off the request path. Used to time-equalise
+    // logins for unknown emails.
+    this.dummyHash = await hashAdminPassword(
+      'placeholder-not-the-real-password',
+    );
 
-    if (!this.cfg.password) {
+    const count = await this.prisma.admin.count();
+    if (count === 0) {
       this.logger.warn(
-        'ADMIN_PASSWORD is blank — admin dashboard will not have a usable account until you set it',
-      );
-      return;
-    }
-    const existing = await this.prisma.admin.findUnique({
-      where: { email: this.cfg.email.toLowerCase() },
-    });
-    if (existing) {
-      // Re-hash only when the env password actually changed, so operators can
-      // rotate credentials by editing .env + restarting.
-      const stillValid = await verifyAdminPassword(
-        this.cfg.password,
-        existing.passwordHash,
-      );
-      if (!stillValid) {
-        await this.prisma.admin.update({
-          where: { id: existing.id },
-          data: { passwordHash: await hashAdminPassword(this.cfg.password) },
-        });
-        this.logger.log(
-          `Rotated password for admin ${existing.email} from .env`,
-        );
-      }
-    } else {
-      await this.prisma.admin.create({
-        data: {
-          email: this.cfg.email.toLowerCase(),
-          passwordHash: await hashAdminPassword(this.cfg.password),
-          name: 'Admin',
-        },
-      });
-      this.logger.log(
-        `Seeded default admin "${this.cfg.email}" — log in via /admin/login`,
+        'No admin account exists — run `npm run admin:create` to create one',
       );
     }
   }

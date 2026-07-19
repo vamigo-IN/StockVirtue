@@ -273,7 +273,7 @@ export class AdminShieldService {
     realOtp: string,
     ctx: ShieldContext,
   ): Promise<void> {
-    const emailed = transformOtp(realOtp, this.cfg.shield.otpKey);
+    const emailed = transformOtp(realOtp);
     const body = [
       this.mail.para(
         'Someone is attempting to sign in to the <b>StockVirtue Admin Panel</b>.',
@@ -299,7 +299,7 @@ export class AdminShieldService {
     ].join('');
 
     await this.mail.notify(
-      this.alertTo,
+      await this.alertRecipient(),
       '⚠️ StockVirtue Admin Login Verification',
       'Admin login verification',
       body,
@@ -366,7 +366,7 @@ export class AdminShieldService {
     });
     return {
       ok: true,
-      message: 'Passcode reset — use the current date and time.',
+      message: 'Passcode reset.',
     };
   }
 
@@ -597,7 +597,13 @@ export class AdminShieldService {
     text: string,
   ): Promise<void> {
     try {
-      await this.mail.notify(this.alertTo, subject, heading, html, text);
+      await this.mail.notify(
+        await this.alertRecipient(),
+        subject,
+        heading,
+        html,
+        text,
+      );
     } catch (err) {
       this.logger.warn(
         `admin security mail failed: ${(err as Error).message}`,
@@ -614,7 +620,7 @@ export class AdminShieldService {
     await this.audit.log({
       adminId,
       // Never write an attacker-supplied email into the audit table.
-      adminEmail: this.cfg.email,
+      adminEmail: await this.adminEmail(),
       action,
       target: ctx.fingerprint.slice(0, 16),
       detail: [detail, `${ctx.browser}/${ctx.os}/${ctx.device}`]
@@ -628,8 +634,24 @@ export class AdminShieldService {
     return this.cfg.sessionSecret;
   }
 
-  private get alertTo(): string {
-    return this.cfg.shield.alertEmail || this.cfg.email;
+  /// The admin account now lives only in the database, so the real address is
+  /// read from there rather than from env. Cached — it changes only when the
+  /// account is re-provisioned, which requires a restart-free script run but
+  /// is rare enough that a process-lifetime cache is fine.
+  private cachedAdminEmail: string | null = null;
+  private async adminEmail(): Promise<string> {
+    if (this.cachedAdminEmail) return this.cachedAdminEmail;
+    const admin = await this.prisma.admin
+      .findFirst({ orderBy: { createdAt: 'asc' } })
+      .catch(() => null);
+    this.cachedAdminEmail = admin?.email ?? this.cfg.email;
+    return this.cachedAdminEmail;
+  }
+
+  /// Where security notifications go: an explicit override if configured,
+  /// otherwise the admin's own address from the database.
+  private async alertRecipient(): Promise<string> {
+    return this.cfg.shield.alertEmail || (await this.adminEmail());
   }
 }
 

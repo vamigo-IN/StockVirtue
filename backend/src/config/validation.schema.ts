@@ -53,15 +53,13 @@ export const validationSchema = Joi.object({
     .allow('')
     .default('StockVirtue <no-reply@stockvirtue.com>'),
 
-  // Backend admin dashboard credentials. In production the password must be
-  // strong, non-default, and the session secret must be set + distinct from
-  // the JWT secrets — the app refuses to boot otherwise.
+  // The admin ACCOUNT no longer comes from env — it lives only in the
+  // `admins` table, created once via `npm run admin:create`. ADMIN_EMAIL is
+  // retained solely as the default recipient for site contact-form mail;
+  // ADMIN_PASSWORD is no longer read by anything and should be deleted from
+  // .env (a stale copy is a credential sitting in a file for no reason).
   ADMIN_EMAIL: Joi.string().email().default('admin@stockvirtue.local'),
-  ADMIN_PASSWORD: Joi.string().when('NODE_ENV', {
-    is: 'production',
-    then: Joi.string().min(12).invalid('StockVirtueAdmin@2026').required(),
-    otherwise: Joi.string().allow('').default(''),
-  }),
+  ADMIN_PASSWORD: Joi.string().allow('').default(''),
   ADMIN_SESSION_SECRET: Joi.string().when('NODE_ENV', {
     is: 'production',
     // Must be strong AND distinct from the JWT secrets so a leak of one key
@@ -81,18 +79,6 @@ export const validationSchema = Joi.object({
   // deploy. A blank ADMIN_OTP_KEY degrades to "no transform" and is warned
   // about at boot instead.
   ADMIN_SHIELD: Joi.string().valid('true', 'false').default('true'),
-  // Exactly 6 digits — the per-position shift applied to the emailed OTP.
-  // Must be distinct from every other secret so one leak can't imply another.
-  ADMIN_OTP_KEY: Joi.string()
-    .pattern(/^\d{6}$/)
-    .allow('')
-    .default('')
-    .invalid(
-      Joi.ref('JWT_ACCESS_SECRET'),
-      Joi.ref('JWT_REFRESH_SECRET'),
-      Joi.ref('ADMIN_SESSION_SECRET'),
-      Joi.ref('ADMIN_PASSWORD'),
-    ),
   ADMIN_OTP_TTL: Joi.number().min(30).max(900).default(120),
   ADMIN_IDLE_TIMEOUT: Joi.number().min(60).default(1800),
   ADMIN_DEVICE_BLOCK_MINUTES: Joi.number().min(1).default(30),

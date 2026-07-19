@@ -39,40 +39,28 @@ export function generateOtp(): string {
   return crypto.randomInt(0, 1_000_000).toString().padStart(6, '0');
 }
 
-/// Transforms the REAL otp into the one that gets emailed.
+/// Transforms the REAL otp into the one that gets emailed: every digit is
+/// stepped UP by one, with 9 wrapping to 0.
 ///
-///   emailed[i] = (real[i] + key[i]) mod 10
+///   real 666666  ->  emailed 777777
+///   real 190349  ->  emailed 201450
 ///
-/// The admin reverses it in their head with [untransformOtp]'s rule. A blank
-/// or malformed key is the identity transform (emailed === real) so a
-/// misconfigured deploy degrades to a plain OTP rather than locking the
-/// operator out with codes they cannot decode.
-export function transformOtp(real: string, key: string): string {
-  if (!isSixDigits(key)) return real;
+/// The admin reverses it mentally — step every digit DOWN by one (0 wraps back
+/// to 9) — and types the REAL code. Only the transformed value is ever emailed;
+/// the real OTP never leaves the server.
+export function transformOtp(real: string): string {
   let out = '';
-  for (let i = 0; i < real.length; i++) {
-    out += ((Number(real[i]) + Number(key[i])) % 10).toString();
-  }
+  for (const ch of real) out += ((Number(ch) + 1) % 10).toString();
   return out;
 }
 
-/// Inverse of [transformOtp] — this is the mental arithmetic the admin does:
-///
-///   real[i] = (emailed[i] - key[i] + 10) mod 10
-///
+/// Inverse of [transformOtp] — the arithmetic the admin does in their head.
 /// Not used by the login path (the server compares against the stored real
-/// OTP); exported so the round-trip is testable and documentable.
-export function untransformOtp(emailed: string, key: string): string {
-  if (!isSixDigits(key)) return emailed;
+/// OTP); exported so the round-trip stays testable.
+export function untransformOtp(emailed: string): string {
   let out = '';
-  for (let i = 0; i < emailed.length; i++) {
-    out += ((Number(emailed[i]) - Number(key[i]) + 10) % 10).toString();
-  }
+  for (const ch of emailed) out += ((Number(ch) + 9) % 10).toString();
   return out;
-}
-
-function isSixDigits(v: string): boolean {
-  return /^\d{6}$/.test(v);
 }
 
 // ─── Passcode ───────────────────────────────────────────────────────────────

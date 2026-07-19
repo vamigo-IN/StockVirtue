@@ -189,8 +189,7 @@ export function loginPage(opts: {
       </div>
     </div>
     <form method="post" action="/admin/login" class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-7">
-      <h1 class="text-base font-bold mb-1">Sign in to continue</h1>
-      <p class="text-xs text-zinc-500 mb-6">Only operators with the env-configured credentials can access this console.</p>
+      <h1 class="text-base font-bold mb-6">Sign in to continue</h1>
       <label class="block text-xs uppercase tracking-wider text-zinc-500 mb-1">Email</label>
       <input type="email" name="email" required autofocus
         class="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 mb-4 focus:outline-none focus:border-indigo-500" />
@@ -257,28 +256,31 @@ export function verifyPage(opts: {
       : '';
 
   /// One factor card: label, input, Verify + Resend as two separate forms.
+  ///
+  /// Deliberately hint-free. The page never states where a code comes from,
+  /// how it is derived, or what shape it has — anyone who reaches this screen
+  /// already has the password, and describing the scheme here would hand the
+  /// remaining secret to exactly the attacker it is meant to stop. The
+  /// operator knows the rules; the HTML does not.
   const factor = (o: {
     title: string;
-    hint: string;
     action: string;
     resendAction: string;
     resendLabel: string;
     verified: boolean;
     message?: string | null;
-    placeholder: string;
   }) => `
     <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5 mb-4">
-      <div class="flex items-center justify-between mb-1">
+      <div class="flex items-center justify-between mb-3">
         <h2 class="text-sm font-bold">${esc(o.title)}</h2>
         ${tick(o.verified)}
       </div>
-      <p class="text-[11px] text-zinc-500 mb-3">${esc(o.hint)}</p>
       ${
         o.verified
           ? `<div class="text-xs text-emerald-300">This factor is confirmed.</div>`
           : `<form method="post" action="${o.action}" class="flex gap-2">
                <input type="text" name="code" inputmode="numeric" autocomplete="off"
-                 maxlength="6" pattern="[0-9]{6}" required placeholder="${esc(o.placeholder)}"
+                 maxlength="6" pattern="[0-9]{6}" required
                  class="flex-1 bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 tracking-[0.3em] text-center focus:outline-none focus:border-indigo-500" />
                <input type="hidden" name="back" value="${back}" />
                <input type="hidden" name="fp" />
@@ -319,24 +321,20 @@ export function verifyPage(opts: {
         : ''
     }
     ${factor({
-      title: 'Email code',
-      hint: 'Enter the code after applying your decode key to the one we emailed.',
+      title: 'Code',
       action: '/admin/login/verify/otp',
       resendAction: '/admin/login/verify/resend-otp',
-      resendLabel: 'Resend code by email',
+      resendLabel: 'Resend',
       verified: opts.otpVerified,
       message: opts.otpMessage,
-      placeholder: '000000',
     })}
     ${factor({
-      title: 'Time passcode',
-      hint: 'Date and time this sign-in began, as DDhhmm on a 12-hour clock (IST).',
+      title: 'Passcode',
       action: '/admin/login/verify/passcode',
       resendAction: '/admin/login/verify/resend-passcode',
-      resendLabel: 'Reset passcode to the current time',
+      resendLabel: 'Reset',
       verified: opts.passcodeVerified,
       message: opts.passcodeMessage,
-      placeholder: 'DDhhmm',
     })}
     <form method="post" action="/admin/login/verify/complete">
       <input type="hidden" name="back" value="${back}" />

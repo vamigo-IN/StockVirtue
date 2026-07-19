@@ -1,4 +1,8 @@
 {
   "extends": "./tsconfig.json",
-  "exclude": ["node_modules", "test", "dist", "**/*spec.ts"]
+  // `scripts` MUST stay excluded: it lives outside src/, so including it makes
+  // TypeScript widen the output root and emit dist/src/main.js instead of
+  // dist/main.js — silently breaking `start:prod` ("node dist/main") in
+  // production. The scripts are run through ts-node, never compiled.
+  "exclude": ["node_modules", "test", "dist", "scripts", "**/*spec.ts"]
 }

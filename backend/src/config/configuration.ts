@@ -45,9 +45,6 @@ export interface AdminShieldConfig {
   /// Kill switch. When false the panel falls back to password-only login,
   /// without a redeploy — the break-glass path if SMTP fails.
   enabled: boolean;
-  /// 6-digit per-position key for the emailed-OTP transform. Blank = no
-  /// transform (the emailed OTP is the real one).
-  otpKey: string;
   /// OTP + passcode validity, seconds.
   otpTtl: number;
   /// Idle-session timeout, seconds (absolute lifetime is `sessionTtl`).
@@ -159,10 +156,6 @@ export default (): AppConfig => ({
       // fall back to password-only login WITHOUT a redeploy — the break-glass
       // path if SMTP dies and the OTP email can't reach you.
       enabled: (process.env.ADMIN_SHIELD ?? 'true') !== 'false',
-      // Per-digit key for the OTP transform: emailed[i] = (real[i] + key[i]) %
-      // 10, so you recover real[i] = (emailed[i] - key[i] + 10) % 10. Blank
-      // disables the transform (the emailed OTP is then the real one).
-      otpKey: (process.env.ADMIN_OTP_KEY ?? '').trim(),
       // OTP + passcode validity. Spec says 2 minutes.
       otpTtl: parseInt(process.env.ADMIN_OTP_TTL ?? '120', 10),
       // Idle timeout (30 min) — absolute lifetime is `sessionTtl` above (8h).
