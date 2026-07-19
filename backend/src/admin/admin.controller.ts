@@ -153,6 +153,22 @@ export class AdminController {
         return;
       }
 
+      // Emergency protection (spec §25): during a coordinated attack we refuse
+      // NEW sign-ins for a short window. Existing sessions are untouched — the
+      // breaker must never become the attacker's way of locking you out.
+      if (await this.shield.emergencyActive()) {
+        this.sendHtml(
+          res,
+          loginPage({
+            error:
+              'Sign-in is temporarily paused after unusual activity. Please try again shortly.',
+            back,
+          }),
+          HttpStatus.SERVICE_UNAVAILABLE,
+        );
+        return;
+      }
+
       const admin = await this.auth.verifyCredentials(
         body.email ?? '',
         body.password ?? '',
@@ -195,6 +211,7 @@ export class AdminController {
     } catch (err) {
       // Progressive back-off (spec §10): the account is NEVER locked, the
       // attempt just gets slower, and the 5th terminates the login session.
+      await this.shield.noteGlobalAuthFailure(ctx);
       const delay = await this.shield.passwordFailureDelayMs(ctx);
       await sleep(delay);
       const msg =

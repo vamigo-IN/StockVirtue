@@ -21,6 +21,16 @@ export const PASSWORD_DELAYS_MS = [2000, 5000, 10000, 20000] as const;
 export const MAX_OTP_RESENDS = 3;
 export const MAX_PASSCODE_RESENDS = 3;
 
+/// Emergency protection (spec §25). A coordinated attack shows up as many
+/// failed admin logins from MANY IPs at once — which per-IP throttles, by
+/// construction, cannot see. These thresholds are global.
+export const EMERGENCY_FAIL_THRESHOLD = 20;
+export const EMERGENCY_WINDOW_SEC = 5 * 60;
+/// How long new logins are refused once tripped. Deliberately short: this is a
+/// circuit breaker, not a lockout, and it must not become a way for an attacker
+/// to keep the operator out indefinitely by failing logins on purpose.
+export const EMERGENCY_LOCK_SEC = 10 * 60;
+
 /// Redis key namespaces. All Admin Shield counters live under one prefix so
 /// they are trivially greppable and separately flushable from app data.
 export const RK = {
@@ -29,6 +39,7 @@ export const RK = {
   otpSend: (sid: string) => `admin:shield:otp:send:${sid}`,
   verifyIp: (ip: string) => `admin:shield:verify:ip:${ip}`,
   emergency: 'admin:shield:emergency',
+  failWindow: 'admin:shield:failwindow',
 } as const;
 
 // ─── OTP ────────────────────────────────────────────────────────────────────

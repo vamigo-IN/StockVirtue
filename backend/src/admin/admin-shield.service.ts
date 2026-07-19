@@ -19,6 +19,9 @@ import {
   MAX_PASSCODE_ATTEMPTS,
   MAX_PASSCODE_RESENDS,
   MAX_PASSWORD_ATTEMPTS,
+  EMERGENCY_FAIL_THRESHOLD,
+  EMERGENCY_LOCK_SEC,
+  EMERGENCY_WINDOW_SEC,
   PASSWORD_DELAYS_MS,
   RK,
   derivePasscode,
@@ -211,6 +214,47 @@ export class AdminShieldService {
       return PASSWORD_DELAYS_MS[PASSWORD_DELAYS_MS.length - 1];
     }
     return PASSWORD_DELAYS_MS[Math.min(n - 1, PASSWORD_DELAYS_MS.length - 1)];
+  }
+
+  // ── Emergency protection (spec §25) ───────────────────────────────────
+
+  /// True while the circuit breaker is open. Checked before NEW logins only —
+  /// already-authenticated sessions keep working, because locking the operator
+  /// out during an attack is exactly what the attacker wants.
+  async emergencyActive(): Promise<boolean> {
+    const v = await this.redis.client.get(RK.emergency).catch(() => null);
+    return v !== null;
+  }
+
+  /// Counts failed admin logins GLOBALLY (across every IP) and trips the
+  /// breaker past the threshold. Per-IP throttles cannot see a distributed
+  /// attempt by construction — each source stays under its own limit — so this
+  /// window is deliberately not keyed by IP.
+  async noteGlobalAuthFailure(ctx: ShieldContext): Promise<void> {
+    let n = 0;
+    try {
+      n = await this.redis.client.incr(RK.failWindow);
+      if (n === 1) {
+        await this.redis.client.expire(RK.failWindow, EMERGENCY_WINDOW_SEC);
+      }
+    } catch {
+      return; // Redis down: fail open rather than block the operator.
+    }
+    if (n < EMERGENCY_FAIL_THRESHOLD) return;
+    // Set only if absent, so a sustained attack doesn't keep extending the
+    // window forever (which would hand the attacker a permanent lockout).
+    const fresh = await this.redis.client
+      .set(RK.emergency, String(Date.now()), 'EX', EMERGENCY_LOCK_SEC, 'NX')
+      .catch(() => null);
+    if (!fresh) return;
+    await this.redis.client.del(RK.failWindow).catch(() => 0);
+    await this.log(null, 'shield.emergency.tripped', ctx, `${n} failures`);
+    await this.alert(
+      '🚨 StockVirtue admin under coordinated attack',
+      'Emergency protection engaged',
+      `${n} failed admin sign-ins in under ${Math.round(EMERGENCY_WINDOW_SEC / 60)} minutes, across multiple sources. New sign-ins are refused for ${Math.round(EMERGENCY_LOCK_SEC / 60)} minutes. Any session you already have open is unaffected.`,
+      ctx,
+    );
   }
 
   async clearPasswordFailures(ip: string): Promise<void> {
