@@ -216,10 +216,7 @@ export class AdminController {
   // the right to submit factors for one login session.
 
   private async pendingSession(req: Request) {
-    const token = readCookie(
-      req.headers.cookie,
-      ADMIN_PENDING_COOKIE_NAME,
-    );
+    const token = readCookie(req.headers.cookie, ADMIN_PENDING_COOKIE_NAME);
     const payload = verifyPendingLogin(token, this.auth.sessionSecret);
     if (!payload) return null;
     return this.shield.loadLoginSession(payload.lsid);
@@ -259,6 +256,22 @@ export class AdminController {
     @Res() res: Response,
   ) {
     await this.renderVerify(req, res, back ?? '/admin');
+  }
+
+  /// Delivery state of the verification email, polled by the verify screen so
+  /// the operator can see the send land (or fail) instead of guessing. Returns
+  /// only a coarse status — no code, no address, nothing sensitive.
+  @Get('login/verify/status')
+  async loginVerifyStatus(@Req() req: Request, @Res() res: Response) {
+    const session = await this.pendingSession(req);
+    res.setHeader('Cache-Control', 'no-store, max-age=0');
+    if (!session) {
+      res.status(HttpStatus.OK).json({ status: 'EXPIRED' });
+      return;
+    }
+    res.status(HttpStatus.OK).json({
+      status: await this.shield.emailStatus(session.id),
+    });
   }
 
   @Post('login/verify/otp')
@@ -331,7 +344,10 @@ export class AdminController {
       res.redirect('/admin/login');
       return;
     }
-    const r = await this.shield.resendOtp(session, this.shieldCtx(req, body.fp));
+    const r = await this.shield.resendOtp(
+      session,
+      this.shieldCtx(req, body.fp),
+    );
     await this.renderVerify(req, res, back, { otp: r.message });
   }
 

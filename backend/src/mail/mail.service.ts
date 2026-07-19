@@ -84,6 +84,19 @@ export class MailService {
       port: smtp.port,
       secure: smtp.secure,
       auth: { user: smtp.user, pass: smtp.pass },
+      // Pooled connections. Without this every message pays a fresh
+      // TCP + TLS + AUTH handshake, which against a hosted SMTP provider is
+      // most of the send latency; reusing a warm connection turns a
+      // multi-second send into a fast one.
+      pool: true,
+      maxConnections: 3,
+      maxMessages: 100,
+      // Bound every stage so a hung or blackholed SMTP server can't pin a
+      // connection (and, with the background dispatch, can't leave a login
+      // sitting on "Sending…" forever).
+      connectionTimeout: 10_000,
+      greetingTimeout: 10_000,
+      socketTimeout: 20_000,
     });
     this.configured = true;
     this.logger.log(`SMTP configured (${smtp.host}:${smtp.port})`);
@@ -339,7 +352,16 @@ export class MailService {
 /// HTML-escape interpolated values so a crafted displayName / symbol can't
 /// break out of the email markup.
 export function escapeHtml(value: unknown): string {
-  return String(value ?? '')
+  if (value == null) return '';
+  const s =
+    typeof value === 'string'
+      ? value
+      : typeof value === 'number' ||
+          typeof value === 'boolean' ||
+          typeof value === 'bigint'
+        ? value.toString()
+        : (JSON.stringify(value) ?? '');
+  return s
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')

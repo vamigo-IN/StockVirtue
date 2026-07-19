@@ -1,4 +1,3 @@
-/* eslint-disable no-console */
 import * as readline from 'node:readline';
 import { PrismaClient } from '@prisma/client';
 import { hashPassword } from '../src/common/password';

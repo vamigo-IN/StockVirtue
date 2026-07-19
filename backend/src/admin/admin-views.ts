@@ -10,12 +10,30 @@
 /// through these templates goes through this.
 export function esc(value: unknown): string {
   if (value == null) return '';
-  return String(value)
+  return stringify(value)
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+/// Safe stringification for template interpolation. Objects would otherwise
+/// render as "[object Object]"; JSON is at least diagnosable.
+function stringify(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (
+    typeof value === 'number' ||
+    typeof value === 'boolean' ||
+    typeof value === 'bigint'
+  ) {
+    return value.toString();
+  }
+  try {
+    return JSON.stringify(value) ?? '';
+  } catch {
+    return '';
+  }
 }
 
 const IST_OFFSET_MS = (5 * 60 + 30) * 60 * 1000;
@@ -36,9 +54,9 @@ export function inr(value: number, opts: { compact?: boolean } = {}): string {
   if (!Number.isFinite(value)) return '—';
   if (opts.compact) {
     const abs = Math.abs(value);
-    if (abs >= 10000000) return `₹${(value / 10000000).toFixed(2)} Cr`;
-    if (abs >= 100000) return `₹${(value / 100000).toFixed(2)} L`;
-    if (abs >= 1000) return `₹${(value / 1000).toFixed(2)} K`;
+    if (abs >= 10000000) return `₹${(value / 10000000).toFixed(2)} Cr`;
+    if (abs >= 100000) return `₹${(value / 100000).toFixed(2)} L`;
+    if (abs >= 1000) return `₹${(value / 1000).toFixed(2)} K`;
   }
   const neg = value < 0;
   const abs = Math.abs(value).toFixed(2);
@@ -230,6 +248,39 @@ const FP_SCRIPT = `<script>
 }catch(e){}})();
 </script>`;
 
+/// Live delivery indicator for the verification email. The send runs in the
+/// background so the login form isn't blocked on SMTP; this polls a coarse
+/// status endpoint (no code, no address) until it settles, so a mail failure
+/// is visible instead of looking like a code that never arrives.
+const MAIL_STATUS = `
+      <div id="mailstat" class="mt-2 text-[11px] flex items-center gap-1.5 text-zinc-400">
+        <span id="mailstat-dot" class="inline-block w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+        <span id="mailstat-text">Sending email…</span>
+      </div>
+      <script>
+      (function(){
+        var dot=document.getElementById('mailstat-dot');
+        var txt=document.getElementById('mailstat-text');
+        if(!dot||!txt)return;
+        var tries=0;
+        function paint(color,label){dot.className='inline-block w-1.5 h-1.5 rounded-full '+color;txt.textContent=label;}
+        function poll(){
+          tries++;
+          fetch('/admin/login/verify/status',{credentials:'same-origin'})
+            .then(function(r){return r.json();})
+            .then(function(d){
+              if(d.status==='SENT'){paint('bg-emerald-400','Email sent');return;}
+              if(d.status==='FAILED'){paint('bg-rose-400','Email failed to send — use Resend');return;}
+              if(d.status==='EXPIRED'){paint('bg-zinc-500','Session expired');return;}
+              if(tries<40){setTimeout(poll,1500);}
+              else{paint('bg-zinc-500','Still sending — use Resend if it does not arrive');}
+            })
+            .catch(function(){if(tries<40)setTimeout(poll,2000);});
+        }
+        poll();
+      })();
+      </script>`;
+
 /// Second-factor page. The OTP and the passcode are verified INDEPENDENTLY —
 /// each has its own form, its own Verify button and its own Resend — and the
 /// final "Enter dashboard" action only unlocks once both are green.
@@ -269,6 +320,8 @@ export function verifyPage(opts: {
     resendLabel: string;
     verified: boolean;
     message?: string | null;
+    /// Optional extra markup rendered under the input (e.g. mail status).
+    extra?: string;
   }) => `
     <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-5 mb-4">
       <div class="flex items-center justify-between mb-3">
@@ -292,6 +345,7 @@ export function verifyPage(opts: {
                <button type="submit" class="text-[11px] text-zinc-400 hover:text-zinc-200 underline">${esc(o.resendLabel)}</button>
              </form>`
       }
+      ${o.extra ?? ''}
       ${note(o.message)}
     </div>`;
 
@@ -327,6 +381,7 @@ export function verifyPage(opts: {
       resendLabel: 'Resend',
       verified: opts.otpVerified,
       message: opts.otpMessage,
+      extra: opts.otpVerified ? '' : MAIL_STATUS,
     })}
     ${factor({
       title: 'Passcode',

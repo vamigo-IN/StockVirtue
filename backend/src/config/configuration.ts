@@ -156,8 +156,10 @@ export default (): AppConfig => ({
       // fall back to password-only login WITHOUT a redeploy — the break-glass
       // path if SMTP dies and the OTP email can't reach you.
       enabled: (process.env.ADMIN_SHIELD ?? 'true') !== 'false',
-      // OTP + passcode validity. Spec says 2 minutes.
-      otpTtl: parseInt(process.env.ADMIN_OTP_TTL ?? '120', 10),
+      // OTP + passcode validity: 5 minutes. Long enough to absorb mail-provider
+      // delivery lag and the mental decode, short enough that an intercepted
+      // code is worthless by the time it is read.
+      otpTtl: parseInt(process.env.ADMIN_OTP_TTL ?? '300', 10),
       // Idle timeout (30 min) — absolute lifetime is `sessionTtl` above (8h).
       idleTimeout: parseInt(process.env.ADMIN_IDLE_TIMEOUT ?? '1800', 10),
       // How long a device fingerprint stays blocked after repeated failures.

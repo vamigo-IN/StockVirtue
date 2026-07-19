@@ -96,6 +96,15 @@ model AdminAuditLog {
   @@map("admin_audit_logs")
 }
 
+/// Delivery state of the login-verification email. The send happens in the
+/// background so the operator isn't held on the login page waiting for SMTP;
+/// the verification screen polls this to show whether it actually went out.
+enum AdminEmailStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
 /// Lifecycle of a single admin login ATTEMPT.
 enum AdminLoginStatus {
   PENDING /// password accepted; awaiting OTP + passcode
@@ -126,6 +135,11 @@ model AdminLoginSession {
   otpVerifiedAt      DateTime?
   otpAttempts        Int       @default(0)
   otpResends         Int       @default(0)
+  /// Whether the verification email actually reached SMTP. Surfaced on the
+  /// verification screen so a silent mail failure is visible rather than
+  /// looking like a code that never arrives.
+  otpEmailStatus     AdminEmailStatus @default(PENDING)
+  otpEmailAt         DateTime?
   passcodeHash       String?
   passcodeExpiresAt  DateTime?
   passcodeVerifiedAt DateTime?

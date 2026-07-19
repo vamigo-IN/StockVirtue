@@ -27,7 +27,7 @@ export class AdminHealthService {
       this.checkPostgres(),
       this.checkRedis(),
       this.checkSmartApi(),
-      this.checkScripMaster(),
+      Promise.resolve(this.checkScripMaster()),
       this.checkLastSnapshot(),
     ]);
     return [postgres, redis, smartapi, scrip, snapshot];
@@ -52,7 +52,7 @@ export class AdminHealthService {
 
   private async checkRedis(): Promise<HealthBlock> {
     try {
-      const pong = await this.redis.client.ping();
+      const pong: string = await this.redis.client.ping();
       return {
         label: 'Redis',
         ok: pong === 'PONG',
@@ -78,7 +78,9 @@ export class AdminHealthService {
         };
       }
       const ttl = status.ttlSeconds ?? 0;
-      const feed = status.feedTokenAvailable ? 'feed-token ok' : 'no feed-token';
+      const feed = status.feedTokenAvailable
+        ? 'feed-token ok'
+        : 'no feed-token';
       return {
         label: 'SmartAPI',
         ok: true,

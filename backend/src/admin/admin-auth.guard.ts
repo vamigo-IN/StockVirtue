@@ -34,7 +34,7 @@ export class AdminGuard implements CanActivate {
     const expiry = this.auth.sessionExpiryReason(session);
     if (expiry) {
       await this.auth.revokeSession(session.id, expiry);
-      return this.bounce(req, res, expiry);
+      return this.bounce(req, res);
     }
 
     // Session-hijack detection (spec §24). The fingerprint is derived from the
@@ -44,8 +44,11 @@ export class AdminGuard implements CanActivate {
     // bouncing the operator on every IP change would be a self-DoS.
     const ua = (req.headers['user-agent'] ?? '').slice(0, 400);
     if (session.userAgent && ua && session.userAgent !== ua) {
-      await this.auth.revokeSession(session.id, 'user-agent changed mid-session');
-      return this.bounce(req, res, 'Session ended for your security.');
+      await this.auth.revokeSession(
+        session.id,
+        'user-agent changed mid-session',
+      );
+      return this.bounce(req, res);
     }
 
     // CSRF (spec §22). SameSite=Strict on the cookie is the first line — a
@@ -98,7 +101,7 @@ export class AdminGuard implements CanActivate {
 
   /// Writes the redirect itself and returns false. AllExceptionsFilter has an
   /// explicit `headersSent` guard precisely because of this contract.
-  private bounce(req: Request, res: Response, _reason?: string): boolean {
+  private bounce(req: Request, res: Response): boolean {
     const back = encodeURIComponent(req.originalUrl || '/admin');
     res.redirect(`/admin/login?back=${back}`);
     return false;

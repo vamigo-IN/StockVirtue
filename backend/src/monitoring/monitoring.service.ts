@@ -80,11 +80,7 @@ export class MonitoringService implements OnModuleInit {
   private async refreshBlocklist(): Promise<void> {
     try {
       // Drop lapsed temporary blocks first, so they actually expire.
-      await this.redis.client.zremrangebyscore(
-        TEMP_BLOCK_KEY,
-        0,
-        Date.now(),
-      );
+      await this.redis.client.zremrangebyscore(TEMP_BLOCK_KEY, 0, Date.now());
       const [blocked, temp, allow] = await Promise.all([
         this.redis.client.smembers('mon:block:ips'),
         this.redis.client.zrange(TEMP_BLOCK_KEY, 0, -1),

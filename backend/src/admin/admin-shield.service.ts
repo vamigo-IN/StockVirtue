@@ -1,7 +1,12 @@
 import { createHash } from 'node:crypto';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Admin, AdminLoginSession, AdminLoginStatus } from '@prisma/client';
+import {
+  Admin,
+  AdminEmailStatus,
+  AdminLoginSession,
+  AdminLoginStatus,
+} from '@prisma/client';
 import { AdminConfig, AppConfig } from '../config/configuration';
 import { MailService } from '../mail/mail.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -262,9 +267,52 @@ export class AdminShieldService {
       },
     });
 
-    await this.sendOtpEmail(session, otp, ctx);
-    await this.log(admin.id, 'shield.login.started', ctx, `session ${session.id}`);
+    // Dispatched in the BACKGROUND. Awaiting SMTP here held the operator on a
+    // spinning login page for as long as the mail provider took to accept the
+    // message. The verification screen polls `otpEmailStatus` instead, so the
+    // wait is visible and interruptible rather than a frozen form.
+    this.dispatchOtpEmail(session, otp, ctx);
+    await this.log(
+      admin.id,
+      'shield.login.started',
+      ctx,
+      `session ${session.id}`,
+    );
     return session;
+  }
+
+  /// Fire-and-forget wrapper around [sendOtpEmail] that records the delivery
+  /// outcome on the login session. Never rejects: an unhandled rejection here
+  /// would be an unhandled promise rejection on the auth path.
+  private dispatchOtpEmail(
+    session: AdminLoginSession,
+    realOtp: string,
+    ctx: ShieldContext,
+  ): void {
+    void (async () => {
+      const started = Date.now();
+      try {
+        await this.sendOtpEmail(session, realOtp, ctx);
+        await this.markEmail(session.id, 'SENT');
+        this.logger.log(
+          `admin OTP email sent for ${session.id} in ${Date.now() - started}ms`,
+        );
+      } catch (err) {
+        await this.markEmail(session.id, 'FAILED');
+        this.logger.error(
+          `admin OTP email FAILED for ${session.id}: ${(err as Error).message}`,
+        );
+      }
+    })();
+  }
+
+  private async markEmail(id: string, status: AdminEmailStatus): Promise<void> {
+    await this.prisma.adminLoginSession
+      .update({
+        where: { id },
+        data: { otpEmailStatus: status, otpEmailAt: new Date() },
+      })
+      .catch(() => undefined);
   }
 
   /// Emails the transformed OTP. The REAL otp never leaves the server.
@@ -336,10 +384,23 @@ export class AdminShieldService {
         otpAttempts: 0,
         otpResends: { increment: 1 },
         expiresAt: laterOf(expiresAt, session.passcodeExpiresAt),
+        // Back to PENDING so the screen shows this send in flight, not the
+        // outcome of the previous one.
+        otpEmailStatus: 'PENDING',
+        otpEmailAt: null,
       },
     });
-    await this.sendOtpEmail(updated, otp, ctx);
-    return { ok: true, message: 'A new code has been emailed to you.' };
+    this.dispatchOtpEmail(updated, otp, ctx);
+    return { ok: true, message: 'Sending a new code…' };
+  }
+
+  /// Delivery state of the verification email for an in-flight login, polled
+  /// by the verification screen.
+  async emailStatus(id: string): Promise<AdminEmailStatus> {
+    const s = await this.prisma.adminLoginSession
+      .findUnique({ where: { id }, select: { otpEmailStatus: true } })
+      .catch(() => null);
+    return s?.otpEmailStatus ?? 'PENDING';
   }
 
   /// Re-derives the passcode from the CURRENT time (spec: the passcode is set
@@ -378,11 +439,21 @@ export class AdminShieldService {
     ctx: ShieldContext,
   ): Promise<FactorResult> {
     if (session.otpVerifiedAt) {
-      return { ok: true, message: 'Code already verified.', terminated: false, remaining: 0 };
+      return {
+        ok: true,
+        message: 'Code already verified.',
+        terminated: false,
+        remaining: 0,
+      };
     }
     if (isExpired(session.otpExpiresAt)) {
       await this.terminate(session, 'otp expired', ctx);
-      return { ok: false, message: 'That code has expired. Start again.', terminated: true, remaining: 0 };
+      return {
+        ok: false,
+        message: 'That code has expired. Start again.',
+        terminated: true,
+        remaining: 0,
+      };
     }
     const attempts = session.otpAttempts + 1;
     const ok = verifyCode(code, session.otpHash, this.secret);
@@ -392,16 +463,31 @@ export class AdminShieldService {
         data: { otpVerifiedAt: new Date(), otpAttempts: attempts },
       });
       await this.log(session.adminId, 'shield.otp.verified', ctx);
-      return { ok: true, message: 'Code verified.', terminated: false, remaining: 0 };
+      return {
+        ok: true,
+        message: 'Code verified.',
+        terminated: false,
+        remaining: 0,
+      };
     }
     await this.prisma.adminLoginSession.update({
       where: { id: session.id },
       data: { otpAttempts: attempts },
     });
-    await this.log(session.adminId, 'shield.otp.failed', ctx, `attempt ${attempts}`);
+    await this.log(
+      session.adminId,
+      'shield.otp.failed',
+      ctx,
+      `attempt ${attempts}`,
+    );
     if (attempts >= MAX_OTP_ATTEMPTS) {
       await this.terminate(session, 'too many wrong OTP attempts', ctx);
-      return { ok: false, message: 'Too many incorrect codes. Start again.', terminated: true, remaining: 0 };
+      return {
+        ok: false,
+        message: 'Too many incorrect codes. Start again.',
+        terminated: true,
+        remaining: 0,
+      };
     }
     return {
       ok: false,
@@ -417,11 +503,21 @@ export class AdminShieldService {
     ctx: ShieldContext,
   ): Promise<FactorResult> {
     if (session.passcodeVerifiedAt) {
-      return { ok: true, message: 'Passcode already verified.', terminated: false, remaining: 0 };
+      return {
+        ok: true,
+        message: 'Passcode already verified.',
+        terminated: false,
+        remaining: 0,
+      };
     }
     if (isExpired(session.passcodeExpiresAt)) {
       await this.terminate(session, 'passcode expired', ctx);
-      return { ok: false, message: 'The passcode has expired. Start again.', terminated: true, remaining: 0 };
+      return {
+        ok: false,
+        message: 'The passcode has expired. Start again.',
+        terminated: true,
+        remaining: 0,
+      };
     }
     const attempts = session.passcodeAttempts + 1;
     // The passcode is a pure function of the clock, so it is verified by
@@ -429,7 +525,9 @@ export class AdminShieldService {
     // issued (expiry minus the TTL). The stored hash keeps the plaintext out
     // of the database but cannot itself cover the tolerance window.
     const base = session.passcodeExpiresAt
-      ? new Date(session.passcodeExpiresAt.getTime() - this.otpTtlSeconds * 1000)
+      ? new Date(
+          session.passcodeExpiresAt.getTime() - this.otpTtlSeconds * 1000,
+        )
       : session.createdAt;
     const ok = passcodeCandidates(base).some((c) => timingEq(c, code));
     if (ok) {
@@ -438,16 +536,31 @@ export class AdminShieldService {
         data: { passcodeVerifiedAt: new Date(), passcodeAttempts: attempts },
       });
       await this.log(session.adminId, 'shield.passcode.verified', ctx);
-      return { ok: true, message: 'Passcode verified.', terminated: false, remaining: 0 };
+      return {
+        ok: true,
+        message: 'Passcode verified.',
+        terminated: false,
+        remaining: 0,
+      };
     }
     await this.prisma.adminLoginSession.update({
       where: { id: session.id },
       data: { passcodeAttempts: attempts },
     });
-    await this.log(session.adminId, 'shield.passcode.failed', ctx, `attempt ${attempts}`);
+    await this.log(
+      session.adminId,
+      'shield.passcode.failed',
+      ctx,
+      `attempt ${attempts}`,
+    );
     if (attempts >= MAX_PASSCODE_ATTEMPTS) {
       await this.terminate(session, 'too many wrong passcode attempts', ctx);
-      return { ok: false, message: 'Too many incorrect passcodes. Start again.', terminated: true, remaining: 0 };
+      return {
+        ok: false,
+        message: 'Too many incorrect passcodes. Start again.',
+        terminated: true,
+        remaining: 0,
+      };
     }
     return {
       ok: false,
@@ -492,7 +605,12 @@ export class AdminShieldService {
       })
       .catch(() => undefined);
 
-    await this.log(admin.id, 'shield.login.success', ctx, `session ${session.id}`);
+    await this.log(
+      admin.id,
+      'shield.login.success',
+      ctx,
+      `session ${session.id}`,
+    );
     await this.sendSuccessEmail(session, ctx, issued.displaced);
     return { token: issued.token, ttlSeconds: issued.ttlSeconds };
   }
@@ -503,7 +621,9 @@ export class AdminShieldService {
     displaced: number,
   ): Promise<void> {
     const body = [
-      this.mail.para('Your <b>StockVirtue Admin Panel</b> session has started.'),
+      this.mail.para(
+        'Your <b>StockVirtue Admin Panel</b> session has started.',
+      ),
       this.mail.detailTable([
         { label: 'Time (IST)', value: istStamp(new Date()) },
         { label: 'Browser', value: ctx.browser },
@@ -605,9 +725,7 @@ export class AdminShieldService {
         text,
       );
     } catch (err) {
-      this.logger.warn(
-        `admin security mail failed: ${(err as Error).message}`,
-      );
+      this.logger.warn(`admin security mail failed: ${(err as Error).message}`);
     }
   }
 

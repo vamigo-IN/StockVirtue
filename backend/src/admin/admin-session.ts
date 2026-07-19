@@ -57,9 +57,7 @@ function verify<T extends { exp: number }>(
   if (dot < 0) return null;
   const payloadB64 = token.slice(0, dot);
   const sigPart = token.slice(dot + 1);
-  const expectedSig = createHmac('sha256', secret)
-    .update(payloadB64)
-    .digest();
+  const expectedSig = createHmac('sha256', secret).update(payloadB64).digest();
   // NOTE: Buffer.from(x,'base64url') never throws — it silently drops invalid
   // characters — so the length guard below, not a try/catch, is what keeps
   // timingSafeEqual from throwing on a malformed signature.

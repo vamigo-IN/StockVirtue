@@ -88,9 +88,7 @@ export function derivePasscode(at: Date): string {
   const ist = new Date(at.getTime() + IST_OFFSET_MS);
   const h24 = ist.getUTCHours();
   const h12 = h24 % 12 === 0 ? 12 : h24 % 12;
-  return (
-    pad2(ist.getUTCDate()) + pad2(h12) + pad2(ist.getUTCMinutes())
-  );
+  return pad2(ist.getUTCDate()) + pad2(h12) + pad2(ist.getUTCMinutes());
 }
 
 /// Every passcode acceptable for a session that started at [at] — the exact

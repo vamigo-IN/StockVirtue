@@ -79,7 +79,7 @@ export const validationSchema = Joi.object({
   // deploy. A blank ADMIN_OTP_KEY degrades to "no transform" and is warned
   // about at boot instead.
   ADMIN_SHIELD: Joi.string().valid('true', 'false').default('true'),
-  ADMIN_OTP_TTL: Joi.number().min(30).max(900).default(120),
+  ADMIN_OTP_TTL: Joi.number().min(30).max(900).default(300),
   ADMIN_IDLE_TIMEOUT: Joi.number().min(60).default(1800),
   ADMIN_DEVICE_BLOCK_MINUTES: Joi.number().min(1).default(30),
   ADMIN_DEVICE_FAIL_THRESHOLD: Joi.number().min(2).default(5),
