@@ -83,7 +83,7 @@ async function bootstrap() {
     res.send = (body: unknown) => {
       if (typeof body === 'string' && body.includes('<script')) {
         return original(
-          body.replace(/<script(?![^>]*src=)/gi, `<script nonce="${nonce}"`),
+          body.replace(/<script(?![^>]*src=)/gi, `<script nonce="${nonce}"`),
         );
       }
       return original(body);
@@ -104,7 +104,10 @@ async function bootstrap() {
   // (api.stockvirtue.com). Trust the first proxy hop so req.ip and the
   // X-Forwarded-* headers reflect the real client/host — used by audit-log
   // IPs and the admin CSRF same-site check.
-  app.getHttpAdapter().getInstance().set('trust proxy', 1);
+  const httpAdapter = app.getHttpAdapter().getInstance() as {
+    set: (key: string, value: unknown) => void;
+  };
+  httpAdapter.set('trust proxy', 1);
   // Admin dashboard lives at /admin/*; the mobile JSON API lives under
   // /api/*. Without the explicit exclude every admin URL would 404 at
   // the bare path and resolve only at /api/admin/*, which is ugly.
