@@ -31,6 +31,7 @@ import { LearnModule } from './learn/learn.module';
 import { AdminModule } from './admin/admin.module';
 import { SiteModule } from './site/site.module';
 import { MonitoringModule } from './monitoring/monitoring.module';
+import { FeedModule } from './feed/feed.module';
 
 @Module({
   imports: [
@@ -71,6 +72,7 @@ import { MonitoringModule } from './monitoring/monitoring.module';
     AdminModule,
     SiteModule,
     MonitoringModule,
+    FeedModule,
   ],
   controllers: [AppController],
   providers: [
