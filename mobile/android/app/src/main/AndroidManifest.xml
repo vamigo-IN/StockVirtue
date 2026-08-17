@@ -1,4 +1,10 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+    <!-- Override implied hardware feature requirements from third-party libraries -->
+    <uses-feature android:name="android.hardware.fingerprint" android:required="false" />
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+    <uses-feature android:name="android.software.webview" android:required="false" />
+
     <!-- Required for all network access. The Flutter tool only injects this
          into the debug/profile manifests automatically; release builds use
          this main manifest, so it must be declared here explicitly. -->

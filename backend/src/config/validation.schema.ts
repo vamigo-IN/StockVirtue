@@ -97,4 +97,23 @@ export const validationSchema = Joi.object({
   MONITORING_ENABLED: Joi.string().valid('true', 'false').default('true'),
   MONITORING_SAMPLE_RATE: Joi.number().min(1).default(50),
   MONITORING_AUTO_BLOCK: Joi.string().valid('true', 'false').default('false'),
+
+  // ─── Public market feed (the /fincalc WebSocket namespace) ─────────────
+  // Every value is optional-with-default, deliberately: ConfigModule
+  // validation runs at boot for the WHOLE app, so a `.required()` here would
+  // take the trading API down if a value were missing on deploy. A
+  // misconfigured feed refuses feed connections and nothing else.
+  FEED_ENABLED: Joi.string().valid('true', 'false').default('false'),
+  FEED_API_KEYS: Joi.string().allow('').default(''),
+  FEED_TOKEN_SECRET: Joi.string().allow('').min(32).default(''),
+  FEED_TOKEN_TTL: Joi.number().min(60).max(86400).default(900),
+  FEED_REQUIRE_SIGNED_TOKENS: Joi.string()
+    .valid('true', 'false')
+    .default('false'),
+  FEED_ALLOWED_ORIGINS: Joi.string().allow('').default(''),
+  FEED_BROADCAST_MS: Joi.number().min(250).max(60000).default(1000),
+  FEED_SNAPSHOT_REFRESH_MS: Joi.number().min(10000).default(60000),
+  FEED_UNIVERSE_REFRESH_MS: Joi.number().min(60000).default(21600000),
+  FEED_MAX_CONNECTIONS: Joi.number().min(1).default(5000),
+  FEED_MAX_CONNECTIONS_PER_IP: Joi.number().min(1).default(20),
 });

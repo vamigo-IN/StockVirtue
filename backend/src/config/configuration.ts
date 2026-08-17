@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 export type NodeEnv = 'development' | 'test' | 'production';
 
 export interface SmartApiConfig {
@@ -81,6 +83,46 @@ export interface MonitoringConfig {
   autoBlock: boolean;
 }
 
+/// A consuming application's credential for the public market feed. The
+/// plaintext secret is hashed at boot and discarded, so a heap dump or an
+/// accidental config log can never leak a working key, and verification stays
+/// constant-time on fixed-length digests whatever a caller sends.
+export interface FeedApiKey {
+  /// Public client identifier, e.g. "fincalc-android". Safe to log.
+  id: string;
+  /// Hex SHA-256 of the shared secret.
+  hash: string;
+}
+
+/// Public market-data feed (the `/fincalc` WebSocket namespace) — a fixed set
+/// of indices + MCX commodities streamed to sibling apps such as FinCalc. It
+/// carries no user data and authenticates with its own API keys, entirely
+/// separate from the mobile app's JWT auth.
+export interface FeedConfig {
+  /// Kill switch. When false the namespace refuses every connection, without
+  /// touching the trading app's own tick gateway.
+  enabled: boolean;
+  apiKeys: FeedApiKey[];
+  /// HMAC key for short-lived signed tokens. Blank disables signed tokens.
+  tokenSecret: string;
+  /// Signed-token lifetime, seconds — used by the minting side.
+  tokenTtl: number;
+  /// When true a raw API key is rejected and only signed tokens are accepted.
+  requireSignedTokens: boolean;
+  /// Browser origins allowed to connect. Empty = no Origin check (native
+  /// mobile clients send no Origin header, so they are unaffected either way).
+  allowedOrigins: string[];
+  /// How often changed prices are flushed to clients, ms.
+  broadcastMs: number;
+  /// REST re-seed interval, ms — keeps prevClose/OHLC right across the daily
+  /// rollover and gives clients real values outside market hours.
+  snapshotRefreshMs: number;
+  /// How often the front-month commodity contracts are re-resolved, ms.
+  universeRefreshMs: number;
+  maxConnections: number;
+  maxConnectionsPerIp: number;
+}
+
 export interface AppConfig {
   nodeEnv: NodeEnv;
   host: string;
@@ -94,6 +136,31 @@ export interface AppConfig {
   admin: AdminConfig;
   site: SiteConfig;
   monitoring: MonitoringConfig;
+  feed: FeedConfig;
+}
+
+/// Parse `FEED_API_KEYS` — a comma-separated list of "clientId:secret" pairs.
+/// Malformed entries are dropped rather than thrown: this runs inside the
+/// global ConfigModule factory, so raising here would take the WHOLE API down
+/// over an optional side-feature. A dropped key surfaces as a refused feed
+/// connection, which is loud in the right place and harmless everywhere else.
+function parseFeedApiKeys(raw: string): FeedApiKey[] {
+  const out: FeedApiKey[] = [];
+  const seen = new Set<string>();
+  for (const entry of raw.split(',').map((s) => s.trim())) {
+    if (!entry) continue;
+    const sep = entry.indexOf(':');
+    if (sep <= 0 || sep === entry.length - 1) continue;
+    const id = entry.slice(0, sep).trim();
+    const secret = entry.slice(sep + 1).trim();
+    if (!id || !secret || seen.has(id)) continue;
+    seen.add(id);
+    out.push({
+      id,
+      hash: createHash('sha256').update(secret, 'utf8').digest('hex'),
+    });
+  }
+  return out;
 }
 
 export default (): AppConfig => ({
@@ -193,5 +260,41 @@ export default (): AppConfig => ({
       parseInt(process.env.MONITORING_SAMPLE_RATE ?? '50', 10),
     ),
     autoBlock: (process.env.MONITORING_AUTO_BLOCK ?? 'false') === 'true',
+  },
+  feed: {
+    // Ships OFF. With no keys configured the namespace would refuse everyone
+    // anyway; an explicit flag makes "is the FinCalc feed live?" answerable
+    // from the environment alone, and gives ops a one-line kill switch.
+    enabled: (process.env.FEED_ENABLED ?? 'false') === 'true',
+    apiKeys: parseFeedApiKeys(process.env.FEED_API_KEYS ?? ''),
+    tokenSecret: process.env.FEED_TOKEN_SECRET ?? '',
+    tokenTtl: parseInt(process.env.FEED_TOKEN_TTL ?? '900', 10),
+    requireSignedTokens:
+      (process.env.FEED_REQUIRE_SIGNED_TOKENS ?? 'false') === 'true',
+    allowedOrigins: (process.env.FEED_ALLOWED_ORIGINS ?? '')
+      .split(',')
+      .map((o) => o.trim().toLowerCase())
+      .filter(Boolean),
+    // 1s. Ticks arrive far faster; they are coalesced so one instrument sends
+    // at most one frame per window — smooth enough to read, cheap on battery.
+    broadcastMs: Math.max(
+      250,
+      parseInt(process.env.FEED_BROADCAST_MS ?? '1000', 10),
+    ),
+    snapshotRefreshMs: Math.max(
+      10_000,
+      parseInt(process.env.FEED_SNAPSHOT_REFRESH_MS ?? '60000', 10),
+    ),
+    // 6h — well under a day, so a front-month commodity future that rolls is
+    // picked up the same session.
+    universeRefreshMs: Math.max(
+      60_000,
+      parseInt(process.env.FEED_UNIVERSE_REFRESH_MS ?? '21600000', 10),
+    ),
+    maxConnections: parseInt(process.env.FEED_MAX_CONNECTIONS ?? '5000', 10),
+    maxConnectionsPerIp: parseInt(
+      process.env.FEED_MAX_CONNECTIONS_PER_IP ?? '20',
+      10,
+    ),
   },
 });
