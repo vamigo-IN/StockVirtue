@@ -85,6 +85,13 @@ Map<String, dynamic> _portfolioToJson(PortfolioSnapshot s) => {
             'unrealizedPnL': p.unrealizedPnL,
             'unrealizedPnLPct': p.unrealizedPnLPct,
             'realizedPnL': p.realizedPnL,
+            'lotSize': p.lotSize,
+            'leveraged': p.leveraged,
+            'margin': p.margin,
+            'contractValue': p.contractValue,
+            'companyName': p.companyName,
+            'lotLabel': p.lotLabel,
+            'quoteUnit': p.quoteUnit,
           },
       ],
       'summary': {
@@ -95,6 +102,7 @@ Map<String, dynamic> _portfolioToJson(PortfolioSnapshot s) => {
         'totalFeesPaid': s.summary.totalFeesPaid,
         'totalEquity': s.summary.totalEquity,
         'positionsCount': s.summary.positionsCount,
+        'totalCredits': s.summary.totalCredits,
       },
     };
 

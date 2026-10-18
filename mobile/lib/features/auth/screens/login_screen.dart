@@ -424,25 +424,25 @@ class _Logo extends StatelessWidget {
     return Center(
       child: ScaleTransition(
         scale: Tween<double>(begin: 0.7, end: 1.0).animate(pop),
+        // The SV tile carries its own rounded shape and neon glow (on a
+        // transparent canvas), so it isn't clipped — clipping would cut into
+        // the glow. A soft primary halo sits behind it.
         child: Container(
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(26),
+            borderRadius: BorderRadius.circular(32),
             boxShadow: [
               BoxShadow(
-                color: scheme.primary.withValues(alpha: 0.35),
-                blurRadius: 40,
-                spreadRadius: -8,
+                color: scheme.primary.withValues(alpha: 0.28),
+                blurRadius: 48,
+                spreadRadius: -14,
               ),
             ],
           ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(26),
-            child: Image.asset(
-              'assets/logo.png',
-              width: 104,
-              height: 104,
-              filterQuality: FilterQuality.medium,
-            ),
+          child: Image.asset(
+            'assets/brand/logo.png',
+            width: 120,
+            height: 120,
+            filterQuality: FilterQuality.medium,
           ),
         ),
       ),

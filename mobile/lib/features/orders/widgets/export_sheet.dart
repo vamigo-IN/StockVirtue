@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../orders_repository.dart';
+import '../../../core/error_mapper.dart';
 
 enum _ExportRange { today, last7, last30, lifetime }
 
@@ -66,7 +67,7 @@ class _ExportSheetState extends ConsumerState<_ExportSheet> {
       );
       if (mounted) Navigator.of(context).pop();
     } catch (e) {
-      setState(() => _error = '$e');
+      setState(() => _error = friendlyError(e, context: 'export'));
     } finally {
       if (mounted) setState(() => _busy = false);
     }

@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/legacy.dart';
 
 import '../../../core/company_names.dart';
+import '../../../core/design/tokens.dart';
 import '../../../core/market_hours.dart';
 import '../../../core/money_format.dart';
 import '../../../data/models/order.dart';
@@ -23,6 +24,7 @@ import '../widgets/allocation_card.dart';
 import 'analytics_screen.dart';
 import 'portfolio_history_screen.dart';
 import 'sector_heatmap_screen.dart';
+import '../../../widgets/ui/skeletons.dart';
 
 const _upColor = Color(0xFF22C55E);
 const _downColor = Color(0xFFEF4444);
@@ -103,7 +105,7 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen> {
           await ref.read(portfolioProvider.future);
         },
         child: portfolio.when(
-          loading: () => const Center(child: CircularProgressIndicator()),
+          loading: () => const SkeletonList(),
           error: (e, _) => ErrorRetryView(
             error: e,
             onRetry: () => ref.invalidate(portfolioProvider),
@@ -641,6 +643,20 @@ class _MetricsCard extends StatelessWidget {
             value: formatInr(s.totalFeesPaid),
             valueColor: scheme.onSurface.withValues(alpha: 0.7),
           ),
+          if (snap.wallet.marginReserved > 0)
+            _MetricRow(
+              label: 'Margin blocked (futures)',
+              value: formatInr(snap.wallet.marginReserved),
+              valueColor: scheme.onSurface.withValues(alpha: 0.7),
+            ),
+          if (s.totalCredits > 0)
+            _MetricRow(
+              // Referral bonuses grow the balance but aren't trading
+              // profit — rooms and the leaderboard exclude them too.
+              label: 'Bonus credits (not counted as profit)',
+              value: formatInr(s.totalCredits),
+              valueColor: context.market.gold,
+            ),
           Builder(builder: (context) {
             // Win ratio over positions that have actually realized something
             // (a partial sell, a cover-short, a settlement). We deliberately
@@ -719,15 +735,17 @@ class _PositionTile extends ConsumerWidget {
     // close the exact same slot (an MIS long doesn't accidentally trigger
     // an MIS short on the CNC book).
     final isShort = position.quantity < 0;
-    final isFno =
-        position.exchange == 'NFO' || position.exchange == 'BFO';
-    final wallet = ref.read(portfolioProvider).value?.wallet.balance ?? 0;
+    // F&O and MCX contracts are addressed by tradingsymbol (see below).
+    final isFno = isFnoExchange(position.exchange);
+    // Free cash, not the raw balance — blocked margin and pending-order holds
+    // can't fund a cover.
+    final wallet = ref.read(portfolioProvider).value?.wallet.available ?? 0;
     final order = await showTradeSheet(
       context,
       side: isShort ? OrderSide.buy : OrderSide.sell,
-      // F&O positions list under the underlying (e.g. NIFTY) but must be
-      // squared off against the exact contract — pass the tradingsymbol so the
-      // backend resolves the right instrument instead of "Symbol not found".
+      // F&O / MCX positions list under the underlying (e.g. NIFTY, GOLDM) but
+      // must be squared off against the exact contract — pass the
+      // tradingsymbol so the backend resolves the right instrument.
       symbol: isFno ? position.tradingsymbol : position.symbol,
       exchange: position.exchange,
       symboltoken: position.symboltoken,
@@ -741,6 +759,16 @@ class _PositionTile extends ConsumerWidget {
       lotSize: position.lotSize,
       // Default to closing the whole *available* (unreserved) position.
       initialQuantity: position.availableQty.abs(),
+      contract: TradeContract(
+        tradingsymbol: position.tradingsymbol,
+        isFuture: position.leveraged,
+        lotLabel: position.lotLabel,
+        quoteUnit: position.quoteUnit,
+      ).withPosition(
+        avgPrice: position.avgPrice,
+        margin: position.margin,
+        leveraged: position.leveraged,
+      ),
     );
     if (order != null) {
       ref.invalidate(portfolioProvider);
@@ -760,10 +788,12 @@ class _PositionTile extends ConsumerWidget {
     final qty = position.quantity;
     final isShort = qty < 0;
     final isFno = isFnoExchange(position.exchange);
-    // For derivatives show the actual contract (…CE / …PE / …FUT) instead of
-    // the bare underlying, so a Call/Put holding reads clearly at a glance.
-    final name =
-        isFno ? position.tradingsymbol : companyNameFor(position.symbol);
+    // For derivatives show the actual contract ("NIFTY 30 Dec 26000 CE",
+    // "GOLDM 04 Dec FUT") instead of the bare underlying, so a Call/Put/
+    // future holding reads clearly at a glance.
+    final name = isFno
+        ? prettyContract(position.tradingsymbol)
+        : (position.companyName ?? companyNameFor(position.symbol));
     final kind = isFno ? fnoKind(position.tradingsymbol) : null;
     final ltp = live.ltp;
     return InkWell(
@@ -871,8 +901,13 @@ class _PositionTile extends ConsumerWidget {
               children: [
                 Expanded(
                   child: Text(
-                    'Invested ${formatInr(position.invested)} · Now '
-                    '${formatInr(live.currentValue)}',
+                    // A margined futures position: what's blocked vs. the
+                    // real contract exposure it controls.
+                    position.leveraged
+                        ? 'Margin ${formatInrCompact(position.margin)} · '
+                            'Exposure ${formatInrCompact((ltp ?? position.avgPrice) * qty.abs())}'
+                        : 'Invested ${formatInr(position.invested)} · Now '
+                            '${formatInr(live.currentValue)}',
                     style: TextStyle(
                       fontSize: 11.5,
                       color: scheme.onSurface.withValues(alpha: 0.6),
@@ -936,7 +971,7 @@ class _HoldingsFilterBar extends ConsumerWidget {
         const SizedBox(width: 8),
         _seg(context, ref, HoldingsFilter.stocks, 'Stocks', stocks, selected),
         const SizedBox(width: 8),
-        _seg(context, ref, HoldingsFilter.fno, 'F&O', fno, selected),
+        _seg(context, ref, HoldingsFilter.fno, 'F&O · MCX', fno, selected),
       ],
     );
   }

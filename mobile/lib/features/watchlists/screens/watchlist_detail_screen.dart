@@ -1,16 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/company_names.dart';
 import '../../../data/models/quote.dart';
 import '../../../data/models/tick.dart';
 import '../../../data/models/watchlist.dart';
 import '../../../widgets/error_retry_view.dart';
+import '../../../widgets/fno_badge.dart';
+import '../../../widgets/ui/symbol_avatar.dart';
 import '../../market/screens/stock_search_screen.dart';
 import '../../symbol/screens/symbol_detail_screen.dart';
 import '../../ticks/ticks_providers.dart';
 import '../../ticks/ticks_service.dart';
 import '../watchlists_providers.dart';
 import '../watchlists_repository.dart';
+import '../../../widgets/ui/skeletons.dart';
+import '../../../core/error_mapper.dart';
 
 class WatchlistDetailScreen extends ConsumerStatefulWidget {
   const WatchlistDetailScreen({super.key, required this.watchlistId});
@@ -97,7 +102,10 @@ class _WatchlistDetailScreenState
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed: $e'), backgroundColor: Colors.redAccent),
+        SnackBar(
+          content: Text(friendlyError(e, context: 'watchlist')),
+          backgroundColor: Theme.of(context).colorScheme.error,
+        ),
       );
     }
   }
@@ -121,8 +129,11 @@ class _WatchlistDetailScreenState
       setState(() => _optimisticOrder = null); // revert
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Reorder failed: $e'),
-          backgroundColor: Colors.redAccent,
+          content: Text(
+            'Couldn’t save the new order. '
+            '${friendlyError(e, context: 'watchlist')}',
+          ),
+          backgroundColor: Theme.of(context).colorScheme.error,
         ),
       );
     }
@@ -160,7 +171,7 @@ class _WatchlistDetailScreenState
       try {
         await repo.removeItem(wl.id, id);
       } catch (e) {
-        firstError ??= '$e';
+        firstError ??= friendlyError(e, context: 'watchlist');
       }
     }
     ref.invalidate(watchlistsListProvider);
@@ -168,8 +179,8 @@ class _WatchlistDetailScreenState
     if (firstError != null) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Some removals failed: $firstError'),
-          backgroundColor: Colors.redAccent,
+          content: Text('Some stocks couldn’t be removed. $firstError'),
+          backgroundColor: Theme.of(context).colorScheme.error,
         ),
       );
     } else {
@@ -204,7 +215,7 @@ class _WatchlistDetailScreenState
     });
     return detail.when(
       loading: () =>
-          const Scaffold(body: Center(child: CircularProgressIndicator())),
+          const Scaffold(body: SkeletonList()),
       error: (e, _) => Scaffold(
         appBar: AppBar(),
         body: ErrorRetryView(
@@ -380,12 +391,16 @@ class _Row extends ConsumerWidget {
                 value: isSelected,
                 onChanged: (_) => onToggleSelect(),
               )
-            : null,
+            : SymbolAvatar(symbol: item.symbol, size: 38),
         title: Row(
           children: [
             Expanded(
               child: Text(
-                item.symbol,
+                isFnoExchange(item.exchange)
+                    ? prettyContract(item.tradingsymbol)
+                    : companyNameFor(item.symbol),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: const TextStyle(fontWeight: FontWeight.w600),
               ),
             ),
@@ -399,7 +414,9 @@ class _Row extends ConsumerWidget {
           children: [
             Expanded(
               child: Text(
-                '${item.exchange} • ${item.tradingsymbol}',
+                '${item.symbol} · ${item.exchange}',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   color: scheme.onSurface.withValues(alpha: 0.6),
                 ),

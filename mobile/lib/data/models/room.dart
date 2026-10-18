@@ -24,6 +24,13 @@ class RoomSummary {
   /// my baseline was 0 (newly-created account before any deposits).
   final double? returnPct;
 
+  /// Tournament phase: open (evergreen) | upcoming | live | ended.
+  final String phase;
+
+  /// Referral / promo credits received since my baseline — added to my
+  /// balance but excluded from [returnPct].
+  final double bonusExcluded;
+
   const RoomSummary({
     required this.id,
     required this.code,
@@ -40,6 +47,8 @@ class RoomSummary {
     this.joined = false,
     required this.myBaseline,
     required this.returnPct,
+    this.phase = 'open',
+    this.bonusExcluded = 0,
   });
 
   factory RoomSummary.fromJson(Map<String, dynamic> json) => RoomSummary(
@@ -59,6 +68,8 @@ class RoomSummary {
         joined: json['joined'] as bool? ?? false,
         myBaseline: (json['myBaseline'] as num?)?.toDouble(),
         returnPct: (json['returnPct'] as num?)?.toDouble(),
+        phase: json['phase'] as String? ?? 'open',
+        bonusExcluded: (json['bonusExcluded'] as num?)?.toDouble() ?? 0,
       );
 }
 
@@ -75,6 +86,10 @@ class RoomLeaderboardEntry {
   final double current;
   final double change;
   final double returnPct;
+
+  /// Referral / promo credits since the baseline — in [current] (account
+  /// value) but NOT in [change] / [returnPct], which are trading-only.
+  final double bonusExcluded;
   final DateTime joinedAt;
   final bool isOwner;
   final bool isYou;
@@ -88,6 +103,7 @@ class RoomLeaderboardEntry {
     required this.current,
     required this.change,
     required this.returnPct,
+    this.bonusExcluded = 0,
     required this.joinedAt,
     required this.isOwner,
     required this.isYou,
@@ -103,6 +119,7 @@ class RoomLeaderboardEntry {
         current: (json['current'] as num).toDouble(),
         change: (json['change'] as num).toDouble(),
         returnPct: (json['returnPct'] as num).toDouble(),
+        bonusExcluded: (json['bonusExcluded'] as num?)?.toDouble() ?? 0,
         joinedAt: _parseDate(json['joinedAt']) ??
             DateTime.fromMillisecondsSinceEpoch(0),
         isOwner: json['isOwner'] as bool? ?? false,
@@ -131,6 +148,9 @@ class RoomDetail {
   /// stops re-ranking after this flips and the UI shows a "Final
   /// standings" banner.
   final bool frozen;
+
+  /// open (evergreen) | upcoming | live | ended.
+  final String phase;
   final bool iAmMember;
   final List<RoomLeaderboardEntry> leaderboard;
 
@@ -149,6 +169,7 @@ class RoomDetail {
     required this.memberCount,
     required this.createdAt,
     required this.frozen,
+    this.phase = 'open',
     required this.iAmMember,
     required this.leaderboard,
   });
@@ -169,6 +190,7 @@ class RoomDetail {
         createdAt:
             _parseDate(json['createdAt']) ?? DateTime.fromMillisecondsSinceEpoch(0),
         frozen: json['frozen'] as bool? ?? false,
+        phase: json['phase'] as String? ?? 'open',
         iAmMember: json['iAmMember'] as bool? ?? false,
         leaderboard: ((json['leaderboard'] as List?) ?? const [])
             .cast<Map<String, dynamic>>()

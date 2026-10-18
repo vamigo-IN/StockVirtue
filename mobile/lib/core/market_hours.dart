@@ -50,10 +50,40 @@ class MarketState {
   bool get isActive => isOpen || isPreOpen;
 }
 
-/// Commodity exchanges (MCX/NCO) trade ~09:00–23:30 IST — much longer than
-/// the equity session. Mirrors the backend `market-hours.ts` window.
+/// Commodity exchanges (MCX/NCO) trade 09:00 IST to 23:30 — or 23:55 while
+/// the US is on daylight-saving time, since MCX follows COMEX/NYMEX hours.
+/// Mirrors the backend `market-hours.ts` window.
 bool _isCommodityExchange(String? exchange) =>
     exchange == 'MCX' || exchange == 'NCO';
+
+/// nth Sunday (1-based) of a month, as a day-of-month.
+int _nthSunday(int year, int month, int n) {
+  final firstDow = DateTime.utc(year, month, 1).weekday % 7; // Sun = 0
+  final firstSunday = 1 + ((7 - firstDow) % 7);
+  return firstSunday + (n - 1) * 7;
+}
+
+/// US daylight saving (2nd Sunday of March → 1st Sunday of November) for an
+/// IST wall-clock date.
+bool isUsDaylightSaving(DateTime ist) {
+  final m = ist.month;
+  if (m < 3 || m > 11) return false;
+  if (m > 3 && m < 11) return true;
+  if (m == 3) return ist.day >= _nthSunday(ist.year, 3, 2);
+  return ist.day < _nthSunday(ist.year, 11, 1);
+}
+
+/// Minutes after IST midnight when the MCX evening session ends.
+int commodityCloseMinutes(DateTime ist) =>
+    isUsDaylightSaving(ist) ? 23 * 60 + 55 : 23 * 60 + 30;
+
+/// "23:55" / "23:30" — for copy such as "MCX trades 09:00–23:55 IST".
+String commodityCloseLabel([DateTime? at]) {
+  final mins = commodityCloseMinutes(at ?? istNow());
+  final h = (mins ~/ 60).toString().padLeft(2, '0');
+  final m = (mins % 60).toString().padLeft(2, '0');
+  return '$h:$m';
+}
 
 MarketState marketState([DateTime? at, String? exchange]) {
   final ist = at == null ? istNow() : (at.isUtc ? at.add(_istOffset) : at);
@@ -66,7 +96,7 @@ MarketState marketState([DateTime? at, String? exchange]) {
   final mins = ist.hour * 60 + ist.minute;
   if (_isCommodityExchange(exchange)) {
     const start = 9 * 60; // 09:00
-    const end = 23 * 60 + 30; // 23:30
+    final end = commodityCloseMinutes(ist);
     if (mins >= start && mins < end) {
       return const MarketState(MarketStateKind.open, 'MARKET OPEN');
     }

@@ -9,6 +9,7 @@ import '../../symbol/screens/symbol_detail_screen.dart';
 import '../../ticks/ticks_providers.dart';
 import '../../ticks/ticks_service.dart';
 import '../market_repository.dart';
+import '../../../widgets/ui/skeletons.dart';
 
 /// Sectional view over the full indices universe (broad / sectoral /
 /// strategy). Live ticks paint the LTP and % chip in-place when subscribed.
@@ -64,7 +65,7 @@ class _IndicesScreenState extends ConsumerState<IndicesScreen> {
           await ref.read(allIndexQuotesProvider.future);
         },
         child: indices.when(
-          loading: () => const Center(child: CircularProgressIndicator()),
+          loading: () => const SkeletonList(),
           error: (e, _) => ErrorRetryView(
             error: e,
             onRetry: () => ref.invalidate(allIndexQuotesProvider),
