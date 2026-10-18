@@ -1,7 +1,13 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnModuleDestroy,
+  OnModuleInit,
+} from '@nestjs/common';
 import axios from 'axios';
+import { normalizedLotSize } from '../common/contract-specs';
 import { Exchange, isExchange } from '../common/exchange';
 import { Instrument, RawScripMasterEntry } from './scrip-master.types';
 
@@ -10,10 +16,16 @@ const SCRIP_MASTER_URL =
 const CACHE_DIR = path.resolve(process.cwd(), '.cache');
 const CACHE_FILE = path.join(CACHE_DIR, 'scrip-master.json');
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+// Angel republishes the scrip master each morning before the pre-open; pull
+// it at 08:40 IST (03:10 UTC) so new listings, fresh F&O series and rolled
+// MCX contracts become tradeable without a restart.
+const DAILY_REFRESH_UTC = { hour: 3, minute: 10 };
+const REFRESH_RETRY_MS = 20 * 60 * 1000;
 
 @Injectable()
-export class ScripMasterService implements OnModuleInit {
+export class ScripMasterService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(ScripMasterService.name);
+  private refreshTimer: NodeJS.Timeout | null = null;
 
   private instruments: Instrument[] = [];
   private byToken = new Map<string, Instrument>();
@@ -35,6 +47,30 @@ export class ScripMasterService implements OnModuleInit {
         `Scrip master init failed: ${(err as Error).message}`,
       );
     }
+    this.scheduleDailyRefresh();
+  }
+
+  onModuleDestroy() {
+    if (this.refreshTimer) clearTimeout(this.refreshTimer);
+  }
+
+  private scheduleDailyRefresh(delayOverrideMs?: number) {
+    const now = new Date();
+    const next = new Date(now);
+    next.setUTCHours(DAILY_REFRESH_UTC.hour, DAILY_REFRESH_UTC.minute, 0, 0);
+    if (next <= now) next.setUTCDate(next.getUTCDate() + 1);
+    const delay = delayOverrideMs ?? next.getTime() - now.getTime();
+    this.refreshTimer = setTimeout(() => {
+      this.refresh()
+        .then(() => this.scheduleDailyRefresh())
+        .catch((err: unknown) => {
+          this.logger.warn(
+            `Daily scrip-master refresh failed, retrying: ${(err as Error).message}`,
+          );
+          this.scheduleDailyRefresh(REFRESH_RETRY_MS);
+        });
+    }, delay);
+    this.refreshTimer.unref?.();
   }
 
   isReady(): boolean {
@@ -69,12 +105,39 @@ export class ScripMasterService implements OnModuleInit {
     return this.byToken.get(`${exchange}:${token}`) ?? null;
   }
 
+  /// True when the underlying has at least one live (unexpired) option
+  /// contract on any F&O segment — i.e. an option chain can actually be
+  /// shown. Only ~200 stocks are in NSE's F&O list, so most equities don't.
+  hasLiveOptions(underlying: string): boolean {
+    return this.hasLive(this.optionsByUnderlying, underlying);
+  }
+
+  /// True when the underlying has at least one live futures contract.
+  hasLiveFutures(underlying: string): boolean {
+    return this.hasLive(this.futuresByUnderlying, underlying);
+  }
+
+  private hasLive(index: Map<string, Instrument[]>, underlying: string) {
+    const list = index.get(underlying.toUpperCase());
+    if (!list || list.length === 0) return false;
+    // Yesterday cutoff — an expiry-day contract still counts.
+    const cutoff = Date.now() - 24 * 60 * 60 * 1000;
+    return list.some(
+      (i) => !i.expiry || parseExpiryToMs(i.expiry) >= cutoff,
+    );
+  }
+
   /** Returns the set of available expiries for an option-bearing underlying. */
   getExpiries(underlying: string): string[] {
     const list = this.optionsByUnderlying.get(underlying.toUpperCase()) ?? [];
     const set = new Set<string>();
+    // Skip series that have already expired (the master can still carry them
+    // until its next daily refresh) — an expiry-day series still counts.
+    const cutoff = Date.now() - 24 * 60 * 60 * 1000;
     for (const inst of list) {
-      if (inst.expiry) set.add(inst.expiry);
+      if (inst.expiry && parseExpiryToMs(inst.expiry) >= cutoff) {
+        set.add(inst.expiry);
+      }
     }
     return Array.from(set).sort(
       (a, b) => parseExpiryToMs(a) - parseExpiryToMs(b),
@@ -87,7 +150,14 @@ export class ScripMasterService implements OnModuleInit {
    * Falls back to the whole list's first entry if none look unexpired
    * (keeps the commodities screen populated over weekends / holidays).
    */
-  getNearestFuture(underlying: string, exchange?: Exchange): Instrument | null {
+  getNearestFuture(
+    underlying: string,
+    exchange?: Exchange,
+    /// Roll to the next series when the nearest one expires within this many
+    /// days — the way a broker's commodity watchlist moves traders off a
+    /// contract that's about to be cash-settled. 0 = never roll.
+    rollWithinDays = 0,
+  ): Instrument | null {
     const list = this.futuresByUnderlying.get(underlying.toUpperCase()) ?? [];
     const scoped = exchange
       ? list.filter((i) => i.exchange === exchange)
@@ -98,6 +168,10 @@ export class ScripMasterService implements OnModuleInit {
     const live = scoped
       .filter((i) => i.expiry && parseExpiryToMs(i.expiry) >= cutoff)
       .sort((a, b) => parseExpiryToMs(a.expiry!) - parseExpiryToMs(b.expiry!));
+    if (rollWithinDays > 0 && live.length > 1) {
+      const rollBefore = Date.now() + rollWithinDays * 24 * 60 * 60 * 1000;
+      if (parseExpiryToMs(live[0].expiry!) < rollBefore) return live[1];
+    }
     return live[0] ?? scoped[0];
   }
 
@@ -276,13 +350,17 @@ export class ScripMasterService implements OnModuleInit {
       const strikeRaw = parseFloat(r.strike);
       const strike =
         Number.isFinite(strikeRaw) && strikeRaw > 0 ? strikeRaw / 100 : null;
+      const rawLotSize = parseInt(r.lotsize, 10) || 1;
       const inst: Instrument = {
         token: r.token,
         symbol: r.symbol,
         name: r.name,
         exchange,
         instrumentType: r.instrumenttype,
-        lotSize: parseInt(r.lotsize, 10) || 1,
+        // MCX lots are re-expressed in quotation units so price × quantity
+        // is the real contract value (GOLD: 1 kg lot = 100 × 10 g).
+        lotSize: normalizedLotSize(exchange, r.name, rawLotSize),
+        rawLotSize,
         tickSize: parseFloat(r.tick_size) || 0.05,
         expiry: r.expiry || null,
         strike,

@@ -1,5 +1,6 @@
 import { Order } from '@prisma/client';
-import { computeFees } from '../common/fees';
+import { computeFees, feeSegmentFor } from '../common/fees';
+import { futuresMarginP } from '../common/margin';
 import { paiseToRupees } from '../common/money';
 
 export function serializeOrder(o: Order) {
@@ -35,6 +36,7 @@ export function serializeOrder(o: Order) {
       exchange: o.exchange,
       notionalP: o.fillPriceP * BigInt(o.quantity),
       intraday: o.product === 'INTRADAY',
+      segment: feeSegmentFor(o.exchange, o.tradingsymbol),
     });
     feesBreakdown = {
       brokerage: paiseToRupees(breakdown.brokerage),
@@ -58,6 +60,15 @@ export function serializeOrder(o: Order) {
     product: o.product,
     origin: o.origin,
     quantity: o.quantity,
+    // Futures on margin: the contract value (notional) isn't what left the
+    // wallet — only the initial margin was blocked.
+    leveraged: o.leveraged,
+    margin:
+      o.leveraged && referenceP !== null
+        ? paiseToRupees(
+            futuresMarginP(referenceP * BigInt(o.quantity), o.exchange, o.symbol),
+          )
+        : null,
     limitPrice,
     triggerPrice,
     trailAmount,

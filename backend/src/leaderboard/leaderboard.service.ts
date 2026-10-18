@@ -6,14 +6,13 @@ import {
 } from '@nestjs/common';
 import { LeaderboardEntry } from '@prisma/client';
 import { AchievementsService } from '../achievements/achievements.service';
-import { paiseToRupees, rupeesToPaise } from '../common/money';
+import { paiseToRupees } from '../common/money';
+import { PortfolioService } from '../portfolio/portfolio.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { SmartApiService } from '../smartapi/smartapi.service';
 
 const INITIAL_BALANCE_P = 100_000_000n; // ₹10,00,000 starting balance
 const RECOMPUTE_INTERVAL_MS = 5 * 60 * 1000;
 const STARTUP_DELAY_MS = 30 * 1000;
-const QUOTE_BATCH_SIZE = 50;
 
 export interface PublicEntry {
   rank: number;
@@ -44,7 +43,7 @@ export class LeaderboardService implements OnModuleInit, OnModuleDestroy {
 
   constructor(
     private readonly prisma: PrismaService,
-    private readonly smartapi: SmartApiService,
+    private readonly portfolio: PortfolioService,
     private readonly achievements: AchievementsService,
   ) {}
 
@@ -89,57 +88,58 @@ export class LeaderboardService implements OnModuleInit, OnModuleDestroy {
     };
   }
 
+  /// Ranks every trader by TRADING return:
+  ///   (equity − ₹10L starting balance − bonus credits) / ₹10L
+  /// Referral bonuses and promos grow a trader's balance (and the equity
+  /// shown) but never their rank — climbing the board takes trading skill,
+  /// not invites. Equity uses the shared valuation, so margined futures and
+  /// shorts are counted correctly.
   async recompute(): Promise<void> {
     if (this.recomputing) return;
     this.recomputing = true;
     const start = Date.now();
     try {
-      const [wallets, positions, users] = await Promise.all([
-        this.prisma.wallet.findMany(),
-        this.prisma.position.findMany({ where: { quantity: { gt: 0 } } }),
+      const [wallets, users, credits] = await Promise.all([
+        this.prisma.wallet.findMany({ select: { userId: true } }),
         this.prisma.user.findMany({
           select: { id: true, displayName: true },
         }),
+        this.prisma.walletCredit.groupBy({
+          by: ['userId'],
+          _sum: { amountP: true },
+        }),
       ]);
-
-      const ltpByKey = await this.fetchLtps(positions);
-      const equityByUser = new Map<string, bigint>();
-      for (const w of wallets) {
-        equityByUser.set(w.userId, w.balanceP);
-      }
-      for (const p of positions) {
-        const ltp = ltpByKey.get(`${p.exchange}:${p.symboltoken}`);
-        if (ltp === undefined) continue;
-        const valueP = rupeesToPaise(ltp) * BigInt(p.quantity);
-        const prev = equityByUser.get(p.userId) ?? 0n;
-        equityByUser.set(p.userId, prev + valueP);
-      }
-
+      const totals = await this.portfolio.computeTotalsForUsersP(
+        wallets.map((w) => w.userId),
+      );
+      const creditsByUser = new Map(
+        credits.map((c) => [c.userId, c._sum.amountP ?? 0n] as const),
+      );
       const nameByUser = new Map(
         users.map((u) => [u.id, u.displayName] as const),
       );
 
-      const sorted = Array.from(equityByUser.entries())
-        .sort((a, b) => {
-          const diff = b[1] - a[1];
-          if (diff > 0n) return 1;
-          if (diff < 0n) return -1;
-          return a[0].localeCompare(b[0]); // stable tiebreak
-        })
-        .map(([userId, equityP], i) => {
-          const deltaP = equityP - INITIAL_BALANCE_P;
-          // return % with 2 decimals
-          const returnPct =
-            Number((deltaP * 10000n) / INITIAL_BALANCE_P) / 100;
-          return {
-            userId,
-            rank: i + 1,
-            displayName: nameByUser.get(userId) ?? null,
-            totalEquityP: equityP,
-            returnPct,
-            computedAt: new Date(),
-          };
-        });
+      const rows = Array.from(totals.entries()).map(([userId, t]) => {
+        const tradingPnLP =
+          t.totalEquityP - INITIAL_BALANCE_P - (creditsByUser.get(userId) ?? 0n);
+        return { userId, equityP: t.totalEquityP, tradingPnLP };
+      });
+      rows.sort((a, b) => {
+        const diff = b.tradingPnLP - a.tradingPnLP;
+        if (diff > 0n) return 1;
+        if (diff < 0n) return -1;
+        return a.userId.localeCompare(b.userId); // stable tiebreak
+      });
+      const computedAt = new Date();
+      const sorted = rows.map((r, i) => ({
+        userId: r.userId,
+        rank: i + 1,
+        displayName: nameByUser.get(r.userId) ?? null,
+        totalEquityP: r.equityP,
+        // return % with 2 decimals
+        returnPct: Number((r.tradingPnLP * 10000n) / INITIAL_BALANCE_P) / 100,
+        computedAt,
+      }));
 
       await this.prisma.$transaction([
         this.prisma.leaderboardEntry.deleteMany(),
@@ -155,41 +155,6 @@ export class LeaderboardService implements OnModuleInit, OnModuleDestroy {
     } finally {
       this.recomputing = false;
     }
-  }
-
-  private async fetchLtps(
-    positions: { exchange: string; symboltoken: string }[],
-  ): Promise<Map<string, number>> {
-    const tokensByExchange = new Map<string, Set<string>>();
-    for (const p of positions) {
-      let set = tokensByExchange.get(p.exchange);
-      if (!set) {
-        set = new Set();
-        tokensByExchange.set(p.exchange, set);
-      }
-      set.add(p.symboltoken);
-    }
-    const ltpByKey = new Map<string, number>();
-    for (const [exchange, tokens] of tokensByExchange) {
-      const arr = Array.from(tokens);
-      for (let i = 0; i < arr.length; i += QUOTE_BATCH_SIZE) {
-        const batch = arr.slice(i, i + QUOTE_BATCH_SIZE);
-        try {
-          const fetched = await this.smartapi.getMultiQuote(
-            { [exchange]: batch },
-            'LTP',
-          );
-          for (const q of fetched) {
-            ltpByKey.set(`${q.exchange}:${q.symbolToken}`, q.ltp);
-          }
-        } catch (err) {
-          this.logger.warn(
-            `multi-quote batch failed for ${exchange}: ${(err as Error).message}`,
-          );
-        }
-      }
-    }
-    return ltpByKey;
   }
 
   private serializePublic(

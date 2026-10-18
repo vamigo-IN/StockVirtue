@@ -5,6 +5,7 @@ import {
   Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { WalletCreditKind } from '@prisma/client';
 import { paiseToRupees } from '../common/money';
 import { AchievementsService } from '../achievements/achievements.service';
 import { MailService, escapeHtml } from '../mail/mail.service';
@@ -113,6 +114,25 @@ export class ReferralsService {
           userId,
           balanceP: 100_000_000n + REFERRED_BONUS_P,
         },
+      });
+      // Ledger both bonuses in the same transaction: they're money IN, not
+      // trading profit, so room / leaderboard returns exclude them — the
+      // bonus grows the balance but never the "winning %".
+      await tx.walletCredit.createMany({
+        data: [
+          {
+            userId: referrer.id,
+            kind: WalletCreditKind.REFERRAL_REFERRER,
+            amountP: REFERRER_BONUS_P,
+            note: 'Friend joined with your invite code',
+          },
+          {
+            userId,
+            kind: WalletCreditKind.REFERRAL_REDEEMED,
+            amountP: REFERRED_BONUS_P,
+            note: 'Invite code redeemed',
+          },
+        ],
       });
 
       // Pull fresh aggregates so the client can paint stats without
