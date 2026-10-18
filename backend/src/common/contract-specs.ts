@@ -1,248 +1,75 @@
-// Real-world contract specifications for MCX commodity derivatives.
+// Contract facts for MCX commodity futures, as the SIMULATOR trades them.
 //
-// Angel One's scrip master gives every MCX contract a `lotsize` expressed in
-// the exchange's TRADING unit (GOLD = 1 kg, ZINC = 5 MT, GOLDM = 100 g …), but
-// prices are QUOTED in a different unit (GOLD per 10 g, ZINC per kg, GOLDM per
-// 10 g). Multiplying the quoted price by that raw lotsize therefore values a
-// lot of GOLD at 1/100th of its real worth, ZINC at 1/1000th, and GOLDM at 10×
-// — which is why commodity buying never matched the real market.
+// On the exchange every MCX contract trades in lots — a GOLD lot is 1 kg while
+// the price is quoted per 10 g, so one lot is worth ~₹1.6 crore. Against a
+// ₹10 lakh virtual wallet that makes most commodities untradeable, so the
+// simulator trades commodities like cash: ONE UNIT = THE QUOTED QUANTITY
+// (1 unit of GOLD = 10 g, of CRUDEOIL = 1 barrel, of SILVER = 1 kg), any whole
+// number of units, paid in full — no lots, no margin. Live prices, P&L and the
+// contract's expiry settlement still follow the real MCX contract.
 //
-// The simulator fixes this by normalising every MCX quantity to QUOTATION
-// units: one lot of GOLD is 100 units (100 × 10 g = 1 kg), one lot of ZINC is
-// 5,000 units (kg). With quantity in quotation units, `price × quantity` is
-// the true contract value everywhere — order cost, margin, P&L and portfolio
-// valuation — without special-casing the order engine.
-//
-// Source: MCX contract specifications (trading unit / quotation basis).
-// Margin rates approximate exchange SPAN + exposure margins and are
-// deliberately rounded; they are a simulator's teaching values, not a quote.
+// Note: Angel One's scrip-master `lotsize` is the exchange TRADING unit
+// (GOLD "1" = 1 kg, ZINC "5" = 5 MT), not the quote unit, so it must never be
+// multiplied by the price. Quantity is always in quote units here.
 
 export interface CommoditySpec {
   /** Display name, e.g. "Gold Mini". */
   label: string;
-  /** Quotation units in one lot: contract value = price × unitsPerLot. */
-  unitsPerLot: number;
-  /** Physical size of one lot, e.g. "1 kg". */
-  lotLabel: string;
-  /** What the quoted price is per, e.g. "10 g". */
+  /** What the quoted price — and therefore one unit — is, e.g. "10 g". */
   quoteUnit: string;
-  /** Initial margin as basis points of contract value. */
-  marginBps: number;
-  /** False for contracts whose lot can't be expressed in whole quotation units. */
-  supported?: boolean;
+  /** The exchange's real lot size, shown for context only, e.g. "1 kg". */
+  exchangeLot: string;
 }
-
-const GOLD_BPS = 900;
-const SILVER_BPS = 1100;
-const CRUDE_BPS = 1500;
-const NATGAS_BPS = 2500;
-const BASE_METAL_BPS = 1000;
-const AGRI_BPS = 1200;
 
 export const MCX_SPECS: Readonly<Record<string, CommoditySpec>> = {
   // Bullion
-  GOLD: {
-    label: 'Gold',
-    unitsPerLot: 100,
-    lotLabel: '1 kg',
-    quoteUnit: '10 g',
-    marginBps: GOLD_BPS,
-  },
-  GOLDM: {
-    label: 'Gold Mini',
-    unitsPerLot: 10,
-    lotLabel: '100 g',
-    quoteUnit: '10 g',
-    marginBps: GOLD_BPS,
-  },
-  GOLDTEN: {
-    label: 'Gold Ten',
-    unitsPerLot: 1,
-    lotLabel: '10 g',
-    quoteUnit: '10 g',
-    marginBps: GOLD_BPS,
-  },
-  GOLDGUINEA: {
-    label: 'Gold Guinea',
-    unitsPerLot: 1,
-    lotLabel: '8 g',
-    quoteUnit: '8 g',
-    marginBps: GOLD_BPS,
-  },
-  GOLDPETAL: {
-    label: 'Gold Petal',
-    unitsPerLot: 1,
-    lotLabel: '1 g',
-    quoteUnit: '1 g',
-    marginBps: GOLD_BPS,
-  },
-  SILVER: {
-    label: 'Silver',
-    unitsPerLot: 30,
-    lotLabel: '30 kg',
-    quoteUnit: '1 kg',
-    marginBps: SILVER_BPS,
-  },
-  SILVERM: {
-    label: 'Silver Mini',
-    unitsPerLot: 5,
-    lotLabel: '5 kg',
-    quoteUnit: '1 kg',
-    marginBps: SILVER_BPS,
-  },
-  SILVERMIC: {
-    label: 'Silver Micro',
-    unitsPerLot: 1,
-    lotLabel: '1 kg',
-    quoteUnit: '1 kg',
-    marginBps: SILVER_BPS,
-  },
-  // 100 g lot quoted per kg — a lot is 0.1 quotation units, which a whole-unit
-  // quantity can't represent. Blocked rather than silently mis-valued.
-  SILVER100: {
-    label: 'Silver 100',
-    unitsPerLot: 0,
-    lotLabel: '100 g',
-    quoteUnit: '1 kg',
-    marginBps: SILVER_BPS,
-    supported: false,
-  },
+  GOLD: { label: 'Gold', quoteUnit: '10 g', exchangeLot: '1 kg' },
+  GOLDM: { label: 'Gold Mini', quoteUnit: '10 g', exchangeLot: '100 g' },
+  GOLDTEN: { label: 'Gold Ten', quoteUnit: '10 g', exchangeLot: '10 g' },
+  GOLDGUINEA: { label: 'Gold Guinea', quoteUnit: '8 g', exchangeLot: '8 g' },
+  GOLDPETAL: { label: 'Gold Petal', quoteUnit: '1 g', exchangeLot: '1 g' },
+  SILVER: { label: 'Silver', quoteUnit: '1 kg', exchangeLot: '30 kg' },
+  SILVERM: { label: 'Silver Mini', quoteUnit: '1 kg', exchangeLot: '5 kg' },
+  SILVERMIC: { label: 'Silver Micro', quoteUnit: '1 kg', exchangeLot: '1 kg' },
+  SILVER100: { label: 'Silver 100', quoteUnit: '1 kg', exchangeLot: '100 g' },
   // Energy
-  CRUDEOIL: {
-    label: 'Crude Oil',
-    unitsPerLot: 100,
-    lotLabel: '100 bbl',
-    quoteUnit: '1 bbl',
-    marginBps: CRUDE_BPS,
-  },
+  CRUDEOIL: { label: 'Crude Oil', quoteUnit: '1 bbl', exchangeLot: '100 bbl' },
   CRUDEOILM: {
     label: 'Crude Oil Mini',
-    unitsPerLot: 10,
-    lotLabel: '10 bbl',
     quoteUnit: '1 bbl',
-    marginBps: CRUDE_BPS,
+    exchangeLot: '10 bbl',
   },
   NATURALGAS: {
     label: 'Natural Gas',
-    unitsPerLot: 1250,
-    lotLabel: '1,250 mmBtu',
     quoteUnit: '1 mmBtu',
-    marginBps: NATGAS_BPS,
+    exchangeLot: '1,250 mmBtu',
   },
   NATGASMINI: {
     label: 'Natural Gas Mini',
-    unitsPerLot: 250,
-    lotLabel: '250 mmBtu',
     quoteUnit: '1 mmBtu',
-    marginBps: NATGAS_BPS,
+    exchangeLot: '250 mmBtu',
   },
-  ELECDMBL: {
-    label: 'Electricity',
-    unitsPerLot: 50,
-    lotLabel: '50 MWh',
-    quoteUnit: '1 MWh',
-    marginBps: CRUDE_BPS,
-  },
-  // Base metals — traded in metric tonnes, quoted per kg
-  COPPER: {
-    label: 'Copper',
-    unitsPerLot: 2500,
-    lotLabel: '2.5 MT',
-    quoteUnit: '1 kg',
-    marginBps: BASE_METAL_BPS,
-  },
-  ZINC: {
-    label: 'Zinc',
-    unitsPerLot: 5000,
-    lotLabel: '5 MT',
-    quoteUnit: '1 kg',
-    marginBps: BASE_METAL_BPS,
-  },
-  ZINCMINI: {
-    label: 'Zinc Mini',
-    unitsPerLot: 1000,
-    lotLabel: '1 MT',
-    quoteUnit: '1 kg',
-    marginBps: BASE_METAL_BPS,
-  },
-  ALUMINIUM: {
-    label: 'Aluminium',
-    unitsPerLot: 5000,
-    lotLabel: '5 MT',
-    quoteUnit: '1 kg',
-    marginBps: BASE_METAL_BPS,
-  },
-  ALUMINI: {
-    label: 'Aluminium Mini',
-    unitsPerLot: 1000,
-    lotLabel: '1 MT',
-    quoteUnit: '1 kg',
-    marginBps: BASE_METAL_BPS,
-  },
-  LEAD: {
-    label: 'Lead',
-    unitsPerLot: 5000,
-    lotLabel: '5 MT',
-    quoteUnit: '1 kg',
-    marginBps: BASE_METAL_BPS,
-  },
-  LEADMINI: {
-    label: 'Lead Mini',
-    unitsPerLot: 1000,
-    lotLabel: '1 MT',
-    quoteUnit: '1 kg',
-    marginBps: BASE_METAL_BPS,
-  },
-  NICKEL: {
-    label: 'Nickel',
-    unitsPerLot: 250,
-    lotLabel: '250 kg',
-    quoteUnit: '1 kg',
-    marginBps: 1200,
-  },
-  STEELREBAR: {
-    label: 'Steel Rebar',
-    unitsPerLot: 5,
-    lotLabel: '5 MT',
-    quoteUnit: '1 MT',
-    marginBps: AGRI_BPS,
-  },
+  ELECDMBL: { label: 'Electricity', quoteUnit: '1 MWh', exchangeLot: '50 MWh' },
+  // Base metals — the exchange trades tonnes, quotes per kg
+  COPPER: { label: 'Copper', quoteUnit: '1 kg', exchangeLot: '2.5 MT' },
+  ZINC: { label: 'Zinc', quoteUnit: '1 kg', exchangeLot: '5 MT' },
+  ZINCMINI: { label: 'Zinc Mini', quoteUnit: '1 kg', exchangeLot: '1 MT' },
+  ALUMINIUM: { label: 'Aluminium', quoteUnit: '1 kg', exchangeLot: '5 MT' },
+  ALUMINI: { label: 'Aluminium Mini', quoteUnit: '1 kg', exchangeLot: '1 MT' },
+  LEAD: { label: 'Lead', quoteUnit: '1 kg', exchangeLot: '5 MT' },
+  LEADMINI: { label: 'Lead Mini', quoteUnit: '1 kg', exchangeLot: '1 MT' },
+  NICKEL: { label: 'Nickel', quoteUnit: '1 kg', exchangeLot: '250 kg' },
+  STEELREBAR: { label: 'Steel Rebar', quoteUnit: '1 MT', exchangeLot: '5 MT' },
   // Agri
-  MENTHAOIL: {
-    label: 'Mentha Oil',
-    unitsPerLot: 360,
-    lotLabel: '360 kg',
-    quoteUnit: '1 kg',
-    marginBps: AGRI_BPS,
-  },
-  CARDAMOM: {
-    label: 'Cardamom',
-    unitsPerLot: 100,
-    lotLabel: '100 kg',
-    quoteUnit: '1 kg',
-    marginBps: AGRI_BPS,
-  },
-  COTTON: {
-    label: 'Cotton',
-    unitsPerLot: 25,
-    lotLabel: '25 bales',
-    quoteUnit: '1 bale',
-    marginBps: AGRI_BPS,
-  },
+  MENTHAOIL: { label: 'Mentha Oil', quoteUnit: '1 kg', exchangeLot: '360 kg' },
+  CARDAMOM: { label: 'Cardamom', quoteUnit: '1 kg', exchangeLot: '100 kg' },
+  COTTON: { label: 'Cotton', quoteUnit: '1 bale', exchangeLot: '25 bales' },
   COTTONOIL: {
     label: 'Cotton Seed Oil',
-    unitsPerLot: 500,
-    lotLabel: '5 MT',
     quoteUnit: '10 kg',
-    marginBps: AGRI_BPS,
+    exchangeLot: '5 MT',
   },
-  KAPAS: {
-    label: 'Kapas',
-    unitsPerLot: 200,
-    lotLabel: '4 MT',
-    quoteUnit: '20 kg',
-    marginBps: AGRI_BPS,
-  },
+  KAPAS: { label: 'Kapas', quoteUnit: '20 kg', exchangeLot: '4 MT' },
 };
 
 export function isCommodityExchange(exchange: string): boolean {
@@ -259,26 +86,14 @@ export function commoditySpec(
 }
 
 /**
- * Lot size in QUOTATION units — the quantity step the simulator trades in.
- * Non-MCX instruments (and MCX contracts we have no spec for, whose lot is
- * already expressed in the quotation unit) keep the scrip-master lot size.
+ * The quantity step the simulator trades in: a single quote unit for
+ * commodities (no exchange lots — see the header), the scrip-master lot for
+ * everything else (equity = 1, F&O = the contract lot).
  */
 export function normalizedLotSize(
   exchange: string,
-  underlying: string,
+  _underlying: string,
   rawLotSize: number,
 ): number {
-  const spec = commoditySpec(exchange, underlying);
-  if (!spec || spec.supported === false || spec.unitsPerLot <= 0) {
-    return rawLotSize;
-  }
-  return spec.unitsPerLot;
-}
-
-/** False when the simulator can't value this contract correctly. */
-export function isContractSupported(
-  exchange: string,
-  underlying: string,
-): boolean {
-  return commoditySpec(exchange, underlying)?.supported !== false;
+  return isCommodityExchange(exchange) ? 1 : rawLotSize;
 }

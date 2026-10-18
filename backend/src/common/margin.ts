@@ -2,7 +2,7 @@
 // instrument volatility; this table approximates Zerodha/Upstox retail rates.
 // Index F&O carry lower margin than single-stock F&O.
 
-import { commoditySpec } from './contract-specs';
+import { isCommodityExchange } from './contract-specs';
 
 const BPS_DIVISOR = 10000n;
 const INDEX_MARGIN_BPS = 1500n; // 15%
@@ -20,30 +20,38 @@ const INDEX_UNDERLYINGS: ReadonlySet<string> = new Set([
 ]);
 
 export function isFnoInstrumentType(instrumentType: string): boolean {
-  return (
-    instrumentType.startsWith('OPT') ||
-    instrumentType.startsWith('FUT')
-  );
+  return instrumentType.startsWith('OPT') || instrumentType.startsWith('FUT');
 }
 
-/** Futures (index, stock, commodity) — traded on margin, not full value. */
+/** Futures contracts (index, stock or commodity). */
 export function isFutureInstrumentType(instrumentType: string): boolean {
   return instrumentType.startsWith('FUT');
 }
 
-// Initial margin for a LONG futures position, as a share of contract value.
-// Mirrors exchange SPAN + exposure margin at retail brokers: index futures
-// ≈ 12%, single-stock futures ≈ 20%, commodities per contract (see
-// contract-specs). Rounded teaching values, not live SPAN files.
+/**
+ * Whether a futures BUY is traded on margin. Equity F&O futures are (like a
+ * real broker); commodities are not — the simulator trades them by the unit
+ * at full value (see contract-specs).
+ */
+export function isMarginTraded(
+  instrumentType: string,
+  exchange: string,
+): boolean {
+  return (
+    isFutureInstrumentType(instrumentType) && !isCommodityExchange(exchange)
+  );
+}
+
+// Initial margin for a LONG equity futures position, as a share of contract
+// value. Mirrors exchange SPAN + exposure margin at retail brokers: index
+// futures ≈ 12%, single-stock futures ≈ 20%. Rounded teaching values.
 const INDEX_FUTURES_BPS = 1200n;
 const STOCK_FUTURES_BPS = 2000n;
-const COMMODITY_DEFAULT_BPS = 1200n;
 
-export function futuresMarginBps(exchange: string, underlying: string): bigint {
-  if (exchange === 'MCX' || exchange === 'NCO') {
-    const spec = commoditySpec(exchange, underlying);
-    return spec ? BigInt(spec.marginBps) : COMMODITY_DEFAULT_BPS;
-  }
+export function futuresMarginBps(
+  _exchange: string,
+  underlying: string,
+): bigint {
   return INDEX_UNDERLYINGS.has(underlying.toUpperCase())
     ? INDEX_FUTURES_BPS
     : STOCK_FUTURES_BPS;

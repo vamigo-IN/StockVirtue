@@ -47,8 +47,7 @@ class PortfolioPosition {
   final double contractValue;
   final String? companyName;
 
-  /// MCX lot in physical units ("1 kg") and the price basis ("10 g").
-  final String? lotLabel;
+  /// Commodities: what one unit is ("10 g", "1 bbl").
   final String? quoteUnit;
 
   const PortfolioPosition({
@@ -72,7 +71,6 @@ class PortfolioPosition {
     this.margin = 0,
     this.contractValue = 0,
     this.companyName,
-    this.lotLabel,
     this.quoteUnit,
   });
 
@@ -105,7 +103,6 @@ class PortfolioPosition {
       contractValue: (json['contractValue'] as num?)?.toDouble() ??
           (json['currentValue'] as num).toDouble(),
       companyName: json['companyName'] as String?,
-      lotLabel: json['lotLabel'] as String?,
       quoteUnit: json['quoteUnit'] as String?,
     );
   }

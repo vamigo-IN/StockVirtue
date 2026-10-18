@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/company_names.dart';
 import '../../../data/models/tick.dart';
 import '../../../widgets/price_flash.dart';
+import '../../../widgets/ui/market_widgets.dart';
+import '../../../widgets/ui/stock_logo.dart';
 import '../../symbol/screens/symbol_detail_screen.dart';
 import '../../ticks/ticks_providers.dart';
 import '../recently_viewed_storage.dart';
@@ -17,8 +19,16 @@ import '../recently_viewed_storage.dart';
 /// symbol-detail screen so the user isn't shown the stock they're already
 /// looking at.
 class RecentlyViewedCarousel extends ConsumerWidget {
-  const RecentlyViewedCarousel({super.key, this.excludeKey});
+  const RecentlyViewedCarousel({
+    super.key,
+    this.excludeKey,
+    this.headerTopPadding = 20,
+  });
   final String? excludeKey;
+
+  /// Gap above the section title — screens that already space their
+  /// sections pass 0.
+  final double headerTopPadding;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -32,34 +42,9 @@ class RecentlyViewedCarousel extends ConsumerWidget {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-              child: Row(
-                children: [
-                  Text(
-                    'Recently viewed',
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: -0.2,
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 2),
-                    child: Text(
-                      '${entries.length}',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Theme.of(context)
-                            .colorScheme
-                            .onSurface
-                            .withValues(alpha: 0.55),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+            SectionHeader(
+              title: 'Recently viewed',
+              padding: EdgeInsets.fromLTRB(16, headerTopPadding, 8, 10),
             ),
             SizedBox(
               height: 110,
@@ -89,7 +74,6 @@ class _RecentCard extends ConsumerWidget {
       latestTicksProvider.select<Tick?>((m) => m[entry.key]),
     );
     final scheme = Theme.of(context).colorScheme;
-    final color = _hashColor(entry.symbol);
     final name = companyNameFor(entry.symbol);
     return InkWell(
       borderRadius: BorderRadius.circular(14),
@@ -119,22 +103,10 @@ class _RecentCard extends ConsumerWidget {
           children: [
             Row(
               children: [
-                Container(
-                  width: 26,
-                  height: 26,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.18),
-                    borderRadius: BorderRadius.circular(7),
-                  ),
-                  child: Text(
-                    entry.symbol.isNotEmpty ? entry.symbol[0] : '?',
-                    style: TextStyle(
-                      color: color,
-                      fontWeight: FontWeight.w800,
-                      fontSize: 13,
-                    ),
-                  ),
+                StockLogo(
+                  symbol: entry.symbol,
+                  exchange: entry.exchange,
+                  size: 28,
                 ),
                 const Spacer(),
                 Text(
@@ -178,23 +150,4 @@ class _RecentCard extends ConsumerWidget {
       ),
     );
   }
-}
-
-const _badgeColors = [
-  Color(0xFF6366F1),
-  Color(0xFFEC4899),
-  Color(0xFFF59E0B),
-  Color(0xFF10B981),
-  Color(0xFF06B6D4),
-  Color(0xFF8B5CF6),
-  Color(0xFFEF4444),
-  Color(0xFF14B8A6),
-];
-
-Color _hashColor(String s) {
-  var h = 0;
-  for (final c in s.codeUnits) {
-    h = (h * 31 + c) & 0x7FFFFFFF;
-  }
-  return _badgeColors[h % _badgeColors.length];
 }

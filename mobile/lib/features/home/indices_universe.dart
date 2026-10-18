@@ -115,3 +115,15 @@ List<String> homeStripIndexSymbols() =>
 List<IndexEntry> get allIndices => [
       for (final g in indexGroups) ...g.indices,
     ];
+
+/// Every index ticker the app knows, plus a few that only appear as F&O
+/// underlyings — lets avatars skip company-logo lookups for indices.
+final Set<String> _indexSymbols = {
+  for (final e in allIndices) e.symbol.toUpperCase(),
+  'SENSEX50',
+  'BANKEX',
+  'INDIA VIX',
+};
+
+bool isIndexSymbol(String symbol) =>
+    _indexSymbols.contains(symbol.trim().toUpperCase());

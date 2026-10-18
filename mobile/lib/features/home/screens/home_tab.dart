@@ -3,10 +3,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../data/models/portfolio.dart';
 import '../../../data/models/user.dart';
+import '../../../core/design/tokens.dart';
+import '../../../widgets/ui/market_widgets.dart';
+import '../../academy/screens/academy_screen.dart';
 import '../../bookmarks/bookmarks_storage.dart';
 import '../../bookmarks/widgets/bookmarks_rail.dart';
 import '../../ipo/ipo_repository.dart';
 import '../../ipo/widgets/ipo_home_section.dart';
+import '../../market/screens/indices_screen.dart';
+import '../../market/screens/stock_search_screen.dart';
+import '../../news/news_repository.dart';
 import '../../news/widgets/news_section.dart';
 import '../../market/market_repository.dart';
 import '../../portfolio/portfolio_live.dart';
@@ -17,7 +23,6 @@ import '../../watchlists/watchlists_providers.dart';
 import '../home_providers.dart';
 import '../widgets/home_app_bar.dart';
 import '../widgets/indices_strip.dart';
-import '../widgets/daily_summary_card.dart';
 import '../widgets/market_status_card.dart';
 import '../widgets/portfolio_hero_card.dart';
 import '../widgets/quick_actions.dart';
@@ -39,6 +44,16 @@ class HomeTab extends ConsumerStatefulWidget {
 }
 
 class _HomeTabState extends ConsumerState<HomeTab> {
+  /// Read once while mounted — `ref` is off-limits in dispose(), where
+  /// the subscriptions are released.
+  late final TicksService _ticks;
+
+  @override
+  void initState() {
+    super.initState();
+    _ticks = ref.read(ticksServiceProvider);
+  }
+
   List<TickSubscription> _subs = const [];
 
   void _sync(
@@ -66,7 +81,7 @@ class _HomeTabState extends ConsumerState<HomeTab> {
       put(subForPosition(p));
     }
     final desired = byKey.values.toList();
-    final service = ref.read(ticksServiceProvider);
+    final service = _ticks;
     final existing = _subs.map((s) => '${s.exchange}:${s.symbol}').toSet();
     final wanted = byKey.keys.toSet();
     final toAdd = desired
@@ -83,7 +98,7 @@ class _HomeTabState extends ConsumerState<HomeTab> {
   @override
   void dispose() {
     if (_subs.isNotEmpty) {
-      ref.read(ticksServiceProvider).unsubscribe(_subs);
+      _ticks.unsubscribe(_subs);
     }
     super.dispose();
   }
@@ -94,6 +109,8 @@ class _HomeTabState extends ConsumerState<HomeTab> {
     ref.invalidate(portfolioProvider);
     ref.invalidate(watchlistsListProvider);
     ref.invalidate(ipoBoardProvider);
+    ref.invalidate(moversProvider);
+    ref.invalidate(marketsNewsProvider);
     await Future.wait([
       ref.read(homeIndicesProvider.future),
       ref.read(homeTrendingProvider.future),
@@ -119,91 +136,48 @@ class _HomeTabState extends ConsumerState<HomeTab> {
       body: RefreshIndicator(
         onRefresh: _refresh,
         child: ListView(
-          padding: const EdgeInsets.only(bottom: 32),
+          padding: const EdgeInsets.only(bottom: AppSpace.xxl),
           physics: const AlwaysScrollableScrollPhysics(),
           children: [
             HomeAppBar(user: widget.user),
-            const SizedBox(height: 8),
+            const SizedBox(height: AppSpace.xs),
             const PortfolioHeroCard(),
+            const SizedBox(height: AppSpace.sm),
             const MarketStatusCard(),
-            const SizedBox(height: 12),
-            const DailySummaryCard(),
-            const SizedBox(height: 18),
-            const _SectionHeader(title: 'Markets', subtitle: 'Live'),
-            const SizedBox(height: 10),
+            SectionHeader(
+              title: 'Indices',
+              actionLabel: 'See all',
+              onAction: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const IndicesScreen()),
+              ),
+            ),
             const IndicesStrip(),
-            const SizedBox(height: 24),
+            const SizedBox(height: AppSpace.lg),
             const QuickActions(),
-            const SizedBox(height: 24),
-            const _SectionHeader(
+            SectionHeader(
               title: 'Most traded',
-              subtitle: 'Popular among investors',
+              subtitle: 'Popular large caps on NSE',
+              actionLabel: 'Explore',
+              onAction: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const StockSearchScreen()),
+              ),
             ),
-            const SizedBox(height: 10),
             const TrendingStocksCarousel(),
-            const SizedBox(height: 24),
-            const IpoHomeSection(),
-            const SizedBox(height: 16),
-            const BookmarksRail(),
-            const SizedBox(height: 24),
-            const RecentlyViewedCarousel(),
-            const SizedBox(height: 8),
-            const _SectionHeader(title: 'Top movers', subtitle: 'NSE'),
-            const SizedBox(height: 10),
-            const TopMoversSection(),
-            const SizedBox(height: 24),
-            const _SectionHeader(
-              title: 'My watchlists',
-              subtitle: 'Your saved lists',
+            const SectionHeader(
+              title: 'Top movers',
+              subtitle: 'Biggest moves on NSE today',
             ),
-            const SizedBox(height: 10),
+            const TopMoversSection(),
+            const IpoHomeSection(),
+            const SectionHeader(title: 'My watchlists'),
             const WatchlistsStrip(),
-            const SizedBox(height: 24),
+            const BookmarksRail(),
+            const RecentlyViewedCarousel(),
             const NewsSection(),
-            const SizedBox(height: 16),
+            const SizedBox(height: AppSpace.lg),
             const _LearnCard(),
           ],
         ),
-      ),
-    );
-  }
-}
-
-class _SectionHeader extends StatelessWidget {
-  const _SectionHeader({required this.title, this.subtitle});
-  final String title;
-  final String? subtitle;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          Text(
-            title,
-            style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
-              letterSpacing: -0.2,
-            ),
-          ),
-          if (subtitle != null) ...[
-            const SizedBox(width: 10),
-            Padding(
-              padding: const EdgeInsets.only(bottom: 2),
-              child: Text(
-                subtitle!,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: scheme.onSurface.withValues(alpha: 0.55),
-                ),
-              ),
-            ),
-          ],
-        ],
       ),
     );
   }
@@ -214,24 +188,14 @@ class _LearnCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    final t = Theme.of(context).textTheme;
+    final m = context.market;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Container(
-        padding: const EdgeInsets.all(18),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            colors: [
-              scheme.tertiaryContainer.withValues(alpha: 0.5),
-              scheme.surfaceContainerHighest.withValues(alpha: 0.3),
-            ],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ),
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(
-            color: scheme.outlineVariant.withValues(alpha: 0.3),
-          ),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpace.md),
+      child: AppCard(
+        radius: AppRadius.md,
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const AcademyScreen()),
         ),
         child: Row(
           children: [
@@ -240,31 +204,33 @@ class _LearnCard extends StatelessWidget {
               height: 44,
               alignment: Alignment.center,
               decoration: BoxDecoration(
-                color: scheme.tertiary.withValues(alpha: 0.18),
-                borderRadius: BorderRadius.circular(12),
+                color: m.violet.withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(AppRadius.sm),
               ),
-              child: Icon(
-                Icons.school_outlined,
-                color: scheme.tertiary,
-                size: 22,
-              ),
+              child: Icon(Icons.school_rounded, color: m.violet, size: 22),
             ),
             const SizedBox(width: 14),
-            const Expanded(
+            Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Trade risk-free',
-                    style: TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
+                    'Learn while you trade',
+                    style: t.titleSmall?.copyWith(fontWeight: FontWeight.w700),
                   ),
-                  SizedBox(height: 2),
+                  const SizedBox(height: 2),
                   Text(
-                    'Virtual ₹10L starting balance. Real prices, simulated trades.',
-                    style: TextStyle(fontSize: 12),
+                    'Bite-sized lessons in the Trading Academy. Real prices, '
+                    'virtual money — zero risk.',
+                    style: t.bodySmall,
                   ),
                 ],
               ),
+            ),
+            const SizedBox(width: 8),
+            Icon(
+              Icons.chevron_right_rounded,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
             ),
           ],
         ),

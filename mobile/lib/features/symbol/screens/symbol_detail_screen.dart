@@ -14,7 +14,7 @@ import '../../../widgets/depth_view.dart';
 import '../../../widgets/error_retry_view.dart';
 import '../../../widgets/fno_badge.dart';
 import '../../../widgets/ui/market_widgets.dart';
-import '../../../widgets/ui/symbol_avatar.dart';
+import '../../../widgets/ui/stock_logo.dart';
 import '../../chart/screens/chart_screen.dart';
 import '../../home/indices_universe.dart';
 import '../../home/recently_viewed_storage.dart';
@@ -53,6 +53,10 @@ class SymbolDetailScreen extends ConsumerStatefulWidget {
 }
 
 class _SymbolDetailScreenState extends ConsumerState<SymbolDetailScreen> {
+  /// Read once while mounted — `ref` is off-limits in dispose(), where
+  /// the subscriptions are released.
+  late final TicksService _ticks;
+
   Future<Map<String, dynamic>>? _quoteFuture;
   TickSubscription? _sub;
   Map<String, dynamic>? _snapshot;
@@ -67,7 +71,7 @@ class _SymbolDetailScreenState extends ConsumerState<SymbolDetailScreen> {
   // thin strikes off-hours), so the Buy/Sell CTA isn't stuck disabled at ₹0.
   double? _restLtp;
 
-  // Raw quote payload — carries the contract facts (futures margin, MCX lot
+  // Raw quote payload — carries the contract facts (futures margin, commodity
   // units) and whether the underlying is in F&O at all (`hasOptions`).
   Map<String, dynamic>? _quoteRaw;
 
@@ -138,6 +142,7 @@ class _SymbolDetailScreenState extends ConsumerState<SymbolDetailScreen> {
   @override
   void initState() {
     super.initState();
+    _ticks = ref.read(ticksServiceProvider);
     _attachToCurrentSymbol();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _maybeResolveCounterpart();
@@ -184,7 +189,7 @@ class _SymbolDetailScreenState extends ConsumerState<SymbolDetailScreen> {
     // post-frame callback in initState handles the very first launch
     // (the socket lifecycle provider may not have connected yet).
     if (mounted) {
-      ref.read(ticksServiceProvider).subscribe([sub]);
+      _ticks.subscribe([sub]);
     }
   }
 
@@ -210,7 +215,7 @@ class _SymbolDetailScreenState extends ConsumerState<SymbolDetailScreen> {
     setState(() => _swapping = true);
     final old = _sub;
     if (old != null) {
-      ref.read(ticksServiceProvider).unsubscribe([old]);
+      _ticks.unsubscribe([old]);
     }
     setState(() {
       // The pre-swap counterpart becomes our current symbol; the new
@@ -250,7 +255,7 @@ class _SymbolDetailScreenState extends ConsumerState<SymbolDetailScreen> {
   void dispose() {
     final sub = _sub;
     if (sub != null) {
-      ref.read(ticksServiceProvider).unsubscribe([sub]);
+      _ticks.unsubscribe([sub]);
     }
     super.dispose();
   }
@@ -295,7 +300,7 @@ class _SymbolDetailScreenState extends ConsumerState<SymbolDetailScreen> {
         (snapLtp != null && snapLtp > 0 ? snapLtp : null) ??
         _restLtp ??
         quote?.ltp;
-    // Contract facts (futures margin rate, MCX lot units) from the quote; an
+    // Contract facts (futures margin rate, commodity unit) from the quote; an
     // exit of a margined position also needs its avg price + blocked margin.
     var contract = TradeContract.fromQuote(_quoteRaw ?? _snapshot);
     if (position != null && side == OrderSide.sell) {
@@ -527,7 +532,7 @@ class _SymbolDetailScreenState extends ConsumerState<SymbolDetailScreen> {
                 const SizedBox(height: 16),
                 NewsSection(symbol: widget.symbol),
                 const SizedBox(height: 16),
-                RecentlyViewedCarousel(excludeKey: _key),
+                RecentlyViewedCarousel(excludeKey: _key, headerTopPadding: 0),
               ],
             ),
           );
@@ -624,7 +629,7 @@ class _PriceHeader extends StatelessWidget {
       children: [
         Row(
           children: [
-            SymbolAvatar(symbol: ticker, size: 48),
+            StockLogo(symbol: ticker, exchange: exchange, size: 48),
             const SizedBox(width: 12),
             Expanded(
               child: Column(

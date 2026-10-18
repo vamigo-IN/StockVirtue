@@ -73,6 +73,10 @@ class OptionChainScreen extends ConsumerStatefulWidget {
 }
 
 class _OptionChainScreenState extends ConsumerState<OptionChainScreen> {
+  /// Read once while mounted — `ref` is off-limits in dispose(), where
+  /// the subscriptions are released.
+  late final TicksService _ticks;
+
   Future<List<String>>? _expiriesFuture;
   Future<OptionChain>? _chainFuture;
   String? _selectedExpiry;
@@ -87,6 +91,7 @@ class _OptionChainScreenState extends ConsumerState<OptionChainScreen> {
   @override
   void initState() {
     super.initState();
+    _ticks = ref.read(ticksServiceProvider);
     _loadExpiries();
     ref.read(marketRepositoryProvider).getPCR().then((rows) {
       if (!mounted) return;
@@ -117,7 +122,7 @@ class _OptionChainScreenState extends ConsumerState<OptionChainScreen> {
           setState(() => _underlying = q);
           final sub =
               TickSubscription(symbol: q.symbol, exchange: q.exchange);
-          ref.read(ticksServiceProvider).subscribe([sub]);
+          _ticks.subscribe([sub]);
           _underlyingSub = sub;
           break;
         }
@@ -131,7 +136,7 @@ class _OptionChainScreenState extends ConsumerState<OptionChainScreen> {
   void dispose() {
     final sub = _underlyingSub;
     if (sub != null) {
-      ref.read(ticksServiceProvider).unsubscribe([sub]);
+      _ticks.unsubscribe([sub]);
     }
     super.dispose();
   }
@@ -266,6 +271,10 @@ class _ChainBody extends ConsumerStatefulWidget {
 }
 
 class _ChainBodyState extends ConsumerState<_ChainBody> {
+  /// Read once while mounted — `ref` is off-limits in dispose(), where
+  /// the subscriptions are released.
+  late final TicksService _ticks;
+
   final _scroll = ScrollController();
   // Live-tick subscriptions for every contract in the loaded chain, so each
   // row's LTP / day-change updates in real time instead of freezing at the
@@ -275,6 +284,7 @@ class _ChainBodyState extends ConsumerState<_ChainBody> {
   @override
   void initState() {
     super.initState();
+    _ticks = ref.read(ticksServiceProvider);
     // Auto-scroll to the ATM strike on first paint so the user lands on
     // the actionable rows instead of the deepest OTM tail; and open the
     // live feed for this expiry's contracts.
@@ -312,7 +322,7 @@ class _ChainBodyState extends ConsumerState<_ChainBody> {
         );
       }
     }
-    final service = ref.read(ticksServiceProvider);
+    final service = _ticks;
     if (_legSubs.isNotEmpty) service.unsubscribe(_legSubs);
     if (next.isNotEmpty) service.subscribe(next);
     _legSubs = next;
@@ -337,7 +347,7 @@ class _ChainBodyState extends ConsumerState<_ChainBody> {
   @override
   void dispose() {
     if (_legSubs.isNotEmpty) {
-      ref.read(ticksServiceProvider).unsubscribe(_legSubs);
+      _ticks.unsubscribe(_legSubs);
     }
     _scroll.dispose();
     super.dispose();

@@ -52,10 +52,80 @@ final newsRepositoryProvider = Provider<NewsRepository>((ref) {
   return NewsRepository(ref.watch(apiClientProvider).dio);
 });
 
+/// The home "Markets news" list: 10 articles first, 10 more per
+/// [MarketsNewsNotifier.loadMore]. Pages by growing `limit` (the backend
+/// serves newest-first from one cache, capped at 100), so every backend
+/// version pages correctly and a refreshed feed never yields duplicates.
+class MarketsNewsFeed {
+  const MarketsNewsFeed({
+    required this.items,
+    required this.hasMore,
+    this.loadingMore = false,
+    this.loadMoreFailed = false,
+  });
+
+  final List<NewsArticle> items;
+  final bool hasMore;
+  final bool loadingMore;
+  final bool loadMoreFailed;
+}
+
+class MarketsNewsNotifier extends AsyncNotifier<MarketsNewsFeed> {
+  static const pageSize = 10;
+
+  /// The backend's hard cap on `limit`.
+  static const maxItems = 100;
+
+  int _limit = pageSize;
+
+  @override
+  Future<MarketsNewsFeed> build() async {
+    _limit = pageSize;
+    return _fetch(ref.watch(newsRepositoryProvider), _limit);
+  }
+
+  Future<MarketsNewsFeed> _fetch(NewsRepository repo, int limit) async {
+    final items = await repo.list(limit: limit);
+    return MarketsNewsFeed(
+      items: items,
+      hasMore: items.length >= limit && limit < maxItems,
+    );
+  }
+
+  Future<void> loadMore() async {
+    final current = state.value;
+    if (current == null || !current.hasMore || current.loadingMore) return;
+    state = AsyncData(
+      MarketsNewsFeed(
+        items: current.items,
+        hasMore: current.hasMore,
+        loadingMore: true,
+      ),
+    );
+    final next = (_limit + pageSize).clamp(pageSize, maxItems);
+    try {
+      final feed = await _fetch(ref.read(newsRepositoryProvider), next);
+      if (!ref.mounted) return;
+      _limit = next;
+      state = AsyncData(feed);
+    } catch (_) {
+      if (!ref.mounted) return;
+      // Keep what's on screen; the button offers a retry.
+      state = AsyncData(
+        MarketsNewsFeed(
+          items: current.items,
+          hasMore: current.hasMore,
+          loadMoreFailed: true,
+        ),
+      );
+    }
+  }
+}
+
 final marketsNewsProvider =
-    FutureProvider.autoDispose<List<NewsArticle>>((ref) {
-  return ref.watch(newsRepositoryProvider).list(limit: 12);
-});
+    AsyncNotifierProvider.autoDispose<MarketsNewsNotifier, MarketsNewsFeed>(
+  MarketsNewsNotifier.new,
+);
 
 final symbolNewsProvider =
     FutureProvider.autoDispose.family<List<NewsArticle>, String>((ref, sym) {

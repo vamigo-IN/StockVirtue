@@ -29,13 +29,11 @@ class LeaderboardEntry {
 
 class LeaderboardSnapshot {
   final DateTime? computedAt;
-  final int total;
   final List<LeaderboardEntry> top;
   final LeaderboardEntry? me;
 
   const LeaderboardSnapshot({
     required this.computedAt,
-    required this.total,
     required this.top,
     required this.me,
   });
@@ -43,7 +41,6 @@ class LeaderboardSnapshot {
   factory LeaderboardSnapshot.fromJson(Map<String, dynamic> json) =>
       LeaderboardSnapshot(
         computedAt: DateTime.tryParse(json['computedAt'] as String? ?? ''),
-        total: (json['total'] as num?)?.toInt() ?? 0,
         top: ((json['top'] as List?) ?? const [])
             .cast<Map<String, dynamic>>()
             .map(LeaderboardEntry.fromJson)

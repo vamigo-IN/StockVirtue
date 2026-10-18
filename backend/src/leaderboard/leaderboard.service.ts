@@ -29,7 +29,6 @@ export interface MeEntry extends PublicEntry {
 
 export interface LeaderboardResponse {
   computedAt: string | null;
-  total: number;
   top: PublicEntry[];
   me: MeEntry | null;
 }
@@ -82,7 +81,6 @@ export class LeaderboardService implements OnModuleInit, OnModuleDestroy {
     ]);
     return {
       computedAt: top[0]?.computedAt?.toISOString() ?? null,
-      total: await this.prisma.leaderboardEntry.count(),
       top: top.map((e) => this.serializePublic(e, tags)),
       me: me ? this.serializeMe(me, tags) : null,
     };

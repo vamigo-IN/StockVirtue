@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../../core/design/tokens.dart';
+import '../../core/money_format.dart';
 
 /// ▲ 1.24% / ▼ 0.82% pill in the theme's gain/loss colours.
 class ChangePill extends StatelessWidget {
@@ -16,7 +17,7 @@ class ChangePill extends StatelessWidget {
 
   final double? percent;
 
-  /// Optional ₹ change shown before the percentage ("+12.40 (0.82%)").
+  /// Optional ₹ change shown before the percentage ("+12.40 (+0.82%)").
   final double? absolute;
   final bool compact;
 
@@ -33,8 +34,9 @@ class ChangePill extends StatelessWidget {
     final up = p >= 0;
     final color = up ? m.up : m.down;
     final abs = absolute;
+    final sign = up ? '+' : '-';
     final text = abs != null
-        ? '${abs >= 0 ? '+' : ''}${abs.toStringAsFixed(2)} (${p.abs().toStringAsFixed(2)}%)'
+        ? '$sign${formatInrPlain(abs.abs())} ($sign${p.abs().toStringAsFixed(2)}%)'
         : '${p.abs().toStringAsFixed(2)}%';
     return Container(
       padding: EdgeInsets.symmetric(
@@ -63,6 +65,50 @@ class ChangePill extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// The day's move the way brokers print it — "+12.40 (+0.96%)": points
+/// first, percentage beside, in the theme's gain/loss colour (neutral when
+/// unchanged). Renders "—" until both numbers are known.
+class DayChange extends StatelessWidget {
+  const DayChange({
+    super.key,
+    required this.change,
+    required this.percent,
+    this.style,
+  });
+
+  final double? change;
+  final double? percent;
+
+  /// Base style; colour and weight are applied on top.
+  final TextStyle? style;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final base = style ?? theme.textTheme.labelMedium ?? const TextStyle();
+    final c = change;
+    final p = percent;
+    if (c == null || p == null || c.isNaN || p.isNaN) {
+      return Text('—', style: base.copyWith(color: theme.hintColor));
+    }
+    final m = context.market;
+    final color = c == 0
+        ? theme.colorScheme.onSurfaceVariant
+        : (c > 0 ? m.up : m.down);
+    final sign = c > 0 ? '+' : (c < 0 ? '-' : '');
+    return Text(
+      '$sign${formatInrPlain(c.abs())} ($sign${p.abs().toStringAsFixed(2)}%)',
+      maxLines: 1,
+      softWrap: false,
+      style: base.copyWith(
+        color: color,
+        fontWeight: FontWeight.w700,
+        fontFeatures: const [FontFeature.tabularFigures()],
       ),
     );
   }

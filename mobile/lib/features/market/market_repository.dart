@@ -264,14 +264,9 @@ class CommodityQuote {
   final double change;
   final double changePct;
 
-  /// Physical size of one lot ("1 kg", "100 bbl") — null for unknown specs.
-  final String? lotLabel;
-
-  /// What the quoted price is per ("10 g", "1 bbl").
+  /// What one unit is — the quantity the price is quoted for ("10 g",
+  /// "1 bbl"). Commodities trade by this unit at full value, lot 1.
   final String quoteUnit;
-
-  /// Initial margin as % of contract value (futures trade on margin).
-  final double marginRatePct;
 
   const CommodityQuote({
     required this.name,
@@ -289,20 +284,11 @@ class CommodityQuote {
     required this.close,
     required this.change,
     required this.changePct,
-    this.lotLabel,
     this.quoteUnit = '',
-    this.marginRatePct = 12,
   });
 
   /// Tick-map key (`exchange:token`) for the live LTP overlay.
   String get tickKey => '$exchange:$symboltoken';
-
-  /// Real MCX value of one lot at [price] (lotSize is in quote units).
-  double contractValueAt(double price) => price * lotSize;
-
-  /// Margin blocked to buy one lot at [price].
-  double marginPerLotAt(double price) =>
-      contractValueAt(price) * marginRatePct / 100;
 
   factory CommodityQuote.fromJson(Map<String, dynamic> json) => CommodityQuote(
         name: json['name']?.toString() ?? '',
@@ -320,10 +306,8 @@ class CommodityQuote {
         close: (json['close'] as num?)?.toDouble() ?? 0,
         change: (json['change'] as num?)?.toDouble() ?? 0,
         changePct: (json['changePct'] as num?)?.toDouble() ?? 0,
-        lotLabel: json['lotLabel']?.toString(),
         quoteUnit:
             json['quoteUnit']?.toString() ?? json['unit']?.toString() ?? '',
-        marginRatePct: (json['marginRatePct'] as num?)?.toDouble() ?? 12,
       );
 }
 

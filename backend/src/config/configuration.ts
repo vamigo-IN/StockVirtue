@@ -123,6 +123,11 @@ export interface FeedConfig {
   maxConnectionsPerIp: number;
 }
 
+/// Public company-logo CDN (Financial Modeling Prep) — covers most
+/// NSE-listed companies; brand-new listings fall back to the app's monogram.
+export const DEFAULT_LOGO_URL_TEMPLATE =
+  'https://images.financialmodelingprep.com/symbol/{symbol}.NS.png';
+
 export interface AppConfig {
   nodeEnv: NodeEnv;
   host: string;
@@ -137,6 +142,8 @@ export interface AppConfig {
   site: SiteConfig;
   monitoring: MonitoringConfig;
   feed: FeedConfig;
+  /// Where the app loads company logos from ({symbol} = NSE ticker).
+  logoUrlTemplate: string;
 }
 
 /// Parse `FEED_API_KEYS` — a comma-separated list of "clientId:secret" pairs.
@@ -261,6 +268,7 @@ export default (): AppConfig => ({
     ),
     autoBlock: (process.env.MONITORING_AUTO_BLOCK ?? 'false') === 'true',
   },
+  logoUrlTemplate: process.env.LOGO_URL_TEMPLATE || DEFAULT_LOGO_URL_TEMPLATE,
   feed: {
     // Ships OFF. With no keys configured the namespace would refuse everyone
     // anyway; an explicit flag makes "is the FinCalc feed live?" answerable

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/error_mapper.dart';
 import '../../../data/models/watchlist.dart';
+import '../../../widgets/ui/stock_logo.dart';
 import '../../watchlists/screens/watchlist_detail_screen.dart';
 import '../../watchlists/watchlists_providers.dart';
 import '../../watchlists/watchlists_repository.dart';
@@ -107,20 +108,23 @@ class _WatchlistTile extends StatelessWidget {
           children: [
             Row(
               children: [
-                Container(
-                  width: 28,
-                  height: 28,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: scheme.primary.withValues(alpha: 0.18),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(
-                    Icons.bookmark_rounded,
-                    color: scheme.primary,
-                    size: 16,
-                  ),
-                ),
+                if (watchlist.items.isEmpty)
+                  Container(
+                    width: 28,
+                    height: 28,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      color: scheme.primary.withValues(alpha: 0.18),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(
+                      Icons.bookmark_rounded,
+                      color: scheme.primary,
+                      size: 16,
+                    ),
+                  )
+                else
+                  _LogoStack(items: watchlist.items.take(3).toList()),
                 const Spacer(),
                 Icon(
                   Icons.arrow_outward,
@@ -150,6 +154,44 @@ class _WatchlistTile extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// The first few holdings' logos, overlapped like avatars in a group chat.
+class _LogoStack extends StatelessWidget {
+  const _LogoStack({required this.items});
+  final List<WatchlistItem> items;
+
+  static const _size = 28.0;
+  static const _step = 18.0;
+
+  @override
+  Widget build(BuildContext context) {
+    final ring = Theme.of(context).colorScheme.surface;
+    return SizedBox(
+      width: _size + _step * (items.length - 1),
+      height: _size,
+      child: Stack(
+        children: [
+          for (var i = 0; i < items.length; i++)
+            Positioned(
+              left: _step * i,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: ring,
+                  borderRadius: BorderRadius.circular(_size * 0.34),
+                ),
+                padding: const EdgeInsets.all(1.5),
+                child: StockLogo(
+                  symbol: items[i].symbol,
+                  exchange: items[i].exchange,
+                  size: _size - 3,
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }

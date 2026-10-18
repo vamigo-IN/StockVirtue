@@ -16,7 +16,7 @@ import '../../../data/models/order.dart';
 import '../../../data/models/tick.dart';
 import '../../../widgets/fno_badge.dart';
 import '../../../widgets/ui/market_widgets.dart';
-import '../../../widgets/ui/symbol_avatar.dart';
+import '../../../widgets/ui/stock_logo.dart';
 import '../../notifications/notifications_provider.dart';
 import '../../portfolio/portfolio_providers.dart';
 import '../../ticks/ticks_providers.dart';
@@ -25,15 +25,14 @@ import '../orders_providers.dart';
 import '../orders_repository.dart';
 
 /// What the ticket needs to price an order like a real broker: whether the
-/// contract trades on margin (futures), at what rate, and — for MCX — the
-/// physical lot ("1 kg") behind the quoted unit ("per 10 g"). Built from the
-/// quote / snapshot response or a portfolio position.
+/// contract trades on margin (equity futures) and at what rate, and — for
+/// commodities, which trade by the unit — what one unit is ("10 g"). Built
+/// from the quote / snapshot response or a portfolio position.
 class TradeContract {
   const TradeContract({
     this.tradingsymbol,
     this.isFuture = false,
     this.marginRatePct,
-    this.lotLabel,
     this.quoteUnit,
     this.positionAvgPrice,
     this.positionMargin,
@@ -43,7 +42,8 @@ class TradeContract {
   final String? tradingsymbol;
   final bool isFuture;
   final double? marginRatePct;
-  final String? lotLabel;
+
+  /// What one commodity unit is ("10 g", "1 bbl") — the quoted quantity.
   final String? quoteUnit;
 
   /// Existing position (for an exit): average price, blocked margin, and
@@ -61,7 +61,6 @@ class TradeContract {
       tradingsymbol: raw['tradingsymbol']?.toString(),
       isFuture: raw['isFuture'] == true,
       marginRatePct: (raw['marginRatePct'] as num?)?.toDouble(),
-      lotLabel: raw['lotLabel']?.toString(),
       quoteUnit: raw['quoteUnit']?.toString(),
     );
   }
@@ -75,7 +74,6 @@ class TradeContract {
         tradingsymbol: tradingsymbol,
         isFuture: isFuture || leveraged,
         marginRatePct: marginRatePct,
-        lotLabel: lotLabel,
         quoteUnit: quoteUnit,
         positionAvgPrice: avgPrice,
         positionMargin: margin,
@@ -346,10 +344,22 @@ class _TradeSheetState extends ConsumerState<_TradeSheet> {
     }
   }
 
-  /// Lot-constrained instrument (F&O / MCX). Quantity steps in whole lots.
+  /// Lot-constrained instrument (equity F&O). Quantity steps in whole lots;
+  /// commodities trade by the unit (lot 1), like shares.
   bool get _isLotted => widget.lotSize > 1;
+  bool get _isCommodity => isCommodityExchange(widget.exchange);
   int get _step => _isLotted ? widget.lotSize : 1;
   int get _lots => widget.lotSize > 0 ? _qty ~/ widget.lotSize : _qty;
+
+  /// "1 unit = 10 g · max 6" for commodities, "Max 120 shares" for cash.
+  String _quantityCaption(int maxQty) {
+    final max = maxQty > 0 ? maxQty : 0;
+    final unit = widget.contract.quoteUnit;
+    if (_isCommodity && unit != null && unit.isNotEmpty) {
+      return '1 unit = $unit · max $max';
+    }
+    return 'Max $max ${_isCommodity ? 'units' : 'shares'}';
+  }
 
   String get _title {
     if (widget.displayName != null) return widget.displayName!;
@@ -465,8 +475,7 @@ class _TradeSheetState extends ConsumerState<_TradeSheet> {
     if (_isBuy && price > 0 && maxQty < _step) {
       hint = _onMargin
           ? 'Not enough free margin for even one lot '
-              '(${formatInrCompact(_cashPerUnit(price) * _step)} needed). '
-              'Try a mini contract.'
+              '(${formatInrCompact(_cashPerUnit(price) * _step)} needed).'
           : 'Not enough available balance for this order.';
     }
 
@@ -601,9 +610,8 @@ class _TradeSheetState extends ConsumerState<_TradeSheet> {
               Expanded(
                 child: Text(
                   _isLotted
-                      ? '1 lot = ${widget.contract.lotLabel ?? '${widget.lotSize} units'}'
-                          '${widget.contract.quoteUnit != null ? ' · priced per ${widget.contract.quoteUnit}' : ''}'
-                      : 'Max ${maxQty > 0 ? maxQty : 0} shares',
+                      ? '1 lot = ${widget.lotSize} units'
+                      : _quantityCaption(maxQty),
                   style: t.bodySmall,
                 ),
               ),
@@ -753,7 +761,7 @@ class _Header extends StatelessWidget {
     final accent = isBuy ? m.up : m.down;
     return Row(
       children: [
-        SymbolAvatar(symbol: symbol, size: 46),
+        StockLogo(symbol: symbol, exchange: exchange, size: 46),
         const SizedBox(width: 12),
         Expanded(
           child: Column(

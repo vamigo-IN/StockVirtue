@@ -4,6 +4,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/company_names.dart';
 import '../../../data/models/tick.dart';
 import '../../../widgets/price_flash.dart';
+import '../../../widgets/ui/market_widgets.dart';
+import '../../../widgets/ui/stock_logo.dart';
 import '../../symbol/screens/symbol_detail_screen.dart';
 import '../../ticks/ticks_providers.dart';
 import '../bookmarks_storage.dart';
@@ -23,39 +25,12 @@ class BookmarksRail extends ConsumerWidget {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
-              child: Row(
-                children: [
-                  const Icon(
-                    Icons.star_rounded,
-                    color: Color(0xFFF59E0B),
-                    size: 18,
-                  ),
-                  const SizedBox(width: 6),
-                  const Text(
-                    'Bookmarks',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: -0.2,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Padding(
-                    padding: const EdgeInsets.only(bottom: 2),
-                    child: Text(
-                      '${entries.length}',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Theme.of(context)
-                            .colorScheme
-                            .onSurface
-                            .withValues(alpha: 0.55),
-                      ),
-                    ),
-                  ),
-                ],
+            const SectionHeader(
+              title: 'Bookmarks',
+              leading: Icon(
+                Icons.star_rounded,
+                color: Color(0xFFF59E0B),
+                size: 20,
               ),
             ),
             SizedBox(
@@ -115,12 +90,18 @@ class _BookmarkCard extends ConsumerWidget {
           children: [
             Row(
               children: [
+                StockLogo(
+                  symbol: entry.symbol,
+                  exchange: entry.exchange,
+                  size: 28,
+                ),
+                const Spacer(),
                 const Icon(
                   Icons.star_rounded,
                   color: Color(0xFFF59E0B),
-                  size: 16,
+                  size: 14,
                 ),
-                const Spacer(),
+                const SizedBox(width: 4),
                 Text(
                   entry.exchange,
                   style: TextStyle(

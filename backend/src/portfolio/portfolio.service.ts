@@ -79,7 +79,6 @@ export class PortfolioService {
         // Contract lot size (1 for cash) — lets the client constrain F&O
         // square-off quantity to whole lots, like the buy flow.
         lotSize: inst?.lotSize ?? 1,
-        lotLabel: spec?.lotLabel ?? null,
         quoteUnit: spec?.quoteUnit ?? null,
         product: position.product,
         quantity: position.quantity, // signed

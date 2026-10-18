@@ -14,7 +14,6 @@ import {
   OrderType,
   Prisma,
 } from '@prisma/client';
-import { isContractSupported } from '../common/contract-specs';
 import { Exchange } from '../common/exchange';
 import { computeFees, feeSegmentFor } from '../common/fees';
 import { isMarketOpen } from '../common/market-hours';
@@ -23,7 +22,7 @@ import { FeatureFlagsService } from '../feature-flags/feature-flags.service';
 import {
   futuresMarginP,
   isFnoInstrumentType,
-  isFutureInstrumentType,
+  isMarginTraded,
   requiredMarginP,
 } from '../common/margin';
 import { rupeesToPaise } from '../common/money';
@@ -141,14 +140,15 @@ export class OrdersService {
 
   /// Whether a new BUY on this contract trades on margin. An open long keeps
   /// the mode it was opened in (legacy full-value futures stay full-value
-  /// until closed); a fresh position is leveraged iff it's a future.
+  /// until closed); a fresh position is leveraged iff it's an equity F&O
+  /// future — commodities trade by the unit at full value.
   private buyIsLeveraged(
     inst: Instrument,
     position: { quantity: number; leveraged: boolean } | null,
   ): boolean {
     if (position && position.quantity > 0) return position.leveraged;
     if (position && position.quantity < 0) return false; // covering a short
-    return isFutureInstrumentType(inst.instrumentType);
+    return isMarginTraded(inst.instrumentType, inst.exchange);
   }
 
   /// The price a pending order's reservation was sized against.
@@ -244,21 +244,9 @@ export class OrdersService {
         `Symbol "${input.symbol}" not found on ${input.exchange}`,
       );
     }
-    // Blocks OPENING an unsupported contract; selling out of one held from
-    // before is always allowed (short-selling is disabled, so a SELL can
-    // only ever reduce a long).
-    if (
-      input.side === OrderSide.BUY &&
-      !isContractSupported(inst.exchange, inst.name)
-    ) {
-      throw new BadRequestException(
-        `${inst.symbol} can't be traded in the simulator yet — try the mini or micro contract instead.`,
-      );
-    }
-    // F&O orders must be in multiples of the contract's lot size. One
-    // exception: squaring off a whole existing position. MCX lots are now
-    // expressed in quotation units, so a position opened under the old
-    // (raw) lot can be an odd size — it must still be closable in one go.
+    // F&O orders must be in multiples of the contract's lot size (commodities
+    // trade by the unit, lot 1, so they're never constrained). One exception:
+    // squaring off a whole existing position that is an odd size.
     if (!inst.isEquity && inst.lotSize > 1) {
       if (
         input.quantity % inst.lotSize !== 0 &&
@@ -482,7 +470,7 @@ export class OrdersService {
         } else if (this.buyIsLeveraged(inst, position)) {
           // FUTURES LONG on margin: block the initial margin (it stays in the
           // balance) and pay only the fees — like a real broker, a lot of
-          // NIFTY or GOLDM needs ~10-15% of its contract value, not all of it.
+          // NIFTY needs ~12% of its contract value, not all of it.
           leveragedOrder = true;
           const marginP = futuresMarginP(notionalP, inst.exchange, inst.name);
           if (this.available(wallet) < marginP + feesP) {
