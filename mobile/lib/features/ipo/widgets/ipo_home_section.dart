@@ -33,7 +33,6 @@ class IpoHomeSection extends ConsumerWidget {
               : 'Upcoming issues & new listings',
           actionLabel: 'See all',
           onAction: () => openScreen(board.open.isNotEmpty ? 0 : 1),
-          padding: const EdgeInsets.fromLTRB(16, 4, 8, 10),
         ),
         if (issues.isNotEmpty)
           SizedBox(

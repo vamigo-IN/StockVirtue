@@ -1,13 +1,21 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/company_names.dart';
+import '../../../core/design/tokens.dart';
+import '../../../core/money_format.dart';
 import '../../../data/models/tick.dart';
 import '../../../widgets/price_flash.dart';
+import '../../../widgets/ui/market_widgets.dart';
 import '../../market/market_repository.dart';
 import '../../symbol/screens/symbol_detail_screen.dart';
 import '../../ticks/ticks_providers.dart';
 import '../home_providers.dart';
 
+const _cardWidth = 164.0;
+
+/// Home index tiles: full index name, live value and the day's move in
+/// points with the percentage beside it ("+123.45 (+0.50%)").
 class IndicesStrip extends ConsumerWidget {
   const IndicesStrip({super.key});
 
@@ -15,17 +23,19 @@ class IndicesStrip extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final indices = ref.watch(homeIndicesProvider);
     return SizedBox(
-      height: 92,
+      height: 96,
       child: indices.when(
         loading: () => const _SkeletonStrip(),
-        error: (_, _) => const _ErrorStrip(),
-        data: (quotes) => ListView.separated(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          scrollDirection: Axis.horizontal,
-          itemCount: quotes.length,
-          separatorBuilder: (_, _) => const SizedBox(width: 10),
-          itemBuilder: (_, i) => _IndexCard(quote: quotes[i]),
-        ),
+        error: (_, _) => const _StripMessage('Indices unavailable right now'),
+        data: (quotes) => quotes.isEmpty
+            ? const _StripMessage('Indices unavailable right now')
+            : ListView.separated(
+                padding: const EdgeInsets.symmetric(horizontal: AppSpace.md),
+                scrollDirection: Axis.horizontal,
+                itemCount: quotes.length,
+                separatorBuilder: (_, _) => const SizedBox(width: 10),
+                itemBuilder: (_, i) => _IndexCard(quote: quotes[i]),
+              ),
       ),
     );
   }
@@ -37,43 +47,32 @@ class _IndexCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final t = Theme.of(context).textTheme;
     final tick = ref.watch(
       latestTicksProvider.select<Tick?>((m) => m[quote.key]),
     );
     final ltp = tick?.ltp ?? quote.ltp;
-    final close = quote.close;
+    final close = tick?.close ?? quote.close;
     double? change;
     double? changePct;
     if (ltp != null && close != null && close > 0) {
       change = ltp - close;
       changePct = (change / close) * 100;
     }
-    final isUp = (change ?? 0) >= 0;
-    final upColor = const Color(0xFF22C55E);
-    final downColor = const Color(0xFFEF4444);
-    final color = isUp ? upColor : downColor;
-    final scheme = Theme.of(context).colorScheme;
 
-    return InkWell(
-      borderRadius: BorderRadius.circular(14),
-      onTap: () => Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => SymbolDetailScreen(
-            symbol: quote.symbol,
-            tradingsymbol: quote.tradingsymbol,
-            symboltoken: quote.symboltoken,
-            exchange: quote.exchange,
-          ),
-        ),
-      ),
-      child: Ink(
-        width: 152,
+    return SizedBox(
+      width: _cardWidth,
+      child: AppCard(
+        radius: AppRadius.md,
         padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-        decoration: BoxDecoration(
-          color: scheme.surfaceContainerHighest.withValues(alpha: 0.45),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: scheme.outlineVariant.withValues(alpha: 0.3),
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => SymbolDetailScreen(
+              symbol: quote.symbol,
+              tradingsymbol: quote.tradingsymbol,
+              symboltoken: quote.symboltoken,
+              exchange: quote.exchange,
+            ),
           ),
         ),
         child: Column(
@@ -81,46 +80,30 @@ class _IndexCard extends ConsumerWidget {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(
-              quote.symbol,
+              companyNameFor(quote.symbol),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontWeight: FontWeight.w700,
-                fontSize: 13,
-                letterSpacing: 0.2,
+              style: t.labelLarge?.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                fontWeight: FontWeight.w600,
               ),
             ),
             PriceFlash(
               price: ltp,
               child: Text(
-                ltp != null ? ltp.toStringAsFixed(2) : '—',
-                style: const TextStyle(
-                  fontSize: 17,
-                  fontWeight: FontWeight.w700,
+                ltp != null ? formatInrPlain(ltp) : '—',
+                maxLines: 1,
+                style: t.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w800,
                   letterSpacing: -0.3,
+                  fontFeatures: const [FontFeature.tabularFigures()],
                 ),
               ),
             ),
-            Row(
-              children: [
-                Icon(
-                  isUp ? Icons.arrow_drop_up : Icons.arrow_drop_down,
-                  color: color,
-                  size: 18,
-                ),
-                Flexible(
-                  child: Text(
-                    changePct != null
-                        ? '${changePct.toStringAsFixed(2)}%'
-                        : '—',
-                    style: TextStyle(
-                      color: color,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 12,
-                    ),
-                  ),
-                ),
-              ],
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: DayChange(change: change, percent: changePct),
             ),
           ],
         ),
@@ -136,33 +119,33 @@ class _SkeletonStrip extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return ListView.separated(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpace.md),
       scrollDirection: Axis.horizontal,
+      physics: const NeverScrollableScrollPhysics(),
       itemCount: 4,
       separatorBuilder: (_, _) => const SizedBox(width: 10),
       itemBuilder: (_, _) => Container(
-        width: 152,
+        width: _cardWidth,
         decoration: BoxDecoration(
-          color: scheme.surfaceContainerHighest.withValues(alpha: 0.3),
-          borderRadius: BorderRadius.circular(14),
+          color: scheme.surfaceContainerHighest.withValues(alpha: 0.35),
+          borderRadius: BorderRadius.circular(AppRadius.md),
         ),
       ),
     );
   }
 }
 
-class _ErrorStrip extends StatelessWidget {
-  const _ErrorStrip();
+class _StripMessage extends StatelessWidget {
+  const _StripMessage(this.text);
+  final String text;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Text(
-        'Indices unavailable',
-        style: TextStyle(
-          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
-        ),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpace.md),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Text(text, style: Theme.of(context).textTheme.bodySmall),
       ),
     );
   }

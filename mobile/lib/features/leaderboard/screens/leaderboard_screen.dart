@@ -147,9 +147,9 @@ class _Header extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  '${snap.total} trader${snap.total == 1 ? '' : 's'}',
-                  style: const TextStyle(
+                const Text(
+                  'Top traders',
+                  style: TextStyle(
                     fontWeight: FontWeight.w700,
                     fontSize: 15,
                   ),

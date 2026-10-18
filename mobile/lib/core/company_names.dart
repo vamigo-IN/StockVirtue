@@ -24,6 +24,25 @@ class CompanyDirectory {
   /// unchanged directory isn't re-downloaded.
   String? serverStamp;
 
+  /// Public logo CDN used until the backend says otherwise.
+  static const defaultLogoTemplate =
+      'https://images.financialmodelingprep.com/symbol/{symbol}.NS.png';
+
+  /// Company-logo URL template (`{symbol}` = NSE ticker). The backend sends
+  /// its own on sync so the provider can change without an app release; a
+  /// template without `{symbol}` (e.g. "none") turns logos off.
+  String logoTemplate = defaultLogoTemplate;
+
+  /// Logo URL for an equity [symbol] ("KOTAKBANK-EQ" works too), or null
+  /// when logos are switched off.
+  String? logoUrlFor(String symbol) {
+    if (!logoTemplate.contains('{symbol}')) return null;
+    final stem = _stem(symbol);
+    if (stem.isEmpty) return null;
+    // Tickers like "M&M" must be escaped to form a valid path segment.
+    return logoTemplate.replaceAll('{symbol}', Uri.encodeComponent(stem));
+  }
+
   int get size => _names.length;
 
   /// Loads the bundled snapshot. Call once before `runApp`.

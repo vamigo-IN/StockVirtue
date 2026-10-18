@@ -12,6 +12,7 @@ import '../../../data/models/portfolio.dart';
 import '../../../widgets/empty_state.dart';
 import '../../../widgets/error_retry_view.dart';
 import '../../../widgets/fno_badge.dart';
+import '../../../widgets/ui/stock_logo.dart';
 import '../../home/screens/shell_screen.dart';
 import '../../orders/widgets/trade_sheet.dart';
 import '../../share/share_trade.dart';
@@ -49,6 +50,16 @@ class PortfolioScreen extends ConsumerStatefulWidget {
 }
 
 class _PortfolioScreenState extends ConsumerState<PortfolioScreen> {
+  /// Read once while mounted — `ref` is off-limits in dispose(), where
+  /// the subscriptions are released.
+  late final TicksService _ticks;
+
+  @override
+  void initState() {
+    super.initState();
+    _ticks = ref.read(ticksServiceProvider);
+  }
+
   // Live tick subscriptions for the currently-held symbols. These ticks keep
   // each holding's LTP, value and P&L (and the equity hero total) moving
   // continuously while the market is open — no interval polling. The snapshot
@@ -65,7 +76,7 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen> {
       byKey['${sub.exchange}:${sub.symbol}'] = sub;
     }
     final desired = byKey.values.toList();
-    final service = ref.read(ticksServiceProvider);
+    final service = _ticks;
     final wanted = byKey.keys.toSet();
     final existing = _subs.map((s) => '${s.exchange}:${s.symbol}').toSet();
     final add =
@@ -80,7 +91,7 @@ class _PortfolioScreenState extends ConsumerState<PortfolioScreen> {
   @override
   void dispose() {
     if (_subs.isNotEmpty) {
-      ref.read(ticksServiceProvider).unsubscribe(_subs);
+      _ticks.unsubscribe(_subs);
     }
     super.dispose();
   }
@@ -762,7 +773,6 @@ class _PositionTile extends ConsumerWidget {
       contract: TradeContract(
         tradingsymbol: position.tradingsymbol,
         isFuture: position.leveraged,
-        lotLabel: position.lotLabel,
         quoteUnit: position.quoteUnit,
       ).withPosition(
         avgPrice: position.avgPrice,
@@ -827,6 +837,12 @@ class _PositionTile extends ConsumerWidget {
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                StockLogo(
+                  symbol: position.symbol,
+                  exchange: position.exchange,
+                  size: 36,
+                ),
+                const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,

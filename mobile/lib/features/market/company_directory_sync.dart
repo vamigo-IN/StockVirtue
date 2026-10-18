@@ -4,8 +4,9 @@ import '../../core/company_names.dart';
 import '../../data/api_client.dart';
 
 /// Tops up the bundled company-name snapshot with the backend's daily NSE
-/// list (new listings since the app was built). Watched once from the app
-/// root; best-effort — on any failure the bundled names keep serving.
+/// list (new listings since the app was built), and picks up the logo CDN
+/// template. Watched once from the app root; best-effort — on any failure
+/// the bundled names and default logo source keep serving.
 /// Resolves to the number of names known.
 final companyDirectorySyncProvider = FutureProvider<int>((ref) async {
   final dio = ref.watch(apiClientProvider).dio;
@@ -18,7 +19,10 @@ final companyDirectorySyncProvider = FutureProvider<int>((ref) async {
       },
     );
     final data = res.data;
-    if (data == null || data['unchanged'] == true) return dir.size;
+    if (data == null) return dir.size;
+    final logos = data['logoUrlTemplate'];
+    if (logos is String && logos.isNotEmpty) dir.logoTemplate = logos;
+    if (data['unchanged'] == true) return dir.size;
     final names = data['names'];
     if (names is Map) dir.merge(names.cast<String, dynamic>());
     dir.serverStamp = '${data['updatedAt']}#${data['count']}';

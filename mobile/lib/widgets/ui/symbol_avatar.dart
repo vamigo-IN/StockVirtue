@@ -11,6 +11,7 @@ class SymbolAvatar extends StatelessWidget {
     required this.symbol,
     this.size = 40,
     this.label,
+    this.radius,
   });
 
   /// Ticker or underlying, e.g. "KOTAKBANK", "NIFTY", "GOLDM".
@@ -19,6 +20,10 @@ class SymbolAvatar extends StatelessWidget {
 
   /// Overrides the derived initials (e.g. "₹" for cash, "IPO").
   final String? label;
+
+  /// Corner radius for a rounded square; null draws a circle. [StockLogo]
+  /// passes its badge radius so the fallback matches a real logo's shape.
+  final double? radius;
 
   static const _hues = <double>[
     152, 199, 221, 262, 291, 330, 12, 28, 43, 168, 186, 238,
@@ -55,7 +60,8 @@ class SymbolAvatar extends StatelessWidget {
       width: size,
       height: size,
       decoration: BoxDecoration(
-        shape: BoxShape.circle,
+        shape: radius == null ? BoxShape.circle : BoxShape.rectangle,
+        borderRadius: radius == null ? null : BorderRadius.circular(radius!),
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,

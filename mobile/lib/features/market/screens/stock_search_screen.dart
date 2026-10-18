@@ -5,7 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/company_names.dart';
 import '../../../core/error_mapper.dart';
 import '../../../widgets/ui/skeletons.dart';
-import '../../../widgets/ui/symbol_avatar.dart';
+import '../../../widgets/ui/stock_logo.dart';
 import '../../home/home_providers.dart';
 import '../../home/indices_universe.dart';
 import '../../home/recently_viewed_storage.dart';
@@ -327,7 +327,7 @@ class _SuggestionTile extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     return ListTile(
       dense: true,
-      leading: SymbolAvatar(symbol: symbol, size: 38),
+      leading: StockLogo(symbol: symbol, exchange: exchange, size: 38),
       title: Text(
         companyNameFor(symbol),
         maxLines: 1,
@@ -417,7 +417,11 @@ class _ResultTile extends StatelessWidget {
     final name = result.companyName ?? companyNameFor(result.symbol);
     final showTicker = name.toUpperCase() != result.symbol.toUpperCase();
     return ListTile(
-      leading: SymbolAvatar(symbol: result.symbol, size: 40),
+      leading: StockLogo(
+        symbol: result.symbol,
+        exchange: result.exchange,
+        size: 40,
+      ),
       title: Row(
         children: [
           Flexible(

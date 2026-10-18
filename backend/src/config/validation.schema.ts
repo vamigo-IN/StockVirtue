@@ -104,6 +104,10 @@ export const validationSchema = Joi.object({
   // take the trading API down if a value were missing on deploy. A
   // misconfigured feed refuses feed connections and nothing else.
   FEED_ENABLED: Joi.string().valid('true', 'false').default('false'),
+  // Company-logo URL template for the app ({symbol} = NSE ticker). Empty =
+  // the built-in public CDN default (see market.controller.ts); a value
+  // without {symbol} (e.g. "none") turns logos off in the app.
+  LOGO_URL_TEMPLATE: Joi.string().allow('').default(''),
   FEED_API_KEYS: Joi.string().allow('').default(''),
   FEED_TOKEN_SECRET: Joi.string().allow('').min(32).default(''),
   FEED_TOKEN_TTL: Joi.number().min(60).max(86400).default(900),

@@ -90,7 +90,6 @@ Map<String, dynamic> _portfolioToJson(PortfolioSnapshot s) => {
             'margin': p.margin,
             'contractValue': p.contractValue,
             'companyName': p.companyName,
-            'lotLabel': p.lotLabel,
             'quoteUnit': p.quoteUnit,
           },
       ],

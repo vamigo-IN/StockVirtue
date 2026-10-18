@@ -2,13 +2,22 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/company_names.dart';
+import '../../../core/design/tokens.dart';
+import '../../../core/money_format.dart';
 import '../../../data/models/tick.dart';
 import '../../../widgets/price_flash.dart';
+import '../../../widgets/ui/market_widgets.dart';
+import '../../../widgets/ui/stock_logo.dart';
 import '../../market/market_repository.dart';
 import '../../symbol/screens/symbol_detail_screen.dart';
 import '../../ticks/ticks_providers.dart';
 import '../home_providers.dart';
 
+const _cardWidth = 156.0;
+const _railHeight = 148.0;
+
+/// "Most traded" rail: logo, company name, live price and the day's move
+/// in points with the percentage beside it ("+12.40 (+0.96%)").
 class TrendingStocksCarousel extends ConsumerWidget {
   const TrendingStocksCarousel({super.key});
 
@@ -16,17 +25,19 @@ class TrendingStocksCarousel extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final trending = ref.watch(homeTrendingProvider);
     return SizedBox(
-      height: 140,
+      height: _railHeight,
       child: trending.when(
-        loading: () => const _SkeletonCarousel(),
-        error: (_, _) => const _ErrorState(),
-        data: (quotes) => ListView.separated(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          scrollDirection: Axis.horizontal,
-          itemCount: quotes.length,
-          separatorBuilder: (_, _) => const SizedBox(width: 10),
-          itemBuilder: (_, i) => _StockCard(quote: quotes[i]),
-        ),
+        loading: () => const _SkeletonRail(),
+        error: (_, _) => const _RailMessage('Prices unavailable right now'),
+        data: (quotes) => quotes.isEmpty
+            ? const _RailMessage('Prices unavailable right now')
+            : ListView.separated(
+                padding: const EdgeInsets.symmetric(horizontal: AppSpace.md),
+                scrollDirection: Axis.horizontal,
+                itemCount: quotes.length,
+                separatorBuilder: (_, _) => const SizedBox(width: 10),
+                itemBuilder: (_, i) => _StockCard(quote: quotes[i]),
+              ),
       ),
     );
   }
@@ -38,115 +49,63 @@ class _StockCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final t = Theme.of(context).textTheme;
     final tick = ref.watch(
       latestTicksProvider.select<Tick?>((m) => m[quote.key]),
     );
     final ltp = tick?.ltp ?? quote.ltp;
-    final close = quote.close;
+    final close = tick?.close ?? quote.close;
     double? change;
     double? changePct;
     if (ltp != null && close != null && close > 0) {
       change = ltp - close;
       changePct = (change / close) * 100;
     }
-    final isUp = (change ?? 0) >= 0;
-    final upColor = const Color(0xFF22C55E);
-    final downColor = const Color(0xFFEF4444);
-    final color = isUp ? upColor : downColor;
-    final scheme = Theme.of(context).colorScheme;
 
-    return InkWell(
-      borderRadius: BorderRadius.circular(16),
-      onTap: () => Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => SymbolDetailScreen(
-            symbol: quote.symbol,
-            tradingsymbol: quote.tradingsymbol,
-            symboltoken: quote.symboltoken,
-            exchange: quote.exchange,
-          ),
-        ),
-      ),
-      child: Ink(
-        width: 168,
+    return SizedBox(
+      width: _cardWidth,
+      child: AppCard(
+        radius: AppRadius.md,
         padding: const EdgeInsets.fromLTRB(14, 14, 14, 12),
-        decoration: BoxDecoration(
-          color: scheme.surface,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: scheme.outlineVariant.withValues(alpha: 0.4),
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => SymbolDetailScreen(
+              symbol: quote.symbol,
+              tradingsymbol: quote.tradingsymbol,
+              symboltoken: quote.symboltoken,
+              exchange: quote.exchange,
+            ),
           ),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Row(
-              children: [
-                _StockBadge(symbol: quote.symbol),
-                const Spacer(),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 5,
-                    vertical: 2,
-                  ),
-                  decoration: BoxDecoration(
-                    color: scheme.surfaceContainerHighest.withValues(
-                      alpha: 0.6,
-                    ),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Text(
-                    quote.exchange,
-                    style: TextStyle(
-                      fontSize: 9,
-                      color: scheme.onSurface.withValues(alpha: 0.6),
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 0.4,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 10),
+            StockLogo(symbol: quote.symbol, exchange: quote.exchange, size: 34),
+            const Spacer(),
             Text(
               companyNameFor(quote.symbol),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
+              style: t.titleSmall?.copyWith(fontWeight: FontWeight.w700),
             ),
             const SizedBox(height: 4),
             PriceFlash(
               price: ltp,
               child: Text(
-                ltp != null ? '₹${ltp.toStringAsFixed(2)}' : '—',
-                style: const TextStyle(
-                  fontWeight: FontWeight.w700,
-                  fontSize: 16,
+                ltp != null ? formatInr(ltp) : '—',
+                maxLines: 1,
+                style: t.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w800,
                   letterSpacing: -0.3,
+                  fontFeatures: const [FontFeature.tabularFigures()],
                 ),
               ),
             ),
             const SizedBox(height: 2),
-            Row(
-              children: [
-                Icon(
-                  isUp ? Icons.arrow_drop_up : Icons.arrow_drop_down,
-                  color: color,
-                  size: 16,
-                ),
-                Flexible(
-                  child: Text(
-                    changePct != null
-                        ? '${isUp ? '+' : ''}${changePct.toStringAsFixed(2)}%'
-                        : '—',
-                    style: TextStyle(
-                      color: color,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 12,
-                    ),
-                  ),
-                ),
-              ],
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: DayChange(change: change, percent: changePct),
             ),
           ],
         ),
@@ -155,87 +114,40 @@ class _StockCard extends ConsumerWidget {
   }
 }
 
-class _StockBadge extends StatelessWidget {
-  const _StockBadge({required this.symbol});
-  final String symbol;
-
-  @override
-  Widget build(BuildContext context) {
-    final letter = symbol.isNotEmpty ? symbol[0] : '?';
-    final color = _hashColor(symbol);
-    return Container(
-      width: 30,
-      height: 30,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.18),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Text(
-        letter,
-        style: TextStyle(
-          color: color,
-          fontWeight: FontWeight.w800,
-          fontSize: 14,
-        ),
-      ),
-    );
-  }
-}
-
-const _badgeColors = [
-  Color(0xFF6366F1),
-  Color(0xFFEC4899),
-  Color(0xFFF59E0B),
-  Color(0xFF10B981),
-  Color(0xFF06B6D4),
-  Color(0xFF8B5CF6),
-  Color(0xFFEF4444),
-  Color(0xFF14B8A6),
-];
-
-Color _hashColor(String s) {
-  var h = 0;
-  for (final c in s.codeUnits) {
-    h = (h * 31 + c) & 0x7FFFFFFF;
-  }
-  return _badgeColors[h % _badgeColors.length];
-}
-
-class _SkeletonCarousel extends StatelessWidget {
-  const _SkeletonCarousel();
+class _SkeletonRail extends StatelessWidget {
+  const _SkeletonRail();
 
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return ListView.separated(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpace.md),
       scrollDirection: Axis.horizontal,
-      itemCount: 5,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: 4,
       separatorBuilder: (_, _) => const SizedBox(width: 10),
       itemBuilder: (_, _) => Container(
-        width: 168,
+        width: _cardWidth,
         decoration: BoxDecoration(
-          color: scheme.surfaceContainerHighest.withValues(alpha: 0.3),
-          borderRadius: BorderRadius.circular(16),
+          color: scheme.surfaceContainerHighest.withValues(alpha: 0.35),
+          borderRadius: BorderRadius.circular(AppRadius.md),
         ),
       ),
     );
   }
 }
 
-class _ErrorState extends StatelessWidget {
-  const _ErrorState();
+class _RailMessage extends StatelessWidget {
+  const _RailMessage(this.text);
+  final String text;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Text(
-        'Stocks unavailable',
-        style: TextStyle(
-          color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
-        ),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpace.md),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Text(text, style: Theme.of(context).textTheme.bodySmall),
       ),
     );
   }

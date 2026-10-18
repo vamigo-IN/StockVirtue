@@ -7,7 +7,7 @@ import '../../../data/models/tick.dart';
 import '../../../data/models/watchlist.dart';
 import '../../../widgets/error_retry_view.dart';
 import '../../../widgets/fno_badge.dart';
-import '../../../widgets/ui/symbol_avatar.dart';
+import '../../../widgets/ui/stock_logo.dart';
 import '../../market/screens/stock_search_screen.dart';
 import '../../symbol/screens/symbol_detail_screen.dart';
 import '../../ticks/ticks_providers.dart';
@@ -28,6 +28,16 @@ class WatchlistDetailScreen extends ConsumerStatefulWidget {
 
 class _WatchlistDetailScreenState
     extends ConsumerState<WatchlistDetailScreen> {
+  /// Read once while mounted — `ref` is off-limits in dispose(), where
+  /// the subscriptions are released.
+  late final TicksService _ticks;
+
+  @override
+  void initState() {
+    super.initState();
+    _ticks = ref.read(ticksServiceProvider);
+  }
+
   List<TickSubscription> _currentSubs = const [];
 
   /// When non-null, this overrides the watchlist's items for one render
@@ -43,7 +53,7 @@ class _WatchlistDetailScreenState
     final desired = items
         .map((i) => TickSubscription(symbol: i.symbol, exchange: i.exchange))
         .toList();
-    final service = ref.read(ticksServiceProvider);
+    final service = _ticks;
     final existingKeys =
         _currentSubs.map((s) => '${s.exchange}:${s.symbol}').toSet();
     final desiredKeys =
@@ -62,7 +72,7 @@ class _WatchlistDetailScreenState
   @override
   void dispose() {
     if (_currentSubs.isNotEmpty) {
-      ref.read(ticksServiceProvider).unsubscribe(_currentSubs);
+      _ticks.unsubscribe(_currentSubs);
     }
     super.dispose();
   }
@@ -391,7 +401,11 @@ class _Row extends ConsumerWidget {
                 value: isSelected,
                 onChanged: (_) => onToggleSelect(),
               )
-            : SymbolAvatar(symbol: item.symbol, size: 38),
+            : StockLogo(
+                symbol: item.symbol,
+                exchange: item.exchange,
+                size: 38,
+              ),
         title: Row(
           children: [
             Expanded(

@@ -21,13 +21,23 @@ class IndicesScreen extends ConsumerStatefulWidget {
 }
 
 class _IndicesScreenState extends ConsumerState<IndicesScreen> {
+  /// Read once while mounted — `ref` is off-limits in dispose(), where
+  /// the subscriptions are released.
+  late final TicksService _ticks;
+
+  @override
+  void initState() {
+    super.initState();
+    _ticks = ref.read(ticksServiceProvider);
+  }
+
   List<TickSubscription> _subs = const [];
 
   void _sync(List<FeedQuote> quotes) {
     final desired = quotes
         .map((q) => TickSubscription(symbol: q.symbol, exchange: q.exchange))
         .toList();
-    final service = ref.read(ticksServiceProvider);
+    final service = _ticks;
     final existing = _subs.map((s) => '${s.exchange}:${s.symbol}').toSet();
     final wanted = desired.map((s) => '${s.exchange}:${s.symbol}').toSet();
     final add = desired
@@ -44,7 +54,7 @@ class _IndicesScreenState extends ConsumerState<IndicesScreen> {
   @override
   void dispose() {
     if (_subs.isNotEmpty) {
-      ref.read(ticksServiceProvider).unsubscribe(_subs);
+      _ticks.unsubscribe(_subs);
     }
     super.dispose();
   }

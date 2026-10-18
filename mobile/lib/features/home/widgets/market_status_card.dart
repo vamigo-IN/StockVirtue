@@ -1,28 +1,31 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/design/tokens.dart';
 import '../../../core/market_hours.dart';
+import '../../../widgets/ui/market_widgets.dart';
 
-/// Market hours / holidays card. NSE & BSE equity trading runs 09:15–15:30 IST
-/// with a 09:00–09:15 pre-open auction. The card refreshes its open/closed
-/// state on a 1-second timer so the countdown stays smooth.
-class MarketStatusCard extends ConsumerStatefulWidget {
+/// Compact market-status row: NSE/BSE session state with a countdown, the
+/// MCX evening session when commodities are trading after equities close,
+/// and the holiday calendar one tap away. Equity trading runs 09:15–15:30
+/// IST with a 09:00–09:15 pre-open auction. Minute-resolution countdowns
+/// only need a slow refresh, so the row re-renders every 15 seconds.
+class MarketStatusCard extends StatefulWidget {
   const MarketStatusCard({super.key});
 
   @override
-  ConsumerState<MarketStatusCard> createState() => _MarketStatusCardState();
+  State<MarketStatusCard> createState() => _MarketStatusCardState();
 }
 
-class _MarketStatusCardState extends ConsumerState<MarketStatusCard> {
+class _MarketStatusCardState extends State<MarketStatusCard> {
   Timer? _ticker;
   DateTime _now = DateTime.now();
 
   @override
   void initState() {
     super.initState();
-    _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
+    _ticker = Timer.periodic(const Duration(seconds: 15), (_) {
       if (mounted) setState(() => _now = DateTime.now());
     });
   }
@@ -36,359 +39,119 @@ class _MarketStatusCardState extends ConsumerState<MarketStatusCard> {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
+    final t = Theme.of(context).textTheme;
+    final m = context.market;
     final ist = istNow(_now);
     final state = marketState(ist);
-    final nextEvent = _nextEventFor(ist);
+    final mcxOpen = isMarketOpen(ist, 'MCX');
+    final color = switch (state.kind) {
+      MarketStateKind.open => m.up,
+      MarketStateKind.preOpen => m.warning,
+      MarketStateKind.holiday => m.violet,
+      MarketStateKind.closed => scheme.outline,
+    };
+    final title = switch (state.kind) {
+      MarketStateKind.open => 'Market open',
+      MarketStateKind.preOpen => 'Pre-open session',
+      MarketStateKind.holiday => 'Market holiday',
+      MarketStateKind.closed => 'Market closed',
+    };
+    // After 15:30 the equity session is shut but MCX trades till late.
+    final mcxLine = !state.isOpen && mcxOpen
+        ? 'MCX commodities open till '
+            '${_clock12(commodityCloseMinutes(ist))}'
+        : null;
+
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-        decoration: BoxDecoration(
-          color: scheme.surfaceContainerHighest.withValues(alpha: 0.4),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: scheme.outlineVariant.withValues(alpha: 0.3),
-          ),
-        ),
-        child: Column(
+      padding: const EdgeInsets.symmetric(horizontal: AppSpace.md),
+      child: AppCard(
+        radius: AppRadius.md,
+        padding: const EdgeInsets.fromLTRB(14, 10, 4, 10),
+        child: Row(
           children: [
-            Row(
-              children: [
-                _StatusDot(state: state),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Flexible(
-                            child: Text(
-                              state.label,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: state.color,
-                                fontWeight: FontWeight.w700,
-                                fontSize: 14,
-                                letterSpacing: 0.3,
-                              ),
-                            ),
-                          ),
-                          // Real "LIVE" cue — only while the regular session
-                          // is actually open (not pre-open / closed / holiday).
-                          if (state.isOpen) ...[
-                            const SizedBox(width: 6),
-                            const _LivePill(),
-                          ],
-                        ],
-                      ),
-                      const SizedBox(height: 3),
-                      Text(
-                        nextEvent,
-                        style: TextStyle(
-                          color: scheme.onSurface.withValues(alpha: 0.65),
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
+            _StatusDot(color: color, glow: state.isOpen),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text.rich(
+                    TextSpan(
+                      children: [
+                        TextSpan(
+                          text: title,
+                          style: TextStyle(color: state.isOpen ? color : null),
                         ),
+                        TextSpan(
+                          text: '  NSE · BSE',
+                          style: t.labelSmall?.copyWith(
+                            color: scheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ],
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: t.titleSmall?.copyWith(fontWeight: FontWeight.w700),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    _nextEventFor(ist),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: t.bodySmall,
+                  ),
+                  if (mcxLine != null) ...[
+                    const SizedBox(height: 2),
+                    Text(
+                      mcxLine,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: t.bodySmall?.copyWith(
+                        color: m.gold,
+                        fontWeight: FontWeight.w600,
                       ),
-                    ],
-                  ),
-                ),
-                _ClockChip(istNow: ist),
-              ],
+                    ),
+                  ],
+                ],
+              ),
             ),
-            const SizedBox(height: 14),
-            Container(
-              height: 1,
-              color: scheme.outlineVariant.withValues(alpha: 0.2),
-            ),
-            const SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: _MetaTile(
-                    icon: Icons.schedule,
-                    label: 'Hours',
-                    value: '9:15 – 3:30 PM',
-                    color: const Color(0xFF06B6D4),
-                  ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(child: _HolidaysTile(istNow: ist)),
-              ],
+            TextButton.icon(
+              onPressed: () => _showHolidaysSheet(context),
+              icon: const Icon(Icons.event_note_rounded, size: 18),
+              label: const Text('Holidays'),
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-/// Maps the pure-Dart [MarketStateKind] into the Material colours this
-/// widget uses for the dot, label, and live-glow halo. Kept here so the
-/// shared `market_hours.dart` stays free of Flutter imports.
-extension _MarketStateColor on MarketState {
-  Color get color => switch (kind) {
-        MarketStateKind.open => const Color(0xFF22C55E),
-        MarketStateKind.preOpen => const Color(0xFFF59E0B),
-        MarketStateKind.holiday => const Color(0xFFEC4899),
-        MarketStateKind.closed => const Color(0xFF94A3B8),
-      };
-}
-
-/// Small green "LIVE" pill — rendered only while the regular session is open.
-class _LivePill extends StatelessWidget {
-  const _LivePill();
-
-  @override
-  Widget build(BuildContext context) {
-    const green = Color(0xFF22C55E);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(
-        color: green.withValues(alpha: 0.16),
-        borderRadius: BorderRadius.circular(4),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 5,
-            height: 5,
-            decoration: const BoxDecoration(color: green, shape: BoxShape.circle),
-          ),
-          const SizedBox(width: 4),
-          const Text(
-            'LIVE',
-            style: TextStyle(
-              color: green,
-              fontSize: 8.5,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 0.6,
-            ),
-          ),
-        ],
       ),
     );
   }
 }
 
 class _StatusDot extends StatelessWidget {
-  const _StatusDot({required this.state});
-  final MarketState state;
+  const _StatusDot({required this.color, required this.glow});
+  final Color color;
+  final bool glow;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 36,
-      height: 36,
+      width: 34,
+      height: 34,
       alignment: Alignment.center,
       decoration: BoxDecoration(
-        color: state.color.withValues(alpha: 0.18),
-        borderRadius: BorderRadius.circular(10),
+        color: color.withValues(alpha: 0.14),
+        shape: BoxShape.circle,
       ),
       child: Container(
         width: 10,
         height: 10,
         decoration: BoxDecoration(
-          color: state.color,
+          color: color,
           shape: BoxShape.circle,
-          boxShadow: state.isOpen
-              ? [
-                  BoxShadow(
-                    color: state.color.withValues(alpha: 0.6),
-                    blurRadius: 8,
-                  ),
-                ]
+          boxShadow: glow
+              ? [BoxShadow(color: color.withValues(alpha: 0.6), blurRadius: 8)]
               : null,
-        ),
-      ),
-    );
-  }
-}
-
-class _ClockChip extends StatelessWidget {
-  const _ClockChip({required this.istNow});
-  final DateTime istNow;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final h = istNow.hour % 12 == 0 ? 12 : istNow.hour % 12;
-    final m = istNow.minute.toString().padLeft(2, '0');
-    final s = istNow.second.toString().padLeft(2, '0');
-    final ampm = istNow.hour >= 12 ? 'PM' : 'AM';
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: scheme.surface.withValues(alpha: 0.6),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: scheme.outlineVariant.withValues(alpha: 0.3)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          Text(
-            '$h:$m:$s $ampm',
-            style: const TextStyle(
-              fontWeight: FontWeight.w700,
-              fontSize: 12,
-              letterSpacing: 0.3,
-            ),
-          ),
-          Text(
-            'IST',
-            style: TextStyle(
-              fontSize: 9,
-              color: scheme.onSurface.withValues(alpha: 0.55),
-              fontWeight: FontWeight.w600,
-              letterSpacing: 0.4,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _MetaTile extends StatelessWidget {
-  const _MetaTile({
-    required this.icon,
-    required this.label,
-    required this.value,
-    required this.color,
-  });
-  final IconData icon;
-  final String label;
-  final String value;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
-      decoration: BoxDecoration(
-        color: scheme.surface.withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 26,
-            height: 26,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.18),
-              borderRadius: BorderRadius.circular(7),
-            ),
-            child: Icon(icon, color: color, size: 14),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 10,
-                    color: scheme.onSurface.withValues(alpha: 0.55),
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 0.3,
-                  ),
-                ),
-                const SizedBox(height: 1),
-                Text(
-                  value,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _HolidaysTile extends StatelessWidget {
-  const _HolidaysTile({required this.istNow});
-  final DateTime istNow;
-
-  @override
-  Widget build(BuildContext context) {
-    final upcoming = upcomingHoliday(istNow);
-    return InkWell(
-      borderRadius: BorderRadius.circular(10),
-      onTap: () => _showHolidaysSheet(context),
-      child: Ink(
-        padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.5),
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 26,
-              height: 26,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: const Color(0xFFEC4899).withValues(alpha: 0.18),
-                borderRadius: BorderRadius.circular(7),
-              ),
-              child: const Icon(
-                Icons.event_busy,
-                color: Color(0xFFEC4899),
-                size: 14,
-              ),
-            ),
-            const SizedBox(width: 8),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Next holiday',
-                    style: TextStyle(
-                      fontSize: 10,
-                      color: Theme.of(
-                        context,
-                      ).colorScheme.onSurface.withValues(alpha: 0.55),
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: 0.3,
-                    ),
-                  ),
-                  const SizedBox(height: 1),
-                  Text(
-                    upcoming == null
-                        ? 'All done for ${istNow.year}'
-                        : '${_fmtDate(upcoming.date)} · ${upcoming.name}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Icon(
-              Icons.chevron_right,
-              size: 14,
-              color: Theme.of(
-                context,
-              ).colorScheme.onSurface.withValues(alpha: 0.5),
-            ),
-          ],
         ),
       ),
     );
@@ -557,42 +320,37 @@ String _dayName(int weekday) {
 
 // ─── Market state ───────────────────────────────────────────────────────
 
-/// Human-readable countdown / next-open label for the [MarketState] row.
-/// The status itself comes from [marketState]; this helper just turns the
-/// kind into a sentence with a live-ticking countdown when applicable.
+/// "11:30 PM" for minutes after IST midnight.
+String _clock12(int minutes) {
+  final h24 = minutes ~/ 60;
+  final h = h24 % 12 == 0 ? 12 : h24 % 12;
+  final m = (minutes % 60).toString().padLeft(2, '0');
+  return '$h:$m ${h24 >= 12 ? 'PM' : 'AM'}';
+}
+
+/// "2h 15m" / "7m" — rounded up, so the last minute reads "1m", not "0m".
+String _countdown(int seconds) {
+  final mins = (seconds / 60).ceil();
+  final h = mins ~/ 60;
+  final m = mins % 60;
+  return h > 0 ? '${h}h ${m}m' : '${m}m';
+}
+
+/// One-line "what's next" for the status row.
 String _nextEventFor(DateTime ist) {
   final state = marketState(ist);
-
+  final nowSec = (ist.hour * 60 + ist.minute) * 60 + ist.second;
   switch (state.kind) {
     case MarketStateKind.open:
-      final totalSeconds =
-          ((15 * 60 + 30) * 60) -
-          ((ist.hour * 60 + ist.minute) * 60 + ist.second);
-
-      final h = totalSeconds ~/ 3600;
-      final m = (totalSeconds % 3600) ~/ 60;
-      final s = totalSeconds % 60;
-
-      return 'Closes in '
-          '${h > 0 ? '${h}h ' : ''}'
-          '${m}m ${s}s';
-
+      return 'Closes in ${_countdown((15 * 60 + 30) * 60 - nowSec)} · '
+          'at 3:30 PM';
     case MarketStateKind.preOpen:
-      final totalSeconds =
-          ((9 * 60 + 15) * 60) -
-          ((ist.hour * 60 + ist.minute) * 60 + ist.second);
-
-      final h = totalSeconds ~/ 3600;
-      final m = (totalSeconds % 3600) ~/ 60;
-      final s = totalSeconds % 60;
-
-      return 'Regular session in '
-          '${h > 0 ? '${h}h ' : ''}'
-          '${m}m ${s}s';
-
+      return 'Pre-open auction · trading starts in '
+          '${_countdown((9 * 60 + 15) * 60 - nowSec)}';
     case MarketStateKind.holiday:
-      return todayHoliday(ist) ?? 'Market holiday';
-
+      final name = todayHoliday(ist);
+      final next = _nextOpenLabel(ist);
+      return name == null ? next : '$name · $next';
     case MarketStateKind.closed:
       return _nextOpenLabel(ist);
   }

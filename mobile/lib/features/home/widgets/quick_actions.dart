@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../../core/design/tokens.dart';
+import '../../academy/screens/academy_screen.dart';
 import '../../ipo/screens/ipo_screen.dart';
 import '../../market/screens/commodities_screen.dart';
 import '../../market/screens/indices_screen.dart';
@@ -8,82 +10,81 @@ import '../../market/screens/stock_search_screen.dart';
 import '../../options/screens/fno_landing_screen.dart';
 import '../../orders/screens/basket_screen.dart';
 
+/// Home shortcuts — a tidy 4-column grid instead of a sideways scroller, so
+/// every destination is visible at a glance.
 class QuickActions extends StatelessWidget {
   const QuickActions({super.key});
 
   @override
   Widget build(BuildContext context) {
+    final m = context.market;
+    void open(Widget screen) => Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => screen),
+        );
     final actions = <_QuickAction>[
       _QuickAction(
-        icon: Icons.candlestick_chart_outlined,
+        icon: Icons.candlestick_chart_rounded,
         label: 'Stocks',
-        color: const Color(0xFF22C55E),
-        onTap: () => Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const StockSearchScreen()),
-        ),
+        color: m.up,
+        onTap: () => open(const StockSearchScreen()),
       ),
       _QuickAction(
-        icon: Icons.swap_calls_outlined,
+        icon: Icons.swap_calls_rounded,
         label: 'F&O',
-        color: const Color(0xFF6366F1),
-        onTap: () => Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const FnoLandingScreen()),
-        ),
+        color: m.violet,
+        onTap: () => open(const FnoLandingScreen()),
       ),
       _QuickAction(
-        icon: Icons.show_chart,
+        icon: Icons.show_chart_rounded,
         label: 'Indices',
-        color: const Color(0xFFF59E0B),
-        onTap: () => Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const IndicesScreen()),
-        ),
+        color: m.info,
+        onTap: () => open(const IndicesScreen()),
       ),
       _QuickAction(
-        icon: Icons.diamond_outlined,
+        icon: Icons.diamond_rounded,
         label: 'Commodities',
-        color: const Color(0xFFEAB308),
-        onTap: () => Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const CommoditiesScreen()),
-        ),
+        color: m.gold,
+        onTap: () => open(const CommoditiesScreen()),
       ),
       _QuickAction(
-        icon: Icons.rocket_launch_outlined,
+        icon: Icons.rocket_launch_rounded,
         label: 'IPOs',
-        color: const Color(0xFF8B5CF6),
-        onTap: () => Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const IpoScreen()),
-        ),
-      ),
-      _QuickAction(
-        icon: Icons.radar,
-        label: 'Scanners',
         color: const Color(0xFFEC4899),
-        onTap: () => Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const ScannersScreen()),
-        ),
+        onTap: () => open(const IpoScreen()),
       ),
       _QuickAction(
-        icon: Icons.shopping_basket_outlined,
+        icon: Icons.radar_rounded,
+        label: 'Scanners',
+        color: m.warning,
+        onTap: () => open(const ScannersScreen()),
+      ),
+      _QuickAction(
+        icon: Icons.shopping_basket_rounded,
         label: 'Basket',
         color: const Color(0xFF06B6D4),
-        onTap: () => Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => const BasketScreen()),
-        ),
+        onTap: () => open(const BasketScreen()),
+      ),
+      _QuickAction(
+        icon: Icons.school_rounded,
+        label: 'Academy',
+        color: m.down,
+        onTap: () => open(const AcademyScreen()),
       ),
     ];
-    // Horizontally scrollable so the row scales past the ~5 that fit on a
-    // phone width without cramping labels like "Commodities".
-    return SizedBox(
-      height: 78,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        itemCount: actions.length,
-        separatorBuilder: (_, _) => const SizedBox(width: 8),
-        itemBuilder: (_, i) => SizedBox(
-          width: 78,
-          child: _ActionTile(action: actions[i]),
-        ),
+    const perRow = 4;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      child: Column(
+        children: [
+          for (var r = 0; r < actions.length; r += perRow)
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                for (final a in actions.skip(r).take(perRow))
+                  Expanded(child: _ActionTile(action: a)),
+              ],
+            ),
+        ],
       ),
     );
   }
@@ -108,41 +109,31 @@ class _ActionTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+    final t = Theme.of(context).textTheme;
     return InkWell(
-      borderRadius: BorderRadius.circular(14),
+      borderRadius: BorderRadius.circular(AppRadius.sm),
       onTap: action.onTap,
-      child: Ink(
-        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 6),
-        decoration: BoxDecoration(
-          color: scheme.surfaceContainerHighest.withValues(alpha: 0.4),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: scheme.outlineVariant.withValues(alpha: 0.3),
-          ),
-        ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 2),
         child: Column(
           children: [
             Container(
-              width: 36,
-              height: 36,
+              width: 48,
+              height: 48,
               alignment: Alignment.center,
               decoration: BoxDecoration(
-                color: action.color.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(10),
+                color: action.color.withValues(alpha: 0.13),
+                borderRadius: BorderRadius.circular(AppRadius.sm + 2),
               ),
-              child: Icon(action.icon, color: action.color, size: 18),
+              child: Icon(action.icon, color: action.color, size: 22),
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 7),
             Text(
               action.label,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-              ),
+              style: t.labelMedium?.copyWith(fontWeight: FontWeight.w600),
             ),
           ],
         ),

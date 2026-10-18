@@ -13,13 +13,11 @@ import {
   MultiQuoteFetched,
   OIBuildupType,
 } from '../smartapi/smartapi.types';
-import {
-  commoditySpec,
-  isContractSupported,
-} from '../common/contract-specs';
+import { commoditySpec } from '../common/contract-specs';
 import {
   futuresMarginBps,
   isFutureInstrumentType,
+  isMarginTraded,
 } from '../common/margin';
 import { CAP_LISTS, CapSegment } from './cap-segments';
 import { CompanyDirectoryService } from './company-directory.service';
@@ -246,12 +244,15 @@ export class MarketService {
       hasOptions: this.scripMaster.hasLiveOptions(underlying),
       hasFutures: this.scripMaster.hasLiveFutures(underlying),
       isFuture,
-      marginRatePct: isFuture
+      // Equity F&O futures trade on margin; commodities trade by the unit at
+      // full value (marginRatePct null), so the ticket prices them like cash.
+      onMargin: isMarginTraded(inst.instrumentType, inst.exchange),
+      marginRatePct: isMarginTraded(inst.instrumentType, inst.exchange)
         ? Number(futuresMarginBps(inst.exchange, inst.name)) / 100
         : null,
-      lotLabel: spec?.lotLabel ?? null,
+      // Commodities: what one unit is ("10 g") and the real exchange lot.
       quoteUnit: spec?.quoteUnit ?? null,
-      contractSupported: isContractSupported(inst.exchange, inst.name),
+      exchangeLot: spec?.exchangeLot ?? null,
     };
   }
 
@@ -745,10 +746,6 @@ export class MarketService {
       const changePct =
         q?.percentChange ?? (close > 0 ? (change / close) * 100 : 0);
       const spec = commoditySpec(inst.exchange, inst.name);
-      const marginRatePct =
-        Number(futuresMarginBps(inst.exchange, inst.name)) / 100;
-      // lotSize is in quotation units, so this is the real MCX contract value.
-      const contractValue = ltp * inst.lotSize;
       return {
         name: meta.name,
         label: spec?.label ?? meta.label,
@@ -756,9 +753,10 @@ export class MarketService {
         tradingsymbol: inst.symbol,
         symboltoken: inst.token,
         exchange: inst.exchange,
+        // Traded by the unit (1 = the quoted quantity), no exchange lots.
         lotSize: inst.lotSize,
-        lotLabel: spec?.lotLabel ?? null,
         quoteUnit: spec?.quoteUnit ?? meta.unit,
+        exchangeLot: spec?.exchangeLot ?? null,
         expiry: inst.expiry,
         ltp,
         open: q?.open ?? 0,
@@ -767,9 +765,6 @@ export class MarketService {
         close,
         change,
         changePct,
-        contractValue,
-        marginRatePct,
-        marginPerLot: (contractValue * marginRatePct) / 100,
       };
     });
     return { results, fetchedAt: new Date().toISOString() };

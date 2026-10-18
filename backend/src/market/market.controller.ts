@@ -5,8 +5,10 @@ import {
   Param,
   Query,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Throttle } from '@nestjs/throttler';
 import { cacheJson } from '../common/redis-cache';
+import { AppConfig } from '../config/configuration';
 import { RedisService } from '../redis/redis.service';
 import { Exchange, isExchange } from '../common/exchange';
 import {
@@ -52,6 +54,7 @@ export class MarketController {
     private readonly holidays: HolidaysService,
     private readonly redis: RedisService,
     private readonly directory: CompanyDirectoryService,
+    private readonly config: ConfigService<AppConfig, true>,
   ) {}
 
   /// Ticker → full company name for every NSE-listed company (mainboard +
@@ -62,10 +65,20 @@ export class MarketController {
   @Get('company-names')
   companyNames(@Query('since') since?: string) {
     const snap = this.directory.snapshot();
+    // Where the app loads company logos from ({symbol} = NSE ticker). Served
+    // with the directory so the provider can change without an app update.
+    const logoUrlTemplate = this.config.get('logoUrlTemplate', {
+      infer: true,
+    });
     if (since && since === `${snap.updatedAt}#${snap.count}`) {
-      return { unchanged: true, updatedAt: snap.updatedAt, count: snap.count };
+      return {
+        unchanged: true,
+        updatedAt: snap.updatedAt,
+        count: snap.count,
+        logoUrlTemplate,
+      };
     }
-    return snap;
+    return { ...snap, logoUrlTemplate };
   }
 
   /// NSE+BSE trading holidays. The service tries the live NSE

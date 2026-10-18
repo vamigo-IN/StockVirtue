@@ -40,10 +40,10 @@ IconData _iconOf(_Group g) => switch (g) {
     };
 
 /// MCX commodities market — live rates for the popular contracts (bullion,
-/// energy, base metals), each resolved to its front-month future, valued the
-/// way MCX values them: one GOLD lot is 1 kg priced per 10 g, so a lot is
-/// worth price × 100. Futures trade on margin, so each row also shows what
-/// one lot actually blocks from your wallet. Tap a row to trade it.
+/// energy, base metals), each resolved to its front-month future. The
+/// simulator trades them by the unit, like shares: one unit is the quantity
+/// the price is quoted for (10 g of gold, a barrel of crude), bought at full
+/// value — no exchange lots, no margin. Tap a row to trade it.
 class CommoditiesScreen extends ConsumerStatefulWidget {
   const CommoditiesScreen({super.key});
 
@@ -52,6 +52,16 @@ class CommoditiesScreen extends ConsumerStatefulWidget {
 }
 
 class _CommoditiesScreenState extends ConsumerState<CommoditiesScreen> {
+  /// Read once while mounted — `ref` is off-limits in dispose(), where
+  /// the subscriptions are released.
+  late final TicksService _ticks;
+
+  @override
+  void initState() {
+    super.initState();
+    _ticks = ref.read(ticksServiceProvider);
+  }
+
   List<TickSubscription> _subs = const [];
   _Group _group = _Group.all;
 
@@ -65,7 +75,7 @@ class _CommoditiesScreenState extends ConsumerState<CommoditiesScreen> {
       byKey['${sub.exchange}:${sub.symbol}'] = sub;
     }
     final desired = byKey.values.toList();
-    final service = ref.read(ticksServiceProvider);
+    final service = _ticks;
     final wanted = byKey.keys.toSet();
     final existing = _subs.map((s) => '${s.exchange}:${s.symbol}').toSet();
     final add = desired
@@ -82,7 +92,7 @@ class _CommoditiesScreenState extends ConsumerState<CommoditiesScreen> {
   @override
   void dispose() {
     if (_subs.isNotEmpty) {
-      ref.read(ticksServiceProvider).unsubscribe(_subs);
+      _ticks.unsubscribe(_subs);
     }
     super.dispose();
   }
@@ -133,14 +143,14 @@ class _CommoditiesScreenState extends ConsumerState<CommoditiesScreen> {
                 const SizedBox(height: 6),
                 const InfoBanner(
                   icon: Icons.school_outlined,
-                  title: 'How commodity futures are priced',
+                  title: 'How commodity trading works here',
                   message:
-                      'Prices are quoted per unit (gold per 10 g, crude per '
-                      'barrel) but one lot is much bigger — a GOLD lot is 1 kg, '
-                      'so it is worth price × 100. You don’t pay that full '
-                      'value: like a real broker, only the margin shown is '
-                      'blocked and your P&L moves with every tick. Contracts '
-                      'settle automatically on expiry.',
+                      'Commodities trade by the unit, just like shares. One '
+                      'unit is the quantity the price is quoted for — 10 g of '
+                      'gold, 1 kg of silver, 1 barrel of crude — and you pay '
+                      'its full value. No lots, no margin. Live MCX prices; '
+                      'open positions settle automatically at the contract '
+                      'expiry.',
                 ),
               ],
             );
@@ -192,7 +202,7 @@ class _SessionHero extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  'Front-month contracts · trade on margin · 09:00–$close IST',
+                  'Live MCX prices · trade by the unit · 09:00–$close IST',
                   style: t.bodySmall?.copyWith(
                     color: Colors.white.withValues(alpha: 0.75),
                   ),
@@ -345,7 +355,11 @@ class _CommodityTile extends ConsumerWidget {
                     style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800),
                   ),
                   const SizedBox(height: 4),
-                  ChangePill(percent: changePct, compact: true),
+                  ChangePill(
+                    percent: changePct,
+                    absolute: change,
+                    compact: true,
+                  ),
                 ],
               ),
             ],
@@ -361,20 +375,20 @@ class _CommodityTile extends ConsumerWidget {
               children: [
                 Expanded(
                   child: StatTile(
-                    label: 'Per ${c.quoteUnit.isEmpty ? 'unit' : c.quoteUnit}',
-                    value: c.lotLabel != null ? '1 lot = ${c.lotLabel}' : 'Lot ${c.lotSize}',
+                    label: '1 unit',
+                    value: c.quoteUnit.isEmpty ? '—' : c.quoteUnit,
                   ),
                 ),
                 Expanded(
                   child: StatTile(
-                    label: 'Lot value',
-                    value: ltp > 0 ? formatInrCompact(c.contractValueAt(ltp)) : '—',
+                    label: 'Expiry',
+                    value: _prettyExpiry(c.expiry),
                   ),
                 ),
                 Expanded(
                   child: StatTile(
-                    label: 'Margin (${c.marginRatePct.toStringAsFixed(0)}%)',
-                    value: ltp > 0 ? formatInrCompact(c.marginPerLotAt(ltp)) : '—',
+                    label: 'Min. buy',
+                    value: ltp > 0 ? formatInrCompact(ltp) : '—',
                     valueColor: scheme.primary,
                     crossAxisAlignment: CrossAxisAlignment.end,
                   ),
@@ -386,6 +400,15 @@ class _CommodityTile extends ConsumerWidget {
       ),
     );
   }
+}
+
+/// "04DEC2026" → "04 Dec"; anything else comes back as-is ("—" if empty).
+String _prettyExpiry(String? raw) {
+  if (raw == null || raw.isEmpty) return '—';
+  final m = RegExp(r'^(\d{1,2})([A-Za-z]{3})\d{2,4}$').firstMatch(raw);
+  if (m == null) return raw;
+  final mon = m.group(2)!;
+  return '${m.group(1)} ${mon[0].toUpperCase()}${mon.substring(1).toLowerCase()}';
 }
 
 class _EmptyCommodities extends StatelessWidget {
