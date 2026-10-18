@@ -2,7 +2,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/company_names.dart';
 import '../../../core/error_mapper.dart';
+import '../../../widgets/ui/skeletons.dart';
+import '../../../widgets/ui/symbol_avatar.dart';
 import '../../home/home_providers.dart';
 import '../../home/indices_universe.dart';
 import '../../home/recently_viewed_storage.dart';
@@ -72,14 +75,14 @@ class _StockSearchScreenState extends ConsumerState<StockSearchScreen> {
       ref.invalidate(watchlistsListProvider);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Added $symbol')),
+        SnackBar(content: Text('Added ${companyNameFor(symbol)} to watchlist')),
       );
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Failed: $e'),
-          backgroundColor: Colors.redAccent,
+          content: Text(friendlyError(e, context: 'watchlist')),
+          backgroundColor: Theme.of(context).colorScheme.error,
         ),
       );
     } finally {
@@ -128,8 +131,11 @@ class _StockSearchScreenState extends ConsumerState<StockSearchScreen> {
           controller: _controller,
           autofocus: true,
           decoration: InputDecoration(
-            hintText: 'Search by name or symbol',
+            hintText: 'Search “Kotak”, “Tata Motors”, “NIFTY”…',
             border: InputBorder.none,
+            enabledBorder: InputBorder.none,
+            focusedBorder: InputBorder.none,
+            filled: false,
             hintStyle: TextStyle(
               color: Theme.of(context)
                   .colorScheme
@@ -152,19 +158,20 @@ class _StockSearchScreenState extends ConsumerState<StockSearchScreen> {
               future: _resultsFuture,
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
+                  return const SkeletonList(rows: 7);
                 }
                 if (snapshot.hasError) {
                   return _Hint(
                     icon: Icons.error_outline,
-                    text: friendlyError(snapshot.error),
+                    text: friendlyError(snapshot.error, context: 'search'),
                   );
                 }
                 final results = snapshot.data ?? const [];
                 if (results.isEmpty) {
                   return _Hint(
                     icon: Icons.search_off,
-                    text: 'No matches for "$_query"',
+                    text: 'No stocks match “$_query”.\n'
+                        'Try the company name or the NSE symbol.',
                   );
                 }
                 return ListView.separated(
@@ -318,34 +325,17 @@ class _SuggestionTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final color = _hashColor(symbol);
     return ListTile(
       dense: true,
-      leading: Container(
-        width: 36,
-        height: 36,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.18),
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Text(
-          symbol.isNotEmpty ? symbol[0] : '?',
-          style: TextStyle(
-            color: color,
-            fontWeight: FontWeight.w800,
-            fontSize: 14,
-          ),
-        ),
-      ),
+      leading: SymbolAvatar(symbol: symbol, size: 38),
       title: Text(
-        symbol,
+        companyNameFor(symbol),
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),
       ),
       subtitle: Text(
-        '$exchange • $sub',
+        '$symbol · $exchange',
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: TextStyle(
@@ -422,30 +412,17 @@ class _ResultTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final color = _hashColor(result.symbol);
+    // Company name first ("Kotak Mahindra Bank"), ticker underneath — the
+    // way people actually think about a stock.
+    final name = result.companyName ?? companyNameFor(result.symbol);
+    final showTicker = name.toUpperCase() != result.symbol.toUpperCase();
     return ListTile(
-      leading: Container(
-        width: 38,
-        height: 38,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.18),
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Text(
-          result.symbol.isNotEmpty ? result.symbol[0] : '?',
-          style: TextStyle(
-            color: color,
-            fontWeight: FontWeight.w800,
-            fontSize: 15,
-          ),
-        ),
-      ),
+      leading: SymbolAvatar(symbol: result.symbol, size: 40),
       title: Row(
         children: [
           Flexible(
             child: Text(
-              result.symbol,
+              name,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(
@@ -463,7 +440,9 @@ class _ResultTile extends StatelessWidget {
       subtitle: Padding(
         padding: const EdgeInsets.only(top: 2),
         child: Text(
-          '${result.exchange} • ${result.tradingsymbol}',
+          showTicker
+              ? '${result.symbol} · ${result.exchange}'
+              : '${result.exchange} · ${result.tradingsymbol}',
           style: TextStyle(
             fontSize: 12,
             color: scheme.onSurface.withValues(alpha: 0.6),
@@ -483,25 +462,6 @@ class _ResultTile extends StatelessWidget {
       onTap: onTap,
     );
   }
-}
-
-const _badgeColors = [
-  Color(0xFF6366F1),
-  Color(0xFFEC4899),
-  Color(0xFFF59E0B),
-  Color(0xFF10B981),
-  Color(0xFF06B6D4),
-  Color(0xFF8B5CF6),
-  Color(0xFFEF4444),
-  Color(0xFF14B8A6),
-];
-
-Color _hashColor(String s) {
-  var h = 0;
-  for (final c in s.codeUnits) {
-    h = (h * 31 + c) & 0x7FFFFFFF;
-  }
-  return _badgeColors[h % _badgeColors.length];
 }
 
 class _TypeBadge extends StatelessWidget {

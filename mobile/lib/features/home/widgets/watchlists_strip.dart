@@ -19,7 +19,7 @@ class WatchlistsStrip extends ConsumerWidget {
       error: (e, _) => Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16),
         child: Text(
-          '$e',
+          friendlyError(e, context: 'watchlist'),
           style: TextStyle(
             color: Theme.of(context)
                 .colorScheme

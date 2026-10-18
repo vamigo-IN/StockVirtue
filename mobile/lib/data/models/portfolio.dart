@@ -38,6 +38,19 @@ class PortfolioPosition {
   final double unrealizedPnLPct;
   final double realizedPnL;
 
+  /// Futures held on margin: [invested] is the blocked [margin] and the
+  /// position adds only its P&L (not its contract value) to equity.
+  final bool leveraged;
+  final double margin;
+
+  /// Full contract value at the last price — the real exposure.
+  final double contractValue;
+  final String? companyName;
+
+  /// MCX lot in physical units ("1 kg") and the price basis ("10 g").
+  final String? lotLabel;
+  final String? quoteUnit;
+
   const PortfolioPosition({
     required this.symbol,
     required this.tradingsymbol,
@@ -55,6 +68,12 @@ class PortfolioPosition {
     required this.unrealizedPnL,
     required this.unrealizedPnLPct,
     required this.realizedPnL,
+    this.leveraged = false,
+    this.margin = 0,
+    this.contractValue = 0,
+    this.companyName,
+    this.lotLabel,
+    this.quoteUnit,
   });
 
   String get key => '$exchange:$symboltoken:$product';
@@ -81,6 +100,13 @@ class PortfolioPosition {
       unrealizedPnL: (json['unrealizedPnL'] as num).toDouble(),
       unrealizedPnLPct: (json['unrealizedPnLPct'] as num).toDouble(),
       realizedPnL: (json['realizedPnL'] as num).toDouble(),
+      leveraged: json['leveraged'] as bool? ?? false,
+      margin: (json['margin'] as num?)?.toDouble() ?? 0,
+      contractValue: (json['contractValue'] as num?)?.toDouble() ??
+          (json['currentValue'] as num).toDouble(),
+      companyName: json['companyName'] as String?,
+      lotLabel: json['lotLabel'] as String?,
+      quoteUnit: json['quoteUnit'] as String?,
     );
   }
 }
@@ -94,6 +120,9 @@ class PortfolioSummary {
   final double totalEquity;
   final int positionsCount;
 
+  /// Referral bonuses & promos received — money in, not trading profit.
+  final double totalCredits;
+
   const PortfolioSummary({
     required this.invested,
     required this.currentValue,
@@ -102,6 +131,7 @@ class PortfolioSummary {
     required this.totalFeesPaid,
     required this.totalEquity,
     required this.positionsCount,
+    this.totalCredits = 0,
   });
 
   factory PortfolioSummary.fromJson(Map<String, dynamic> json) =>
@@ -113,6 +143,7 @@ class PortfolioSummary {
         totalFeesPaid: (json['totalFeesPaid'] as num?)?.toDouble() ?? 0,
         totalEquity: (json['totalEquity'] as num).toDouble(),
         positionsCount: (json['positionsCount'] as num).toInt(),
+        totalCredits: (json['totalCredits'] as num?)?.toDouble() ?? 0,
       );
 }
 

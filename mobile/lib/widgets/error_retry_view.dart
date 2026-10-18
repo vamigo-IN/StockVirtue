@@ -1,7 +1,9 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 
 import '../core/error_mapper.dart';
+import 'empty_state.dart';
 
 /// Reusable, friendly error state with a Retry button — the standard thing to
 /// render in an `AsyncValue.when(error:)` block instead of dumping the raw
@@ -115,24 +117,39 @@ class ErrorRetryView extends StatelessWidget {
       );
     }
 
+    final tone = notFound
+        ? scheme.onSurfaceVariant
+        : _isConnectivity
+            ? scheme.tertiary
+            : scheme.error;
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 52, color: muted.withValues(alpha: 0.7)),
-            const SizedBox(height: 16),
+            IconDisc(icon: icon, color: tone),
+            const SizedBox(height: 18),
+            Text(
+              notFound
+                  ? 'Nothing here'
+                  : _isConnectivity
+                      ? 'You’re offline'
+                      : 'Something didn’t load',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.titleMedium,
+            ),
+            const SizedBox(height: 6),
             Text(
               message,
               textAlign: TextAlign.center,
               style: Theme.of(context)
                   .textTheme
-                  .titleSmall
-                  ?.copyWith(color: muted, fontWeight: FontWeight.w500),
+                  .bodyMedium
+                  ?.copyWith(color: muted),
             ),
             if (action != null) ...[
-              const SizedBox(height: 20),
+              const SizedBox(height: 22),
               FilledButton.icon(
                 onPressed: action,
                 icon: Icon(actionIcon, size: 18),
@@ -141,7 +158,7 @@ class ErrorRetryView extends StatelessWidget {
             ],
           ],
         ),
-      ),
+      ).animate().fadeIn(duration: 250.ms),
     );
   }
 }

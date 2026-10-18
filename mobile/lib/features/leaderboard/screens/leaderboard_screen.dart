@@ -5,6 +5,8 @@ import '../../../core/money_format.dart';
 import '../../../data/models/leaderboard.dart';
 import '../../../widgets/error_retry_view.dart';
 import '../../../widgets/rank_chip.dart';
+import '../../../widgets/ui/market_widgets.dart';
+import '../../../widgets/ui/skeletons.dart';
 import '../leaderboard_providers.dart';
 
 const _upColor = Color(0xFF22C55E);
@@ -29,7 +31,7 @@ class LeaderboardScreen extends ConsumerWidget {
           await ref.read(leaderboardProvider.future);
         },
         child: data.when(
-          loading: () => const Center(child: CircularProgressIndicator()),
+          loading: () => const SkeletonList(rows: 10),
           error: (e, _) => ErrorRetryView(
             error: e,
             onRetry: () => ref.invalidate(leaderboardProvider),
@@ -76,6 +78,13 @@ class _Body extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
       children: [
         _Header(snap: snap),
+        const SizedBox(height: 12),
+        const InfoBanner(
+          icon: Icons.verified_outlined,
+          message:
+              'Ranked by trading return on the ₹10L starting balance. '
+              'Referral bonuses add to your equity but never to your rank.',
+        ),
         const SizedBox(height: 12),
         if (me != null && !inTop) ...[
           _MeBanner(entry: me),

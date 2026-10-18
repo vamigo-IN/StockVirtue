@@ -239,7 +239,7 @@ class _InviteSheet extends ConsumerWidget {
           error: (e, _) => Padding(
             padding: const EdgeInsets.symmetric(vertical: 28),
             child: Text(
-              "Couldn't load referral stats: $e",
+              friendlyError(e, context: 'referrals'),
               style: TextStyle(
                 color: scheme.onSurface.withValues(alpha: 0.7),
               ),
@@ -261,7 +261,32 @@ class _InviteSheet extends ConsumerWidget {
                   perReferrerBonus: stats.perReferralBonus,
                   perRedemptionBonus: stats.perRedemptionBonus,
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 10),
+                // Fair-play rule, stated up front so nobody is surprised
+                // when a bonus doesn't move their room / leaderboard rank.
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(
+                      Icons.verified_outlined,
+                      size: 14,
+                      color: scheme.onSurface.withValues(alpha: 0.55),
+                    ),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        'Bonuses go straight to your wallet. They never '
+                        'count towards room or leaderboard returns — those '
+                        'measure trading skill only.',
+                        style: TextStyle(
+                          fontSize: 11.5,
+                          color: scheme.onSurface.withValues(alpha: 0.6),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
                 _CodeBlock(code: code),
                 const SizedBox(height: 12),
                 SizedBox(

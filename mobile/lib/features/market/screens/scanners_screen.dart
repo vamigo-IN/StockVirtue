@@ -6,6 +6,7 @@ import '../../../core/money_format.dart';
 import '../../../widgets/error_retry_view.dart';
 import '../../symbol/screens/symbol_detail_screen.dart';
 import '../market_repository.dart';
+import '../../../widgets/ui/skeletons.dart';
 
 enum _ScannerKind { volume, near52High, near52Low }
 
@@ -103,7 +104,7 @@ class _ScannersScreenState extends ConsumerState<ScannersScreen> {
           await ref.read(_scannerProvider(_kind).future);
         },
         child: async.when(
-          loading: () => const Center(child: CircularProgressIndicator()),
+          loading: () => const SkeletonList(),
           error: (e, _) => ErrorRetryView(
             error: e,
             onRetry: () => ref.invalidate(_scannerProvider(_kind)),

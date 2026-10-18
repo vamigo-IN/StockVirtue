@@ -97,11 +97,14 @@ String? _serverMessage(dynamic data) {
 /// while the UI stays human.
 const Map<String, String> _codeMessages = {
   'INSUFFICIENT_FUNDS':
-      'You don’t have enough balance in your wallet for this order.',
+      'Not enough available balance for this order. Try a smaller quantity, '
+      'or cancel a pending order to free up cash.',
   'INSUFFICIENT_MARGIN':
-      'You don’t have enough margin available for this trade.',
+      'Not enough margin for this trade. Futures block a share of the '
+      'contract value per lot — try fewer lots or a mini contract.',
   'INSUFFICIENT_QUANTITY':
-      'You don’t hold enough quantity to place this order.',
+      'You don’t hold enough free quantity to sell. Units locked by open '
+      'orders can’t be sold twice.',
 };
 
 /// Guards against leaking codes / raw exception text to users. Treats

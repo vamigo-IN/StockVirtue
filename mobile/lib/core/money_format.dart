@@ -10,6 +10,25 @@ String formatInr(
   return _full(v, decimals: decimals, sign: sign);
 }
 
+/// Compact Indian notation for big figures on cards: ₹1.64 Cr, ₹16.35 L,
+/// ₹48.2K. Small values fall back to the exact [formatInr].
+String formatInrCompact(double v, {bool sign = false}) {
+  final neg = v < 0;
+  final a = v.abs();
+  final prefix = neg ? '-' : (sign ? '+' : '');
+  String trim(double n, int d) {
+    var s = n.toStringAsFixed(d);
+    if (s.contains('.')) {
+      s = s.replaceFirst(RegExp(r'0+$'), '').replaceFirst(RegExp(r'\.$'), '');
+    }
+    return s;
+  }
+  if (a >= 1e7) return '$prefix₹${trim(a / 1e7, 2)} Cr';
+  if (a >= 1e5) return '$prefix₹${trim(a / 1e5, 2)} L';
+  if (a >= 1e4) return '$prefix₹${trim(a / 1e3, 1)}K';
+  return formatInr(v, sign: sign, decimals: a >= 1000 ? 0 : 2);
+}
+
 /// Like [formatInr] but without the rupee glyph — for compact tables.
 String formatInrPlain(double v, {int decimals = 2}) {
   final s = formatInr(v, decimals: decimals);

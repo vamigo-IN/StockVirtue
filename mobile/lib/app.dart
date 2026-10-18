@@ -8,11 +8,13 @@ import 'core/theme_provider.dart';
 import 'features/auth/auth_controller.dart';
 import 'features/auth/screens/login_screen.dart';
 import 'features/home/screens/shell_screen.dart';
+import 'features/market/company_directory_sync.dart';
 import 'features/onboarding/onboarding_storage.dart';
 import 'features/notifications/push_service.dart';
 import 'features/onboarding/screens/onboarding_screen.dart';
 import 'features/profile/screens/complete_profile_screen.dart';
 import 'features/ticks/ticks_providers.dart';
+import 'widgets/error_retry_view.dart';
 
 class StockVirtueApp extends ConsumerWidget {
   const StockVirtueApp({super.key});
@@ -28,6 +30,8 @@ class StockVirtueApp extends ConsumerWidget {
     // overrides the curated fallback inside market_hours.dart for every
     // subsequent isMarketOpen() check.
     ref.watch(liveMarketHolidaysProvider);
+    // Tops up the bundled company names with any fresh NSE listings.
+    ref.watch(companyDirectorySyncProvider);
     final themeMode =
         ref.watch(themeControllerProvider).value ?? ThemeMode.dark;
     return MaterialApp(
@@ -107,7 +111,15 @@ class _AuthGate extends ConsumerWidget {
     final auth = ref.watch(authControllerProvider);
     return auth.when(
       loading: () => const _SplashScreen(),
-      error: (err, _) => _ErrorScreen(error: err.toString()),
+      error: (err, _) => Scaffold(
+        body: SafeArea(
+          child: ErrorRetryView(
+            error: err,
+            errorContext: 'auth',
+            onRetry: () => ref.invalidate(authControllerProvider),
+          ),
+        ),
+      ),
       data: (user) {
         if (user == null) return const LoginScreen();
         if (!user.profileComplete) return const CompleteProfileScreen();
@@ -143,9 +155,9 @@ class _SplashScreen extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Image.asset(
-              'assets/logo.png',
-              width: 116,
-              height: 116,
+              'assets/brand/logo.png',
+              width: 132,
+              height: 132,
               filterQuality: FilterQuality.medium,
             ),
             const SizedBox(height: 20),
@@ -181,25 +193,3 @@ class _SplashScreen extends StatelessWidget {
   }
 }
 
-class _ErrorScreen extends StatelessWidget {
-  const _ErrorScreen({required this.error});
-  final String error;
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Center(
-            child: Text(
-              'Something went wrong:\n$error',
-              textAlign: TextAlign.center,
-              style: const TextStyle(color: Colors.redAccent),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}

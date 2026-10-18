@@ -345,6 +345,7 @@ model User {
   portfolioSnapshots PortfolioSnapshot[]
   ownedRooms      Room[]       @relation("RoomOwner")
   roomMemberships RoomMember[]
+  walletCredits   WalletCredit[]
   referredBy      User?        @relation("UserReferrals", fields: [referredById], references: [id], onDelete: SetNull)
   referrals       User[]       @relation("UserReferrals")
   achievements    UserAchievement[]
@@ -472,6 +473,32 @@ model Wallet {
   @@map("wallets")
 }
 
+/// Why non-trading money entered a wallet.
+enum WalletCreditKind {
+  REFERRAL_REFERRER // bonus for inviting a friend who redeemed your code
+  REFERRAL_REDEEMED // bonus for redeeming someone else's invite code
+  ADJUSTMENT // operator / promotional credit
+}
+
+/// Append-only ledger of every NON-TRADING credit to a wallet (referral
+/// bonuses, promotional top-ups). Trading P&L never lands here. Returns are
+/// measured on trading performance only, so room and leaderboard maths
+/// subtract the credits that arrived after the point they measure from —
+/// a referral bonus grows the balance but never the "winning %".
+model WalletCredit {
+  id        String           @id @default(cuid())
+  userId    String
+  kind      WalletCreditKind
+  amountP   BigInt
+  note      String?
+  createdAt DateTime         @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("wallet_credits")
+}
+
 model Order {
   id            String      @id @default(cuid())
   userId        String
@@ -491,6 +518,13 @@ model Order {
   feesP         BigInt      @default(0) // total brokerage + taxes + charges at fill time
   shortIntent   Boolean     @default(false) // SELL triggered orders that open a F&O short
   reservedMarginP BigInt    @default(0) // margin locked by this pending short-open order
+  /// BUY of a futures contract on margin (SPAN-style): only the initial
+  /// margin is blocked, not the full contract value.
+  leveraged     Boolean     @default(false)
+  /// Exact cash this pending BUY holds in wallet.reservedP (notional or
+  /// margin, plus a fee buffer). 0 on orders placed before this column
+  /// existed — those fall back to threshold × quantity.
+  cashReservedP BigInt      @default(0)
   status        OrderStatus @default(PENDING)
   rejectReason  String?
   createdAt     DateTime    @default(now())
@@ -554,7 +588,11 @@ model Position {
   quantity      Int // signed: positive = long, negative = short
   reservedQty   Int          @default(0) // qty locked by PENDING sell orders
   avgPriceP     BigInt
-  marginP       BigInt       @default(0) // margin reserved for this short position
+  marginP       BigInt       @default(0) // margin blocked for this position (shorts, or leveraged futures longs)
+  /// Futures long held on margin: the wallet only blocked marginP, so the
+  /// position contributes its mark-to-market P&L (not its full contract
+  /// value) to equity. False for cash equity, options, and legacy rows.
+  leveraged     Boolean      @default(false)
   realizedPnLP  BigInt       @default(0)
   openedAt      DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
@@ -593,6 +631,12 @@ model Room {
   /// Soft cap. The service enforces this on join; UI shows X/Y members.
   /// 0 = unlimited.
   maxMembers  Int      @default(0)
+  /// Tournament lifecycle stamps, set by RoomsLifecycleService. At startsAt
+  /// every member is re-baselined so the race is measured from the bell, not
+  /// from whenever each member happened to join; at endsAt every member's
+  /// equity is captured so the final ranking can no longer move.
+  startedAt   DateTime?
+  finalizedAt DateTime?
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
@@ -605,14 +649,23 @@ model Room {
 }
 
 /// One row per (user, room) pair the user has joined. The
-/// [baselineEquityP] is the totalEquity snapshot at join-time — the
-/// leaderboard is sorted by (currentEquity - baselineEquity) / baseline.
-/// Fair across members who joined at different times.
+/// [baselineEquityP] is the totalEquity snapshot taken at [baselineAt]
+/// (join time, or the tournament start). Return % is trading-only:
+///   (equity − baseline − wallet credits since baselineAt) / baseline
+/// so a referral bonus that lands mid-room grows the balance but never the
+/// ranking. Fair across members who joined at different times.
 model RoomMember {
   id               String   @id @default(cuid())
   roomId           String
   userId           String
   baselineEquityP  BigInt
+  /// When [baselineEquityP] was captured. Credits after this are excluded.
+  baselineAt       DateTime @default(now())
+  /// Equity captured when a tournament ended (null until finalized).
+  finalEquityP     BigInt?
+  /// Wallet credits between baselineAt and the tournament end, captured with
+  /// [finalEquityP] so the frozen return stays trading-only.
+  finalCreditsP    BigInt?
   joinedAt         DateTime @default(now())
 
   room Room @relation(fields: [roomId], references: [id], onDelete: Cascade)

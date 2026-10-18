@@ -1,9 +1,12 @@
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'app.dart';
 import 'core/analytics.dart';
+import 'core/company_names.dart';
 import 'core/firebase_init.dart';
 
 /// FCM background/terminated entry point. `notification`-type messages (what
@@ -22,5 +25,14 @@ Future<void> main() async {
   }
   // Enable Firebase Analytics (no-ops when Firebase isn't configured).
   await Analytics.instance.init();
+  // Company names (KOTAKBANK → "Kotak Mahindra Bank") must be ready before
+  // the first frame so lists never flash bare tickers. ~100 KB, ~20 ms.
+  await CompanyDirectory.instance.loadBundled();
+  // Bundled Inter font is SIL OFL 1.1 — surface its licence in the
+  // in-app licences page alongside the package licences.
+  LicenseRegistry.addLicense(() async* {
+    final ofl = await rootBundle.loadString('assets/fonts/OFL.txt');
+    yield LicenseEntryWithLineBreaks(const ['Inter font'], ofl);
+  });
   runApp(const ProviderScope(child: StockVirtueApp()));
 }

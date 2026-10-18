@@ -1,7 +1,7 @@
 name: stockvirtue
 description: "StockVirtue — Indian stock market simulator with virtual money."
 publish_to: 'none'
-version: 1.0.3+4
+version: 1.1.0+5
 
 environment:
   sdk: ^3.11.5
@@ -47,6 +47,9 @@ dependencies:
   # (foreground FCM messages and realtime socket events).
   firebase_messaging: ^16.0.4
   flutter_local_notifications: ^19.4.2
+  flutter_animate: ^4.5.2
+  skeletonizer: ^3.0.0
+  animations: ^2.2.0
 
 dev_dependencies:
   flutter_test:
@@ -57,17 +60,48 @@ dev_dependencies:
 flutter:
   uses-material-design: true
   assets:
-    - assets/
+    # In-app logo (derived from assets/newLogo.png by tool/brand_assets.py).
+    # The 1.4 MB source art and the launcher-icon inputs in assets/icon/ are
+    # build-time only and deliberately NOT bundled.
+    - assets/brand/
+    # Offline company-name directory (NSE mainboard + SME). Regenerate with
+    # `npx ts-node scripts/gen-company-directory.ts` from backend/.
+    - assets/data/
+    - assets/fonts/OFL.txt
 
-# Launcher icon generated from the brand logo via `flutter_launcher_icons`.
-# Regenerate after changing assets/logo.png:  dart run flutter_launcher_icons
+  # Inter (SIL OFL 1.1) — bundled static weights so prices render with
+  # tabular figures from the very first frame, offline.
+  fonts:
+    - family: Inter
+      fonts:
+        - asset: assets/fonts/Inter-Regular.ttf
+          weight: 400
+        - asset: assets/fonts/Inter-Medium.ttf
+          weight: 500
+        - asset: assets/fonts/Inter-SemiBold.ttf
+          weight: 600
+        - asset: assets/fonts/Inter-Bold.ttf
+          weight: 700
+        - asset: assets/fonts/Inter-ExtraBold.ttf
+          weight: 800
+
+# Launcher icons from the SV brand logo (assets/newLogo.png). To regenerate
+# after changing the logo:
+#   python tool/brand_assets.py && dart run flutter_launcher_icons
 flutter_launcher_icons:
-  image_path: "assets/logo.png"
+  # Full-bleed icon: iOS, legacy (pre-Android-8) launchers and the web.
+  image_path: "assets/icon/app_icon.png"
   android: "ic_launcher"
   ios: true
   remove_alpha_ios: true
-  min_sdk_android: 21
-  # The logo sits on a white background, so the adaptive-icon background matches
-  # and the masked Android-8+ icon blends seamlessly with the foreground.
-  adaptive_icon_background: "#FFFFFF"
-  adaptive_icon_foreground: "assets/logo.png"
+  min_sdk_android: 24
+  # Android 8+ adaptive icon: dark-teal gradient + the SV mark scaled inside
+  # the 66dp safe circle, so circular / squircle masks never clip the arrow.
+  adaptive_icon_background: "assets/icon/app_icon_background.png"
+  adaptive_icon_foreground: "assets/icon/app_icon_foreground.png"
+  adaptive_icon_foreground_inset: 0
+  web:
+    generate: true
+    image_path: "assets/icon/app_icon.png"
+    background_color: "#070A0F"
+    theme_color: "#070A0F"

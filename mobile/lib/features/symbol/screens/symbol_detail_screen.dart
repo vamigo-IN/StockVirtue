@@ -9,8 +9,12 @@ import '../../bookmarks/bookmarks_storage.dart';
 import '../../../data/models/portfolio.dart';
 import '../../../data/models/quote.dart';
 import '../../../data/models/tick.dart';
+import '../../../core/design/tokens.dart';
 import '../../../widgets/depth_view.dart';
 import '../../../widgets/error_retry_view.dart';
+import '../../../widgets/fno_badge.dart';
+import '../../../widgets/ui/market_widgets.dart';
+import '../../../widgets/ui/symbol_avatar.dart';
 import '../../chart/screens/chart_screen.dart';
 import '../../home/indices_universe.dart';
 import '../../home/recently_viewed_storage.dart';
@@ -62,6 +66,35 @@ class _SymbolDetailScreenState extends ConsumerState<SymbolDetailScreen> {
   // the trade sheet if no live tick has arrived yet (e.g. BSE index options or
   // thin strikes off-hours), so the Buy/Sell CTA isn't stuck disabled at ₹0.
   double? _restLtp;
+
+  // Raw quote payload — carries the contract facts (futures margin, MCX lot
+  // units) and whether the underlying is in F&O at all (`hasOptions`).
+  Map<String, dynamic>? _quoteRaw;
+
+  /// Only ~200 stocks (and a handful of indices) have listed options — the
+  /// option-chain entry points stay hidden for everything else.
+  bool get _hasOptions {
+    final flag = _quoteRaw?['hasOptions'] ?? _snapshot?['hasOptions'];
+    if (flag is bool) return flag;
+    // Older backend without the F&O flag: keep the previous behaviour (show
+    // the chain for cash symbols) once the quote has loaded, rather than
+    // hiding it for every stock.
+    return (_quoteRaw != null || _snapshot != null) && _isEquityExchange;
+  }
+
+  bool get _inFno =>
+      _hasOptions ||
+      _quoteRaw?['hasFutures'] == true ||
+      _snapshot?['hasFutures'] == true;
+
+  /// Header / app-bar name: company name for cash equity, a readable contract
+  /// ("Gold Mini · 04 Dec FUT") for derivatives and commodities.
+  String get _displayName {
+    if (_isEquityExchange) return companyNameFor(widget.symbol);
+    final label = commodityLabelFor(widget.symbol);
+    final contract = prettyContract(_tradingsymbol);
+    return label != null ? '$label · ${contract.replaceFirst(widget.symbol.toUpperCase(), '').trim()}' : contract;
+  }
 
   // Mutable so the NSE ↔ BSE toggle in the header can swap us to the
   // other listing without rebuilding the route. The chart, depth view,
@@ -127,6 +160,7 @@ class _SymbolDetailScreenState extends ConsumerState<SymbolDetailScreen> {
     final sub = TickSubscription(symbol: _quoteSymbol, exchange: _exchange);
     _sub = sub;
     _restLtp = null;
+    _quoteRaw = null;
     final quoteFuture = ref
         .read(marketRepositoryProvider)
         .getRawQuote(_quoteSymbol, _exchange);
@@ -134,7 +168,10 @@ class _SymbolDetailScreenState extends ConsumerState<SymbolDetailScreen> {
     quoteFuture.then((raw) {
       if (!mounted) return;
       final l = (raw['ltp'] as num?)?.toDouble();
-      if (l != null && l > 0) setState(() => _restLtp = l);
+      setState(() {
+        _quoteRaw = raw;
+        if (l != null && l > 0) _restLtp = l;
+      });
     }).catchError((_) {});
     ref
         .read(marketRepositoryProvider)
@@ -258,6 +295,16 @@ class _SymbolDetailScreenState extends ConsumerState<SymbolDetailScreen> {
         (snapLtp != null && snapLtp > 0 ? snapLtp : null) ??
         _restLtp ??
         quote?.ltp;
+    // Contract facts (futures margin rate, MCX lot units) from the quote; an
+    // exit of a margined position also needs its avg price + blocked margin.
+    var contract = TradeContract.fromQuote(_quoteRaw ?? _snapshot);
+    if (position != null && side == OrderSide.sell) {
+      contract = contract.withPosition(
+        avgPrice: position.avgPrice,
+        margin: position.margin,
+        leveraged: position.leveraged,
+      );
+    }
     final order = await showTradeSheet(
       context,
       side: side,
@@ -270,7 +317,11 @@ class _SymbolDetailScreenState extends ConsumerState<SymbolDetailScreen> {
       // the sell at (owned − reserved) and surfaces the reserved amount.
       reservedQuantity: position?.reservedQty ?? 0,
       walletBalance: walletBalance,
-      lotSize: (_snapshot?['lotSize'] as num?)?.toInt() ?? 1,
+      lotSize: ((_snapshot?['lotSize'] ?? _quoteRaw?['lotSize']) as num?)
+              ?.toInt() ??
+          1,
+      contract: contract,
+      displayName: _displayName,
     );
     if (order != null && mounted) {
       final (text, color) = _orderFeedback(side, order);
@@ -316,10 +367,9 @@ class _SymbolDetailScreenState extends ConsumerState<SymbolDetailScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          companyNameFor(widget.symbol),
+          _displayName,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: const TextStyle(fontWeight: FontWeight.w700),
         ),
         actions: [
           _BookmarkButton(
@@ -328,7 +378,9 @@ class _SymbolDetailScreenState extends ConsumerState<SymbolDetailScreen> {
             symboltoken: _symboltoken,
             exchange: _exchange,
           ),
-          if (_isEquityExchange)
+          // Only stocks / indices that actually have listed options get an
+          // option-chain shortcut (most equities aren't in F&O).
+          if (_isEquityExchange && _hasOptions)
             IconButton(
               icon: const Icon(Icons.account_tree_outlined),
               tooltip: 'Options chain',
@@ -407,7 +459,8 @@ class _SymbolDetailScreenState extends ConsumerState<SymbolDetailScreen> {
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 120),
               children: [
                 _PriceHeader(
-                  name: companyNameFor(widget.symbol),
+                  name: _displayName,
+                  inFno: _isEquityExchange && _inFno,
                   ticker: widget.symbol,
                   tradingsymbol: _tradingsymbol,
                   exchange: _exchange,
@@ -486,23 +539,26 @@ class _SymbolDetailScreenState extends ConsumerState<SymbolDetailScreen> {
           ? _IndexActionBar(
               underlying: widget.symbol,
               exchange: _exchange,
+              hasOptions: _hasOptions,
             )
           : portfolio.maybeWhen(
               data: (p) => _ActionBar(
                 ownedQty: p.positionFor(_exchange, _symboltoken)
                         ?.quantity ??
                     0,
+                // Free cash (balance minus pending holds and blocked
+                // margin) — what the engine actually lets you spend.
                 onBuy: () => _openTrade(
                   OrderSide.buy,
                   null,
                   p.positionFor(_exchange, _symboltoken),
-                  p.wallet.balance,
+                  p.wallet.available,
                 ),
                 onSell: () => _openTrade(
                   OrderSide.sell,
                   null,
                   p.positionFor(_exchange, _symboltoken),
-                  p.wallet.balance,
+                  p.wallet.available,
                 ),
               ),
               orElse: () => const _ActionBar(
@@ -518,6 +574,7 @@ class _SymbolDetailScreenState extends ConsumerState<SymbolDetailScreen> {
 class _PriceHeader extends StatelessWidget {
   const _PriceHeader({
     required this.name,
+    this.inFno = false,
     required this.ticker,
     required this.tradingsymbol,
     required this.exchange,
@@ -532,6 +589,9 @@ class _PriceHeader extends StatelessWidget {
   });
 
   final String name;
+
+  /// The stock trades in the F&O segment — shown as a badge.
+  final bool inFno;
   final String ticker;
   final String tradingsymbol;
   final String exchange;
@@ -554,49 +614,56 @@ class _PriceHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final pnlColor = isUp ? _upColor : _downColor;
+    final t = Theme.of(context).textTheme;
+    final m = context.market;
     // Show the ticker stem only when it differs from the friendly name so we
     // don't print "RELIANCE  •  RELIANCE  •  RELIANCE-EQ".
-    final showTickerStem =
-        ticker.toUpperCase() != name.toUpperCase();
+    final showTickerStem = ticker.toUpperCase() != name.toUpperCase();
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          name,
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.w700,
-            letterSpacing: -0.3,
-            height: 1.15,
-          ),
-        ),
-        const SizedBox(height: 6),
         Row(
           children: [
-            _ExchangeBadge(
-              current: exchange,
-              counterpartExchange: counterpartExchange,
-              hasCounterpart: hasCounterpart,
-              swapping: swapping,
-              onSwap: onSwap,
-            ),
-            const SizedBox(width: 8),
-            Flexible(
-              child: Text(
-                showTickerStem
-                    ? '$ticker • $tradingsymbol'
-                    : tradingsymbol,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                  letterSpacing: 0.2,
-                  color: scheme.onSurface.withValues(alpha: 0.6),
-                ),
+            SymbolAvatar(symbol: ticker, size: 48),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    name,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: t.headlineSmall?.copyWith(height: 1.15),
+                  ),
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      _ExchangeBadge(
+                        current: exchange,
+                        counterpartExchange: counterpartExchange,
+                        hasCounterpart: hasCounterpart,
+                        swapping: swapping,
+                        onSwap: onSwap,
+                      ),
+                      if (inFno) ...[
+                        const SizedBox(width: 6),
+                        FnoBadge(label: 'F&O', color: m.violet),
+                      ],
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Text(
+                          showTickerStem
+                              ? '$ticker · $tradingsymbol'
+                              : tradingsymbol,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: t.bodySmall,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ),
             ),
           ],
@@ -604,51 +671,17 @@ class _PriceHeader extends StatelessWidget {
         const SizedBox(height: 18),
         Text(
           livePrice != null ? formatInr(livePrice!) : '—',
-          style: const TextStyle(
-            fontSize: 32,
-            fontWeight: FontWeight.w700,
-            letterSpacing: -0.5,
-          ),
+          style: t.displaySmall?.copyWith(fontWeight: FontWeight.w800),
         ),
-        const SizedBox(height: 6),
+        const SizedBox(height: 8),
         if (change != null && changePct != null)
           Row(
             children: [
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: pnlColor.withValues(alpha: 0.15),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      isUp ? Icons.trending_up : Icons.trending_down,
-                      color: pnlColor,
-                      size: 14,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      '${isUp ? '+' : ''}${change!.toStringAsFixed(2)} '
-                      '(${isUp ? '+' : ''}${changePct!.toStringAsFixed(2)}%)',
-                      style: TextStyle(
-                        color: pnlColor,
-                        fontWeight: FontWeight.w700,
-                        fontSize: 12.5,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+              ChangePill(percent: changePct, absolute: change),
               const SizedBox(width: 8),
               Text(
                 'today',
-                style: TextStyle(
-                  fontSize: 12,
-                  color: scheme.onSurface.withValues(alpha: 0.55),
-                ),
+                style: t.bodySmall?.copyWith(color: scheme.onSurfaceVariant),
               ),
             ],
           ),
@@ -1032,14 +1065,19 @@ class _PositionCard extends StatelessWidget {
             children: [
               Expanded(
                 child: _MiniMetric(
-                  label: 'Invested',
+                  // A margined futures position deploys only its margin.
+                  label: position.leveraged ? 'Margin' : 'Invested',
                   value: formatInr(position.invested),
                 ),
               ),
               Expanded(
                 child: _MiniMetric(
-                  label: 'Current',
-                  value: formatInr(position.currentValue),
+                  label: position.leveraged ? 'Exposure' : 'Current',
+                  value: formatInr(
+                    position.leveraged
+                        ? position.contractValue
+                        : position.currentValue,
+                  ),
                 ),
               ),
               Expanded(
@@ -1274,9 +1312,14 @@ class _IndexActionBar extends StatelessWidget {
   const _IndexActionBar({
     required this.underlying,
     required this.exchange,
+    required this.hasOptions,
   });
   final String underlying;
   final String exchange;
+
+  /// Only a few indices (NIFTY, BANKNIFTY, FINNIFTY, MIDCPNIFTY, SENSEX,
+  /// BANKEX…) have listed options — the button hides for the rest.
+  final bool hasOptions;
 
   @override
   Widget build(BuildContext context) {
@@ -1307,7 +1350,9 @@ class _IndexActionBar extends StatelessWidget {
                 const SizedBox(width: 4),
                 Expanded(
                   child: Text(
-                    'Indices aren\'t traded as spot — view the chart or trade F&O.',
+                    hasOptions
+                        ? 'Indices aren\'t traded as spot — view the chart or trade F&O.'
+                        : 'Indices aren\'t traded as spot, and this one has no listed options — view the chart.',
                     style: TextStyle(
                       fontSize: 11,
                       color: scheme.onSurface.withValues(alpha: 0.55),
@@ -1345,7 +1390,8 @@ class _IndexActionBar extends StatelessWidget {
                     ),
                   ),
                 ),
-                const SizedBox(width: 12),
+                if (hasOptions) const SizedBox(width: 12),
+                if (hasOptions)
                 Expanded(
                   child: FilledButton.icon(
                     onPressed: () => Navigator.of(context).push(

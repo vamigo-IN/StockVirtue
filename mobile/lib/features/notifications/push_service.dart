@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/painting.dart' show Color;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -27,8 +28,10 @@ class PushService {
 
   Future<void> _ensureLocal() async {
     if (_localReady) return;
+    // Status-bar icons are alpha-only: a white "SV" silhouette, not the
+    // full-colour launcher icon (which would show as a white square).
     const init = InitializationSettings(
-      android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+      android: AndroidInitializationSettings('@drawable/ic_stat_notify'),
       iOS: DarwinInitializationSettings(),
     );
     await _local.initialize(init);
@@ -56,6 +59,7 @@ class PushService {
             channelDescription: _androidChannel.description,
             importance: Importance.high,
             priority: Priority.high,
+            color: const Color(0xFF22D38A), // brand emerald accent
           ),
           iOS: const DarwinNotificationDetails(),
         ),

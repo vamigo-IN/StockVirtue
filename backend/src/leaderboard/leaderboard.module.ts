@@ -1,11 +1,11 @@
 import { Module } from '@nestjs/common';
 import { AchievementsModule } from '../achievements/achievements.module';
-import { SmartApiModule } from '../smartapi/smartapi.module';
+import { PortfolioModule } from '../portfolio/portfolio.module';
 import { LeaderboardController } from './leaderboard.controller';
 import { LeaderboardService } from './leaderboard.service';
 
 @Module({
-  imports: [SmartApiModule, AchievementsModule],
+  imports: [PortfolioModule, AchievementsModule],
   controllers: [LeaderboardController],
   providers: [LeaderboardService],
 })

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../ipo/screens/ipo_screen.dart';
 import '../../market/screens/commodities_screen.dart';
 import '../../market/screens/indices_screen.dart';
 import '../../market/screens/scanners_screen.dart';
@@ -43,6 +44,14 @@ class QuickActions extends StatelessWidget {
         color: const Color(0xFFEAB308),
         onTap: () => Navigator.of(context).push(
           MaterialPageRoute(builder: (_) => const CommoditiesScreen()),
+        ),
+      ),
+      _QuickAction(
+        icon: Icons.rocket_launch_outlined,
+        label: 'IPOs',
+        color: const Color(0xFF8B5CF6),
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const IpoScreen()),
         ),
       ),
       _QuickAction(

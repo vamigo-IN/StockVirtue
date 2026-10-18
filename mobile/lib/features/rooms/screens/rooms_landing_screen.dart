@@ -10,6 +10,7 @@ import '../rooms_repository.dart';
 import 'create_room_screen.dart';
 import 'join_by_code_screen.dart';
 import 'room_detail_screen.dart';
+import '../../../widgets/ui/skeletons.dart';
 
 const _upColor = Color(0xFF22C55E);
 const _downColor = Color(0xFFEF4444);
@@ -165,7 +166,7 @@ class _MyRoomsTab extends ConsumerWidget {
         await ref.read(myRoomsProvider.future);
       },
       child: async.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
+        loading: () => const SkeletonList(),
         error: (e, _) => ErrorRetryView(
           error: e,
           onRetry: () => ref.invalidate(myRoomsProvider),
@@ -258,7 +259,7 @@ class _PublicRoomsTab extends ConsumerWidget {
         await ref.read(publicRoomsProvider(tournament).future);
       },
       child: async.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
+        loading: () => const SkeletonList(),
         error: (e, _) => ErrorRetryView(
           error: e,
           onRetry: () => ref.invalidate(publicRoomsProvider(tournament)),
@@ -368,7 +369,8 @@ class _RoomCard extends StatelessWidget {
                             ),
                           ),
                           const SizedBox(width: 6),
-                          if (room.isTournament) const _TournamentBadge(),
+                          if (room.isTournament)
+                            _TournamentBadge(phase: room.phase),
                           if (!room.isPublic) const SizedBox(width: 4),
                           if (!room.isPublic) const _PrivateBadge(),
                         ],
@@ -388,7 +390,9 @@ class _RoomCard extends StatelessWidget {
                     ],
                   ),
                 ),
-                if (!publicLayout && pct != null)
+                // Before a tournament's bell every return is 0% by design —
+                // don't show a meaningless figure.
+                if (!publicLayout && pct != null && room.phase != 'upcoming')
                   Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 8,
@@ -478,19 +482,26 @@ class _RoomCard extends StatelessWidget {
 }
 
 class _TournamentBadge extends StatelessWidget {
-  const _TournamentBadge();
+  const _TournamentBadge({this.phase = 'live'});
+
+  /// upcoming | live | ended — tournaments run on a real start/end bell.
+  final String phase;
 
   @override
   Widget build(BuildContext context) {
-    const tint = Color(0xFFF59E0B);
+    final (label, tint) = switch (phase) {
+      'upcoming' => ('STARTS SOON', const Color(0xFF5EA8FF)),
+      'ended' => ('ENDED', const Color(0xFF98A2B3)),
+      _ => ('LIVE TOURNEY', const Color(0xFFF59E0B)),
+    };
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
       decoration: BoxDecoration(
         color: tint.withValues(alpha: 0.18),
         borderRadius: BorderRadius.circular(4),
       ),
-      child: const Text(
-        'TOURNEY',
+      child: Text(
+        label,
         style: TextStyle(
           color: tint,
           fontSize: 9,

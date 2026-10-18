@@ -1,7 +1,10 @@
 import { Injectable } from '@nestjs/common';
-import { Position } from '@prisma/client';
+import { Position, Wallet } from '@prisma/client';
+import { commoditySpec } from '../common/contract-specs';
 import { Exchange } from '../common/exchange';
 import { paiseToRupees, rupeesToPaise } from '../common/money';
+import { valuePosition } from '../common/valuation';
+import { CompanyDirectoryService } from '../market/company-directory.service';
 import { ScripMasterService } from '../market/scrip-master.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SmartApiService } from '../smartapi/smartapi.service';
@@ -12,6 +15,18 @@ interface PositionWithLive {
   ltp: number | null;
 }
 
+export interface TotalsP {
+  totalEquityP: bigint;
+  investedP: bigint;
+  realizedPnLP: bigint;
+  unrealizedPnLP: bigint;
+  balanceP: bigint;
+  marginReservedP: bigint;
+}
+
+/// SmartAPI's multi-quote accepts at most 50 tokens per request.
+const QUOTE_BATCH = 50;
+
 @Injectable()
 export class PortfolioService {
   constructor(
@@ -19,6 +34,7 @@ export class PortfolioService {
     private readonly wallet: WalletService,
     private readonly smartapi: SmartApiService,
     private readonly scripMaster: ScripMasterService,
+    private readonly directory: CompanyDirectoryService,
   ) {}
 
   async getPortfolio(userId: string) {
@@ -36,49 +52,54 @@ export class PortfolioService {
     let investedP = 0n;
     let currentP = 0n;
     let unrealizedP = 0n;
+    let equityP = wallet.balanceP;
     const positions = enriched.map(({ position, ltp }) => {
-      const absQty = Math.abs(position.quantity);
-      const isShort = position.quantity < 0;
-      const investedAbs = position.avgPriceP * BigInt(absQty);
-      const currentAbs =
-        ltp !== null
-          ? rupeesToPaise(ltp) * BigInt(absQty)
-          : investedAbs;
-      // For longs: P&L = current − invested. For shorts: P&L = invested − current
-      // (you receive when LTP falls below entry).
-      const unrealizedAbs = isShort
-        ? investedAbs - currentAbs
-        : currentAbs - investedAbs;
-      investedP += investedAbs;
-      currentP += isShort ? -currentAbs : currentAbs;
-      unrealizedP += unrealizedAbs;
+      const v = valuePosition(
+        position,
+        ltp !== null ? rupeesToPaise(ltp) : null,
+      );
+      investedP += v.investedP;
+      currentP += position.quantity < 0 ? -v.currentP : v.currentP;
+      unrealizedP += v.unrealizedP;
+      equityP += v.equityP;
+      const inst = this.scripMaster.getByToken(
+        position.exchange as Exchange,
+        position.symboltoken,
+      );
+      const spec = commoditySpec(position.exchange, position.symbol);
       return {
         symbol: position.symbol,
         tradingsymbol: position.tradingsymbol,
         symboltoken: position.symboltoken,
         exchange: position.exchange,
+        companyName:
+          position.exchange === 'NSE' || position.exchange === 'BSE'
+            ? this.directory.nameFor(position.symbol)
+            : null,
         // Contract lot size (1 for cash) — lets the client constrain F&O
         // square-off quantity to whole lots, like the buy flow.
-        lotSize:
-          this.scripMaster.getByToken(
-            position.exchange as Exchange,
-            position.symboltoken,
-          )?.lotSize ?? 1,
+        lotSize: inst?.lotSize ?? 1,
+        lotLabel: spec?.lotLabel ?? null,
+        quoteUnit: spec?.quoteUnit ?? null,
         product: position.product,
         quantity: position.quantity, // signed
-        isShort,
+        isShort: position.quantity < 0,
+        // Futures held on margin: `invested` is the blocked margin and the
+        // position adds only its P&L to equity (see common/valuation).
+        leveraged: position.leveraged,
         reservedQty: position.reservedQty,
         availableQty: position.quantity - position.reservedQty,
         avgPrice: paiseToRupees(position.avgPriceP),
-        invested: paiseToRupees(investedAbs),
+        invested: paiseToRupees(v.investedP),
         margin: paiseToRupees(position.marginP),
+        contractValue: paiseToRupees(v.exposureP),
         ltp,
-        currentValue: paiseToRupees(currentAbs),
-        unrealizedPnL: paiseToRupees(unrealizedAbs),
+        currentValue: paiseToRupees(v.currentP),
+        unrealizedPnL: paiseToRupees(v.unrealizedP),
         unrealizedPnLPct:
-          investedAbs === 0n
+          v.investedP === 0n
             ? 0
-            : (Number(unrealizedAbs) / Number(investedAbs)) * 100,
+            : (Number(v.unrealizedP) / Number(v.investedP)) * 100,
         realizedPnL: paiseToRupees(position.realizedPnLP),
         openedAt: position.openedAt.toISOString(),
       };
@@ -89,11 +110,18 @@ export class PortfolioService {
       0n,
     );
 
-    const feesAgg = await this.prisma.order.aggregate({
-      where: { userId, status: 'FILLED' },
-      _sum: { feesP: true },
-    });
+    const [feesAgg, creditsAgg] = await Promise.all([
+      this.prisma.order.aggregate({
+        where: { userId, status: 'FILLED' },
+        _sum: { feesP: true },
+      }),
+      this.prisma.walletCredit.aggregate({
+        where: { userId },
+        _sum: { amountP: true },
+      }),
+    ]);
     const totalFeesP = feesAgg._sum.feesP ?? 0n;
+    const totalCreditsP = creditsAgg._sum.amountP ?? 0n;
 
     return {
       wallet: {
@@ -115,61 +143,71 @@ export class PortfolioService {
         totalRealizedPnL: paiseToRupees(totalRealizedP),
         totalFeesPaid: paiseToRupees(totalFeesP),
         totalMarginReserved: paiseToRupees(wallet.marginReservedP),
-        totalEquity: paiseToRupees(wallet.balanceP + currentP),
+        totalEquity: paiseToRupees(equityP),
+        // Referral bonuses & promos received — money in, not trading profit.
+        totalCredits: paiseToRupees(totalCreditsP),
         positionsCount: positions.length,
       },
     };
   }
 
-  /// Paise-level computation reused by the snapshot writer. We don't lift
-  /// it into getPortfolio() because the API surface needs rupee floats and
-  /// per-position breakdowns; this helper returns just the totals the
-  /// daily-snapshot row holds.
-  async computeTotalsP(userId: string): Promise<{
-    totalEquityP: bigint;
-    investedP: bigint;
-    realizedPnLP: bigint;
-    unrealizedPnLP: bigint;
-    balanceP: bigint;
-    marginReservedP: bigint;
-  }> {
-    const [wallet, allPositions] = await Promise.all([
-      this.wallet.get(userId),
-      this.prisma.position.findMany({ where: { userId } }),
-    ]);
-    const openPositions = allPositions.filter((p) => p.quantity !== 0);
-    const enriched = await this.enrichWithLtp(openPositions);
+  /// Paise-level totals reused by the snapshot writer, rooms and the
+  /// leaderboard. The keys match the PortfolioSnapshot columns exactly.
+  async computeTotalsP(userId: string): Promise<TotalsP> {
+    const map = await this.computeTotalsForUsersP([userId]);
+    return map.get(userId)!;
+  }
 
-    let investedP = 0n;
-    let currentP = 0n;
-    let unrealizedP = 0n;
-    for (const { position, ltp } of enriched) {
-      const absQty = Math.abs(position.quantity);
-      const isShort = position.quantity < 0;
-      const investedAbs = position.avgPriceP * BigInt(absQty);
-      const currentAbs =
-        ltp !== null
-          ? rupeesToPaise(ltp) * BigInt(absQty)
-          : investedAbs;
-      const unrealizedAbs = isShort
-        ? investedAbs - currentAbs
-        : currentAbs - investedAbs;
-      investedP += investedAbs;
-      currentP += isShort ? -currentAbs : currentAbs;
-      unrealizedP += unrealizedAbs;
-    }
-    const realizedP = allPositions.reduce(
-      (acc, p) => acc + p.realizedPnLP,
-      0n,
+  /// Batched variant: one wallet query, one positions query and ONE set of
+  /// multi-quote calls for every user — a room leaderboard with 40 members
+  /// no longer fans out into 40 separate quote round-trips.
+  async computeTotalsForUsersP(
+    userIds: string[],
+  ): Promise<Map<string, TotalsP>> {
+    const unique = [...new Set(userIds)];
+    const out = new Map<string, TotalsP>();
+    if (unique.length === 0) return out;
+
+    const [wallets, allPositions] = await Promise.all([
+      this.prisma.wallet.findMany({ where: { userId: { in: unique } } }),
+      this.prisma.position.findMany({ where: { userId: { in: unique } } }),
+    ]);
+    const walletByUser = new Map<string, Wallet>(
+      wallets.map((w) => [w.userId, w]),
     );
-    return {
-      totalEquityP: wallet.balanceP + currentP,
-      investedP,
-      realizedPnLP: realizedP,
-      unrealizedPnLP: unrealizedP,
-      balanceP: wallet.balanceP,
-      marginReservedP: wallet.marginReservedP,
-    };
+    // A user who has never traded may not have a wallet row yet.
+    for (const id of unique) {
+      if (!walletByUser.has(id)) {
+        walletByUser.set(id, await this.wallet.get(id));
+      }
+    }
+
+    const open = allPositions.filter((p) => p.quantity !== 0);
+    const ltpByKey = await this.fetchLtpMap(open);
+
+    for (const id of unique) {
+      const w = walletByUser.get(id)!;
+      out.set(id, {
+        totalEquityP: w.balanceP,
+        investedP: 0n,
+        realizedPnLP: 0n,
+        unrealizedPnLP: 0n,
+        balanceP: w.balanceP,
+        marginReservedP: w.marginReservedP,
+      });
+    }
+    for (const p of allPositions) {
+      const t = out.get(p.userId);
+      if (!t) continue;
+      t.realizedPnLP += p.realizedPnLP;
+      if (p.quantity === 0) continue;
+      const ltp = ltpByKey.get(`${p.exchange}:${p.symboltoken}`);
+      const v = valuePosition(p, ltp !== undefined ? rupeesToPaise(ltp) : null);
+      t.investedP += v.investedP;
+      t.unrealizedPnLP += v.unrealizedP;
+      t.totalEquityP += v.equityP;
+    }
+    return out;
   }
 
   /// Reads the user's daily portfolio snapshots back as a series.
@@ -206,21 +244,44 @@ export class PortfolioService {
     positions: Position[],
   ): Promise<PositionWithLive[]> {
     if (positions.length === 0) return [];
-    const tokensByExchange: Record<string, string[]> = {};
+    const ltpMap = await this.fetchLtpMap(positions);
+    return positions.map((p) => ({
+      position: p,
+      ltp: ltpMap.get(`${p.exchange}:${p.symboltoken}`) ?? null,
+    }));
+  }
+
+  /// `exchange:token` → LTP for every distinct contract, in ≤50-token
+  /// multi-quote batches. Best-effort: a failed batch just leaves its
+  /// contracts unpriced (valued at cost) rather than failing the caller.
+  private async fetchLtpMap(
+    positions: { exchange: string; symboltoken: string }[],
+  ): Promise<Map<string, number>> {
+    const tokens = new Map<string, Set<string>>();
     for (const p of positions) {
-      (tokensByExchange[p.exchange] ??= []).push(p.symboltoken);
+      let set = tokens.get(p.exchange);
+      if (!set) tokens.set(p.exchange, (set = new Set()));
+      set.add(p.symboltoken);
     }
-    try {
-      const fetched = await this.smartapi.getMultiQuote(tokensByExchange, 'LTP');
-      const ltpMap = new Map(
-        fetched.map((q) => [`${q.exchange}:${q.symbolToken}`, q.ltp]),
-      );
-      return positions.map((p) => ({
-        position: p,
-        ltp: ltpMap.get(`${p.exchange}:${p.symboltoken}`) ?? null,
-      }));
-    } catch {
-      return positions.map((p) => ({ position: p, ltp: null }));
+    const flat: { exchange: string; token: string }[] = [];
+    for (const [exchange, set] of tokens) {
+      for (const token of set) flat.push({ exchange, token });
     }
+    const ltpByKey = new Map<string, number>();
+    for (let i = 0; i < flat.length; i += QUOTE_BATCH) {
+      const batch: Record<string, string[]> = {};
+      for (const { exchange, token } of flat.slice(i, i + QUOTE_BATCH)) {
+        (batch[exchange] ??= []).push(token);
+      }
+      try {
+        const fetched = await this.smartapi.getMultiQuote(batch, 'LTP');
+        for (const q of fetched) {
+          ltpByKey.set(`${q.exchange}:${q.symbolToken}`, q.ltp);
+        }
+      } catch {
+        // leave this batch unpriced
+      }
+    }
+    return ltpByKey;
   }
 }

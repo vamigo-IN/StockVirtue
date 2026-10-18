@@ -2,11 +2,14 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
 
 import '../../../core/config.dart';
+import '../../../core/design/tokens.dart';
 import '../../../core/error_mapper.dart';
+import '../../../widgets/ui/market_widgets.dart';
 import '../../../core/market_hours.dart';
 import '../../../core/money_format.dart';
 import '../../../data/models/room.dart';
@@ -15,6 +18,7 @@ import '../../../widgets/rank_chip.dart';
 import '../../auth/auth_controller.dart';
 import '../rooms_providers.dart';
 import '../rooms_repository.dart';
+import '../../../widgets/ui/skeletons.dart';
 
 const _upColor = Color(0xFF22C55E);
 const _downColor = Color(0xFFEF4444);
@@ -183,7 +187,7 @@ class _RoomDetailScreenState extends ConsumerState<RoomDetailScreen> {
           await ref.read(roomDetailProvider(widget.roomId).future);
         },
         child: async.when(
-          loading: () => const Center(child: CircularProgressIndicator()),
+          loading: () => const SkeletonList(),
           error: (e, _) => ErrorRetryView(
             error: e,
             onRetry: () => ref.invalidate(roomDetailProvider(widget.roomId)),
@@ -240,13 +244,150 @@ class _Body extends StatelessWidget {
         if (room.frozen) ...[
           const _FrozenBanner(),
           const SizedBox(height: 12),
+        ] else if (room.phase == 'upcoming') ...[
+          InfoBanner(
+            tone: BannerTone.warning,
+            icon: Icons.hourglass_top_rounded,
+            title: 'Starts ${room.startsAt != null ? _fmt(room.startsAt!) : 'soon'}',
+            message:
+                'Everyone\'s starting capital is captured at the opening bell, '
+                'so returns stay at 0% until then — trading before the start '
+                'doesn\'t count.',
+          ),
+          const SizedBox(height: 12),
         ],
+        const InfoBanner(
+          icon: Icons.verified_outlined,
+          title: 'Fair-play scoring',
+          message:
+              'Rankings use trading P&L only. Referral bonuses and other '
+              'credits are added to your balance but never to your room '
+              'return.',
+        ),
+        const SizedBox(height: 16),
         _LeaderboardHeader(memberCount: room.memberCount),
-        const SizedBox(height: 6),
-        for (final entry in room.leaderboard) ...[
+        const SizedBox(height: 10),
+        if (room.leaderboard.length >= 3) ...[
+          _Podium(top: room.leaderboard.take(3).toList())
+              .animate()
+              .fadeIn(duration: 300.ms)
+              .slideY(begin: 0.08, end: 0),
+          const SizedBox(height: 14),
+        ],
+        for (final entry in room.leaderboard.length >= 3
+            ? room.leaderboard.skip(3)
+            : room.leaderboard) ...[
           _LeaderboardTile(entry: entry),
           const SizedBox(height: 8),
         ],
+      ],
+    );
+  }
+}
+
+/// Top-three podium: 2nd · 1st · 3rd, with the winner's column tallest.
+class _Podium extends StatelessWidget {
+  const _Podium({required this.top});
+  final List<RoomLeaderboardEntry> top;
+
+  @override
+  Widget build(BuildContext context) {
+    final order = [top[1], top[0], top[2]];
+    const heights = [70.0, 96.0, 56.0];
+    const medals = [Color(0xFFC0C0C0), Color(0xFFFFD24A), Color(0xFFCD7F32)];
+    final scheme = Theme.of(context).colorScheme;
+    final t = Theme.of(context).textTheme;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        for (var i = 0; i < 3; i++)
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              child: Column(
+                children: [
+                  Stack(
+                    clipBehavior: Clip.none,
+                    alignment: Alignment.bottomCenter,
+                    children: [
+                      Container(
+                        width: i == 1 ? 58 : 48,
+                        height: i == 1 ? 58 : 48,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: medals[i].withValues(alpha: 0.18),
+                          border: Border.all(color: medals[i], width: 2),
+                        ),
+                        alignment: Alignment.center,
+                        child: Text(
+                          order[i].displayName.isNotEmpty
+                              ? order[i].displayName[0].toUpperCase()
+                              : '?',
+                          style: TextStyle(
+                            fontWeight: FontWeight.w800,
+                            fontSize: i == 1 ? 22 : 18,
+                            color: medals[i],
+                          ),
+                        ),
+                      ),
+                      if (i == 1)
+                        Positioned(
+                          top: -16,
+                          child: Icon(
+                            Icons.emoji_events_rounded,
+                            color: medals[1],
+                            size: 22,
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    order[i].isYou ? 'You' : order[i].displayName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: t.labelLarge,
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    '${order[i].returnPct >= 0 ? '+' : ''}${order[i].returnPct.toStringAsFixed(2)}%',
+                    style: t.labelLarge?.copyWith(
+                      color: context.market.changeColor(order[i].returnPct),
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Container(
+                    height: heights[i],
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          medals[i].withValues(alpha: 0.35),
+                          scheme.surfaceContainer,
+                        ],
+                      ),
+                      borderRadius: const BorderRadius.vertical(
+                        top: Radius.circular(AppRadius.sm),
+                      ),
+                      border: Border.all(
+                        color: medals[i].withValues(alpha: 0.4),
+                      ),
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      '${order[i].rank}',
+                      style: t.headlineMedium?.copyWith(
+                        color: medals[i],
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
       ],
     );
   }
@@ -485,7 +626,7 @@ class _FrozenBanner extends StatelessWidget {
           SizedBox(width: 8),
           Expanded(
             child: Text(
-              'Final standings — tournament ended.',
+              'Final standings — frozen at the closing bell.',
               style: TextStyle(
                 color: tint,
                 fontWeight: FontWeight.w800,
@@ -617,7 +758,7 @@ class _LeaderboardTile extends StatelessWidget {
                     const SizedBox(width: 6),
                     Flexible(
                       child: Text(
-                        '${formatInr(entry.baseline)} → ${formatInr(entry.current)}',
+                        '${formatInrCompact(entry.baseline)} → ${formatInrCompact(entry.current)}',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
@@ -628,6 +769,31 @@ class _LeaderboardTile extends StatelessWidget {
                     ),
                   ],
                 ),
+                if (entry.bonusExcluded > 0) ...[
+                  const SizedBox(height: 3),
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.card_giftcard_rounded,
+                        size: 12,
+                        color: context.market.gold,
+                      ),
+                      const SizedBox(width: 4),
+                      Flexible(
+                        child: Text(
+                          '${formatInrCompact(entry.bonusExcluded)} bonus excluded from return',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 10.5,
+                            fontWeight: FontWeight.w600,
+                            color: context.market.gold,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ],
             ),
           ),

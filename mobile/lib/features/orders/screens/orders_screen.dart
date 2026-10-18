@@ -16,6 +16,7 @@ import '../orders_providers.dart';
 import '../orders_repository.dart';
 import '../trade_notes_storage.dart';
 import '../widgets/export_sheet.dart';
+import '../../../widgets/ui/skeletons.dart';
 
 const _upColor = Color(0xFF22C55E);
 const _downColor = Color(0xFFEF4444);
@@ -109,7 +110,7 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
           await ref.read(ordersListProvider.future);
         },
         child: orders.when(
-          loading: () => const Center(child: CircularProgressIndicator()),
+          loading: () => const SkeletonList(),
           error: (e, _) => ErrorRetryView(
             error: e,
             onRetry: () => ref.invalidate(ordersListProvider),
@@ -279,7 +280,9 @@ class _OrderTileState extends ConsumerState<_OrderTile> {
     // For F&O show the actual contract (…CE / …PE / …FUT) instead of the bare
     // underlying, and colour-code Call/Put/Future.
     final isFno = isFnoExchange(order.exchange);
-    final name = isFno ? order.tradingsymbol : companyNameFor(order.symbol);
+    final name = isFno
+        ? prettyContract(order.tradingsymbol)
+        : companyNameFor(order.symbol);
     final kind = isFno ? fnoKind(order.tradingsymbol) : null;
 
     return InkWell(

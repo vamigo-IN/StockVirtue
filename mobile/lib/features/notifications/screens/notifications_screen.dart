@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../widgets/error_retry_view.dart';
 import '../notifications_provider.dart';
+import '../../../widgets/ui/skeletons.dart';
 
 class NotificationsScreen extends ConsumerStatefulWidget {
   const NotificationsScreen({super.key});
@@ -67,7 +68,7 @@ class _NotificationsScreenState extends ConsumerState<NotificationsScreen> {
         ],
       ),
       body: async.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
+        loading: () => const SkeletonList(),
         error: (e, _) => ErrorRetryView(
           error: e,
           onRetry: () => ref.read(notificationsProvider.notifier).refresh(),

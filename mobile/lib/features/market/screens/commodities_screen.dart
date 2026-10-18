@@ -1,27 +1,49 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/design/tokens.dart';
+import '../../../core/market_hours.dart';
 import '../../../core/money_format.dart';
 import '../../../data/models/tick.dart';
 import '../../../widgets/empty_state.dart';
 import '../../../widgets/error_retry_view.dart';
+import '../../../widgets/fno_badge.dart';
+import '../../../widgets/ui/market_widgets.dart';
+import '../../../widgets/ui/skeletons.dart';
 import '../../symbol/screens/symbol_detail_screen.dart';
 import '../../ticks/ticks_providers.dart';
 import '../../ticks/ticks_service.dart';
 import '../market_repository.dart';
-
-const _upColor = Color(0xFF22C55E);
-const _downColor = Color(0xFFEF4444);
 
 final _commoditiesProvider =
     FutureProvider.autoDispose<List<CommodityQuote>>((ref) {
   return ref.watch(marketRepositoryProvider).getCommodities();
 });
 
-/// MCX commodities market — live rates for the popular contracts (gold,
-/// silver, crude, natural gas, base metals), each resolved to its front-month
-/// future. Tap a row to open the contract and trade it like any derivative;
-/// commodities trade a longer session (09:00–23:30 IST) than equities.
+enum _Group { all, bullion, energy, metals }
+
+_Group _groupOf(String name) {
+  final n = name.toUpperCase();
+  if (n.startsWith('GOLD') || n.startsWith('SILVER')) return _Group.bullion;
+  if (n.startsWith('CRUDE') || n.startsWith('NATURALGAS') || n.startsWith('NATGAS')) {
+    return _Group.energy;
+  }
+  return _Group.metals;
+}
+
+IconData _iconOf(_Group g) => switch (g) {
+      _Group.bullion => Icons.diamond_rounded,
+      _Group.energy => Icons.local_fire_department_rounded,
+      _Group.metals => Icons.precision_manufacturing_rounded,
+      _Group.all => Icons.apps_rounded,
+    };
+
+/// MCX commodities market — live rates for the popular contracts (bullion,
+/// energy, base metals), each resolved to its front-month future, valued the
+/// way MCX values them: one GOLD lot is 1 kg priced per 10 g, so a lot is
+/// worth price × 100. Futures trade on margin, so each row also shows what
+/// one lot actually blocks from your wallet. Tap a row to trade it.
 class CommoditiesScreen extends ConsumerStatefulWidget {
   const CommoditiesScreen({super.key});
 
@@ -31,10 +53,10 @@ class CommoditiesScreen extends ConsumerStatefulWidget {
 
 class _CommoditiesScreenState extends ConsumerState<CommoditiesScreen> {
   List<TickSubscription> _subs = const [];
+  _Group _group = _Group.all;
 
   /// Subscribe every listed contract to the live feed, diffing so we only
-  /// add/remove the delta when the list changes. Keyed consistently by
-  /// `exchange:tradingsymbol` so a repeat sync is a no-op.
+  /// add/remove the delta when the list changes.
   void _sync(List<CommodityQuote> list) {
     final byKey = <String, TickSubscription>{};
     for (final c in list) {
@@ -69,39 +91,58 @@ class _CommoditiesScreenState extends ConsumerState<CommoditiesScreen> {
   Widget build(BuildContext context) {
     final async = ref.watch(_commoditiesProvider);
     return Scaffold(
-      appBar: AppBar(
-        title: const Text(
-          'Commodities',
-          style: TextStyle(fontWeight: FontWeight.w700),
-        ),
-      ),
+      appBar: AppBar(title: const Text('Commodities')),
       body: RefreshIndicator(
         onRefresh: () async {
           ref.invalidate(_commoditiesProvider);
           await ref.read(_commoditiesProvider.future);
         },
         child: async.when(
-          loading: () => const Center(child: CircularProgressIndicator()),
+          loading: () => const SkeletonList(showHeader: true),
           error: (e, _) => ErrorRetryView(
             error: e,
+            errorContext: 'commodities',
             onRetry: () => ref.invalidate(_commoditiesProvider),
           ),
           data: (list) {
-            if (list.isEmpty) {
-              return const _EmptyCommodities();
-            }
-            // Keep tick subscriptions in step with the loaded contracts.
+            if (list.isEmpty) return const _EmptyCommodities();
             WidgetsBinding.instance.addPostFrameCallback((_) {
               if (mounted) _sync(list);
             });
-            return ListView.separated(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
-              itemCount: list.length + 1,
-              separatorBuilder: (_, _) => const SizedBox(height: 10),
-              itemBuilder: (context, i) {
-                if (i == 0) return const _CommoditiesHeader();
-                return _CommodityTile(commodity: list[i - 1]);
-              },
+            final shown = _group == _Group.all
+                ? list
+                : list.where((c) => _groupOf(c.name) == _group).toList();
+            return ListView(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
+              children: [
+                const _SessionHero(),
+                const SizedBox(height: 14),
+                _GroupChips(
+                  value: _group,
+                  onChanged: (g) => setState(() => _group = g),
+                ),
+                const SizedBox(height: 12),
+                for (var i = 0; i < shown.length; i++)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 10),
+                    child: _CommodityTile(commodity: shown[i])
+                        .animate()
+                        .fadeIn(duration: 220.ms, delay: (i * 25).ms)
+                        .slideY(begin: 0.08, end: 0),
+                  ),
+                const SizedBox(height: 6),
+                const InfoBanner(
+                  icon: Icons.school_outlined,
+                  title: 'How commodity futures are priced',
+                  message:
+                      'Prices are quoted per unit (gold per 10 g, crude per '
+                      'barrel) but one lot is much bigger — a GOLD lot is 1 kg, '
+                      'so it is worth price × 100. You don’t pay that full '
+                      'value: like a real broker, only the margin shown is '
+                      'blocked and your P&L moves with every tick. Contracts '
+                      'settle automatically on expiry.',
+                ),
+              ],
             );
           },
         ),
@@ -110,29 +151,118 @@ class _CommoditiesScreenState extends ConsumerState<CommoditiesScreen> {
   }
 }
 
-class _CommoditiesHeader extends StatelessWidget {
-  const _CommoditiesHeader();
+class _SessionHero extends StatelessWidget {
+  const _SessionHero();
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
+    final m = context.market;
+    final t = Theme.of(context).textTheme;
+    final open = isMarketOpen(null, 'MCX');
+    final close = commodityCloseLabel();
+    return AppCard(
+      gradient: LinearGradient(
+        begin: Alignment.topLeft,
+        end: Alignment.bottomRight,
+        colors: m.heroGradient,
+      ),
+      borderColor: Colors.white.withValues(alpha: 0.06),
       child: Row(
         children: [
-          Icon(Icons.diamond_outlined,
-              size: 15, color: scheme.onSurface.withValues(alpha: 0.6)),
-          const SizedBox(width: 6),
+          Container(
+            width: 46,
+            height: 46,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(AppRadius.md),
+            ),
+            child: Icon(Icons.diamond_rounded, color: m.gold),
+          ),
+          const SizedBox(width: 14),
           Expanded(
-            child: Text(
-              'MCX front-month futures · live rates',
-              style: TextStyle(
-                fontSize: 12,
-                color: scheme.onSurface.withValues(alpha: 0.6),
-                fontWeight: FontWeight.w500,
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'MCX futures',
+                  style: t.titleMedium?.copyWith(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Front-month contracts · trade on margin · 09:00–$close IST',
+                  style: t.bodySmall?.copyWith(
+                    color: Colors.white.withValues(alpha: 0.75),
+                  ),
+                ),
+              ],
             ),
           ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+            decoration: BoxDecoration(
+              color: (open ? m.up : Colors.white).withValues(alpha: 0.16),
+              borderRadius: BorderRadius.circular(AppRadius.pill),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 7,
+                  height: 7,
+                  decoration: BoxDecoration(
+                    color: open ? m.up : Colors.white70,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                Text(
+                  open ? 'LIVE' : 'CLOSED',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.6,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _GroupChips extends StatelessWidget {
+  const _GroupChips({required this.value, required this.onChanged});
+  final _Group value;
+  final ValueChanged<_Group> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    const labels = {
+      _Group.all: 'All',
+      _Group.bullion: 'Bullion',
+      _Group.energy: 'Energy',
+      _Group.metals: 'Base metals',
+    };
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          for (final g in _Group.values)
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: ChoiceChip(
+                avatar: Icon(_iconOf(g), size: 16),
+                label: Text(labels[g]!),
+                selected: value == g,
+                onSelected: (_) => onChanged(g),
+              ),
+            ),
         ],
       ),
     );
@@ -146,26 +276,31 @@ class _CommodityTile extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final scheme = Theme.of(context).colorScheme;
+    final t = Theme.of(context).textTheme;
+    final m = context.market;
     final c = commodity;
     // Live LTP overlay — this row rebuilds only when its own contract ticks.
     final tick = ref.watch(
-      latestTicksProvider.select<Tick?>((m) => m[c.tickKey]),
+      latestTicksProvider.select<Tick?>((map) => map[c.tickKey]),
     );
     final ltp = tick?.ltp ?? c.ltp;
     final tClose = tick?.close ?? c.close;
     final change = tClose > 0 ? ltp - tClose : c.change;
     final changePct = tClose > 0 ? (change / tClose) * 100 : c.changePct;
-    final isUp = change >= 0;
-    final color = isUp ? _upColor : _downColor;
+    final group = _groupOf(c.name);
+    final accent = switch (group) {
+      _Group.bullion => m.gold,
+      _Group.energy => m.warning,
+      _ => m.info,
+    };
 
-    return InkWell(
-      borderRadius: BorderRadius.circular(14),
+    return AppCard(
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
       onTap: () => Navigator.of(context).push(
         MaterialPageRoute(
           builder: (_) => SymbolDetailScreen(
-            // Pass the friendly commodity name as the display symbol; the
-            // detail screen addresses quotes/orders by the contract
-            // tradingsymbol on MCX.
+            // The detail screen addresses quotes/orders by the contract
+            // tradingsymbol on MCX; the underlying name is the display key.
             symbol: c.name,
             tradingsymbol: c.tradingsymbol,
             symboltoken: c.symboltoken,
@@ -173,81 +308,81 @@ class _CommodityTile extends ConsumerWidget {
           ),
         ),
       ),
-      child: Ink(
-        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-        decoration: BoxDecoration(
-          color: scheme.surfaceContainerHighest.withValues(alpha: 0.4),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: scheme.outlineVariant.withValues(alpha: 0.3),
-          ),
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: accent.withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(AppRadius.sm),
+                ),
+                child: Icon(_iconOf(group), color: accent, size: 20),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(c.label, style: t.titleMedium),
+                    const SizedBox(height: 2),
+                    Text(
+                      prettyContract(c.tradingsymbol),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: t.bodySmall,
+                    ),
+                  ],
+                ),
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
                   Text(
-                    c.label,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w700,
-                      fontSize: 15,
-                    ),
+                    ltp > 0 ? formatInr(ltp) : '—',
+                    style: t.titleMedium?.copyWith(fontWeight: FontWeight.w800),
                   ),
-                  const SizedBox(height: 3),
-                  Text(
-                    '₹/${c.unit} · lot ${c.lotSize}'
-                    '${c.expiry != null ? ' · ${c.expiry}' : ''}',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 11.5,
-                      color: scheme.onSurface.withValues(alpha: 0.6),
-                    ),
-                  ),
+                  const SizedBox(height: 4),
+                  ChangePill(percent: changePct, compact: true),
                 ],
               ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+            decoration: BoxDecoration(
+              color: scheme.surfaceContainer,
+              borderRadius: BorderRadius.circular(AppRadius.sm),
             ),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
+            child: Row(
               children: [
-                Text(
-                  ltp > 0 ? formatInr(ltp) : '—',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w800,
-                    fontSize: 15,
-                    letterSpacing: -0.2,
+                Expanded(
+                  child: StatTile(
+                    label: 'Per ${c.quoteUnit.isEmpty ? 'unit' : c.quoteUnit}',
+                    value: c.lotLabel != null ? '1 lot = ${c.lotLabel}' : 'Lot ${c.lotSize}',
                   ),
                 ),
-                const SizedBox(height: 3),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: color.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(5),
+                Expanded(
+                  child: StatTile(
+                    label: 'Lot value',
+                    value: ltp > 0 ? formatInrCompact(c.contractValueAt(ltp)) : '—',
                   ),
-                  child: Text(
-                    '${isUp ? '+' : ''}${change.toStringAsFixed(2)} '
-                    '(${changePct.toStringAsFixed(2)}%)',
-                    style: TextStyle(
-                      color: color,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w800,
-                    ),
+                ),
+                Expanded(
+                  child: StatTile(
+                    label: 'Margin (${c.marginRatePct.toStringAsFixed(0)}%)',
+                    value: ltp > 0 ? formatInrCompact(c.marginPerLotAt(ltp)) : '—',
+                    valueColor: scheme.primary,
+                    crossAxisAlignment: CrossAxisAlignment.end,
                   ),
                 ),
               ],
             ),
-            const SizedBox(width: 6),
-            Icon(
-              Icons.chevron_right,
-              size: 18,
-              color: scheme.onSurface.withValues(alpha: 0.4),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

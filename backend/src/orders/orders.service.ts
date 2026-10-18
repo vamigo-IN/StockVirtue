@@ -14,12 +14,18 @@ import {
   OrderType,
   Prisma,
 } from '@prisma/client';
+import { isContractSupported } from '../common/contract-specs';
 import { Exchange } from '../common/exchange';
-import { computeFees } from '../common/fees';
+import { computeFees, feeSegmentFor } from '../common/fees';
 import { isMarketOpen } from '../common/market-hours';
 import { HolidaysService } from '../market/holidays.service';
 import { FeatureFlagsService } from '../feature-flags/feature-flags.service';
-import { isFnoInstrumentType, requiredMarginP } from '../common/margin';
+import {
+  futuresMarginP,
+  isFnoInstrumentType,
+  isFutureInstrumentType,
+  requiredMarginP,
+} from '../common/margin';
 import { rupeesToPaise } from '../common/money';
 import { ScripMasterService } from '../market/scrip-master.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -78,6 +84,133 @@ export class OrdersService {
     );
   }
 
+  // ─── money helpers ────────────────────────────────────────────────────
+
+  /// Cash free to commit: balance minus pending-order holds and blocked margin.
+  private available(wallet: {
+    balanceP: bigint;
+    reservedP: bigint;
+    marginReservedP: bigint;
+  }): bigint {
+    return wallet.balanceP - wallet.reservedP - wallet.marginReservedP;
+  }
+
+  private feesFor(
+    side: OrderSide,
+    exchange: string,
+    tradingsymbol: string,
+    notionalP: bigint,
+    product: OrderProduct,
+  ): bigint {
+    return computeFees({
+      side,
+      exchange,
+      notionalP,
+      intraday: product === OrderProduct.INTRADAY,
+      segment: feeSegmentFor(exchange, tradingsymbol),
+    }).total;
+  }
+
+  /// Cash a BUY at `priceP` must be able to cover: the initial margin for a
+  /// leveraged futures BUY, otherwise the full notional — plus buy-side fees,
+  /// so a resting order can never fill into a negative balance.
+  private buyCommitP(args: {
+    exchange: string;
+    tradingsymbol: string;
+    underlying: string;
+    priceP: bigint;
+    quantity: number;
+    product: OrderProduct;
+    leveraged: boolean;
+  }): bigint {
+    const notionalP = args.priceP * BigInt(args.quantity);
+    const base = args.leveraged
+      ? futuresMarginP(notionalP, args.exchange, args.underlying)
+      : notionalP;
+    return (
+      base +
+      this.feesFor(
+        OrderSide.BUY,
+        args.exchange,
+        args.tradingsymbol,
+        notionalP,
+        args.product,
+      )
+    );
+  }
+
+  /// Whether a new BUY on this contract trades on margin. An open long keeps
+  /// the mode it was opened in (legacy full-value futures stay full-value
+  /// until closed); a fresh position is leveraged iff it's a future.
+  private buyIsLeveraged(
+    inst: Instrument,
+    position: { quantity: number; leveraged: boolean } | null,
+  ): boolean {
+    if (position && position.quantity > 0) return position.leveraged;
+    if (position && position.quantity < 0) return false; // covering a short
+    return isFutureInstrumentType(inst.instrumentType);
+  }
+
+  /// The price a pending order's reservation was sized against.
+  private thresholdOf(order: Order): bigint | null {
+    switch (order.type) {
+      case OrderType.LIMIT:
+      case OrderType.MARKET:
+      case OrderType.STOP_LOSS_LIMIT:
+        return order.limitPriceP;
+      case OrderType.STOP_LOSS:
+      case OrderType.TRAILING_STOP:
+        return order.triggerPriceP;
+      default:
+        return null;
+    }
+  }
+
+  /// Cash a pending BUY holds in wallet.reservedP. Orders placed before the
+  /// exact amount was stored fall back to the old threshold × quantity rule.
+  private buyReservationOf(order: Order): bigint {
+    if (order.cashReservedP > 0n) return order.cashReservedP;
+    const thresholdP = this.thresholdOf(order);
+    return thresholdP === null ? 0n : thresholdP * BigInt(order.quantity);
+  }
+
+  /// Settles closing `qty` of a leveraged (margined) long at `fillPriceP`:
+  /// the wallet receives only the mark-to-market P&L (the contract value
+  /// never left it) and the proportional margin is unblocked.
+  private leveragedClose(
+    position: { quantity: number; avgPriceP: bigint; marginP: bigint },
+    qty: number,
+    fillPriceP: bigint,
+    feesP: bigint,
+  ) {
+    const pnlP = (fillPriceP - position.avgPriceP) * BigInt(qty);
+    const marginReleaseP =
+      qty >= position.quantity
+        ? position.marginP
+        : (position.marginP * BigInt(qty)) / BigInt(position.quantity);
+    return {
+      balanceDeltaP: pnlP - feesP,
+      marginReleaseP,
+      realizedP: pnlP - feesP,
+    };
+  }
+
+  /// Applies a leveraged close to the wallet. A loss larger than the whole
+  /// balance (a gap through every rupee of margin) is absorbed at zero —
+  /// a virtual broker writing off the debit — so the position can always be
+  /// closed instead of tripping the balance ≥ 0 constraint.
+  private leveragedWalletAfterClose(
+    wallet: { balanceP: bigint; marginReservedP: bigint },
+    close: { balanceDeltaP: bigint; marginReleaseP: bigint },
+  ) {
+    const balanceP = wallet.balanceP + close.balanceDeltaP;
+    const marginReservedP = wallet.marginReservedP - close.marginReleaseP;
+    return {
+      balanceP: balanceP < 0n ? 0n : balanceP,
+      marginReservedP: marginReservedP < 0n ? 0n : marginReservedP,
+    };
+  }
+
   private fireOrderFilled(order: Order | null) {
     if (!order || order.status !== OrderStatus.FILLED) return;
     void this.notifications
@@ -111,11 +244,28 @@ export class OrdersService {
         `Symbol "${input.symbol}" not found on ${input.exchange}`,
       );
     }
-    // F&O orders must be in multiples of the contract's lot size.
+    // Blocks OPENING an unsupported contract; selling out of one held from
+    // before is always allowed (short-selling is disabled, so a SELL can
+    // only ever reduce a long).
+    if (
+      input.side === OrderSide.BUY &&
+      !isContractSupported(inst.exchange, inst.name)
+    ) {
+      throw new BadRequestException(
+        `${inst.symbol} can't be traded in the simulator yet — try the mini or micro contract instead.`,
+      );
+    }
+    // F&O orders must be in multiples of the contract's lot size. One
+    // exception: squaring off a whole existing position. MCX lots are now
+    // expressed in quotation units, so a position opened under the old
+    // (raw) lot can be an odd size — it must still be closable in one go.
     if (!inst.isEquity && inst.lotSize > 1) {
-      if (input.quantity % inst.lotSize !== 0) {
+      if (
+        input.quantity % inst.lotSize !== 0 &&
+        !(await this.exitsWholePosition(input, inst))
+      ) {
         throw new BadRequestException(
-          `quantity must be a multiple of lot size (${inst.lotSize}) for ${inst.symbol}`,
+          `Quantity must be in whole lots — multiple of lot size (${inst.lotSize}) for ${inst.symbol}.`,
         );
       }
     }
@@ -166,6 +316,32 @@ export class OrdersService {
       return this.placePendingMarket({ ...input, type, inst });
     }
     return this.placeMarket({ ...input, type, inst });
+  }
+
+  /// True when this order closes exactly the unreserved remainder of a long
+  /// (SELL) or the whole of a legacy short (BUY).
+  private async exitsWholePosition(
+    input: PlaceOrderInput,
+    inst: Instrument,
+  ): Promise<boolean> {
+    const position = await this.prisma.position.findUnique({
+      where: {
+        userId_symboltoken_exchange_product: {
+          userId: input.userId,
+          symboltoken: inst.token,
+          exchange: inst.exchange,
+          product: input.product ?? OrderProduct.DELIVERY,
+        },
+      },
+    });
+    if (!position) return false;
+    if (input.side === OrderSide.SELL) {
+      return (
+        position.quantity > 0 &&
+        position.quantity - position.reservedQty === input.quantity
+      );
+    }
+    return position.quantity < 0 && -position.quantity === input.quantity;
   }
 
   /// After-market MARKET order: reserve at the last-known price and queue it
@@ -235,13 +411,13 @@ export class OrdersService {
     const fillPriceP = rupeesToPaise(ltp);
     const notionalP = fillPriceP * BigInt(input.quantity);
     const product = input.product ?? OrderProduct.DELIVERY;
-    const fees = computeFees({
-      side: input.side,
-      exchange: inst.exchange,
+    const feesP = this.feesFor(
+      input.side,
+      inst.exchange,
+      inst.symbol,
       notionalP,
-      intraday: product === OrderProduct.INTRADAY,
-    });
-    const feesP = fees.total;
+      product,
+    );
 
     return this.prisma.$transaction(async (tx) => {
       const wallet = await this.wallet.getForUpdate(input.userId, tx);
@@ -270,13 +446,13 @@ export class OrdersService {
           'Order crosses zero. Split into a cover order and a fresh long.',
         );
       }
+      let leveragedOrder = false;
       if (input.side === OrderSide.BUY) {
         if (currentQty < 0) {
           // COVER short. Debit cost from balance, release proportional margin,
           // book realized P&L = (avgShortPrice - fillPrice) × qty - fees.
           const totalCost = notionalP + feesP;
-          const available = wallet.balanceP - wallet.reservedP;
-          if (available < totalCost) {
+          if (this.available(wallet) < totalCost) {
             throw new BadRequestException('INSUFFICIENT_FUNDS');
           }
           const newAbsQty = Math.abs(newQty);
@@ -303,11 +479,31 @@ export class OrdersService {
               realizedPnLP: position!.realizedPnLP + realized,
             },
           });
+        } else if (this.buyIsLeveraged(inst, position)) {
+          // FUTURES LONG on margin: block the initial margin (it stays in the
+          // balance) and pay only the fees — like a real broker, a lot of
+          // NIFTY or GOLDM needs ~10-15% of its contract value, not all of it.
+          leveragedOrder = true;
+          const marginP = futuresMarginP(notionalP, inst.exchange, inst.name);
+          if (this.available(wallet) < marginP + feesP) {
+            throw new BadRequestException('INSUFFICIENT_MARGIN');
+          }
+          await tx.wallet.update({
+            where: { userId: input.userId },
+            data: {
+              balanceP: wallet.balanceP - feesP,
+              marginReservedP: wallet.marginReservedP + marginP,
+            },
+          });
+          await this.upsertLongPosition(tx, input, inst, fillPriceP, position, {
+            leveraged: true,
+            marginAddP: marginP,
+          });
         } else {
-          // LONG OPEN (or add to long) — existing flow.
+          // LONG OPEN (or add to long) — pays the full value (cash equity,
+          // option premium, legacy full-value futures).
           const totalCost = notionalP + feesP;
-          const available = wallet.balanceP - wallet.reservedP;
-          if (available < totalCost) {
+          if (this.available(wallet) < totalCost) {
             throw new BadRequestException('INSUFFICIENT_FUNDS');
           }
           await tx.wallet.update({
@@ -319,24 +515,42 @@ export class OrdersService {
       } else {
         // SELL
         if (currentQty > 0) {
-          // CLOSE long — existing flow.
           const availableQty = currentQty - position!.reservedQty;
           if (availableQty < qty) {
             throw new BadRequestException('INSUFFICIENT_QUANTITY');
           }
-          await tx.wallet.update({
-            where: { userId: input.userId },
-            data: { balanceP: wallet.balanceP + notionalP - feesP },
-          });
-          const realized =
-            (fillPriceP - position!.avgPriceP) * BigInt(qty) - feesP;
-          await tx.position.update({
-            where: positionKey,
-            data: {
-              quantity: newQty,
-              realizedPnLP: position!.realizedPnLP + realized,
-            },
-          });
+          if (position!.leveraged) {
+            // CLOSE margined futures long: settle the P&L, unblock margin.
+            leveragedOrder = true;
+            const close = this.leveragedClose(position!, qty, fillPriceP, feesP);
+            await tx.wallet.update({
+              where: { userId: input.userId },
+              data: this.leveragedWalletAfterClose(wallet, close),
+            });
+            await tx.position.update({
+              where: positionKey,
+              data: {
+                quantity: newQty,
+                marginP: position!.marginP - close.marginReleaseP,
+                realizedPnLP: position!.realizedPnLP + close.realizedP,
+              },
+            });
+          } else {
+            // CLOSE cash long — sale proceeds come back to the balance.
+            await tx.wallet.update({
+              where: { userId: input.userId },
+              data: { balanceP: wallet.balanceP + notionalP - feesP },
+            });
+            const realized =
+              (fillPriceP - position!.avgPriceP) * BigInt(qty) - feesP;
+            await tx.position.update({
+              where: positionKey,
+              data: {
+                quantity: newQty,
+                realizedPnLP: position!.realizedPnLP + realized,
+              },
+            });
+          }
         } else {
           // Short-selling is disabled — you can only sell holdings you own.
           // (currentQty <= 0 here means there's no long position to reduce.)
@@ -360,6 +574,7 @@ export class OrdersService {
           quantity: input.quantity,
           fillPriceP,
           feesP,
+          leveraged: leveragedOrder,
           status: OrderStatus.FILLED,
           filledAt: new Date(),
         },
@@ -383,7 +598,6 @@ export class OrdersService {
     const { inst } = input;
     const product = input.product ?? OrderProduct.DELIVERY;
     const limitPriceP = rupeesToPaise(input.limitPrice!);
-    const reserveP = limitPriceP * BigInt(input.quantity);
 
     return this.prisma.$transaction(async (tx) => {
       const wallet = await this.wallet.getForUpdate(input.userId, tx);
@@ -396,14 +610,28 @@ export class OrdersService {
         },
       };
 
+      let leveraged = false;
+      let cashReservedP = 0n;
       if (input.side === OrderSide.BUY) {
-        const available = wallet.balanceP - wallet.reservedP;
-        if (available < reserveP) {
-          throw new BadRequestException('INSUFFICIENT_FUNDS');
+        const position = await tx.position.findUnique({ where: positionKey });
+        leveraged = this.buyIsLeveraged(inst, position);
+        cashReservedP = this.buyCommitP({
+          exchange: inst.exchange,
+          tradingsymbol: inst.symbol,
+          underlying: inst.name,
+          priceP: limitPriceP,
+          quantity: input.quantity,
+          product,
+          leveraged,
+        });
+        if (this.available(wallet) < cashReservedP) {
+          throw new BadRequestException(
+            leveraged ? 'INSUFFICIENT_MARGIN' : 'INSUFFICIENT_FUNDS',
+          );
         }
         await tx.wallet.update({
           where: { userId: input.userId },
-          data: { reservedP: wallet.reservedP + reserveP },
+          data: { reservedP: wallet.reservedP + cashReservedP },
         });
       } else {
         const position = await tx.position.findUnique({ where: positionKey });
@@ -439,6 +667,8 @@ export class OrdersService {
           product,
           quantity: input.quantity,
           limitPriceP,
+          leveraged,
+          cashReservedP,
           status: OrderStatus.PENDING,
         },
       });
@@ -453,7 +683,6 @@ export class OrdersService {
     const { inst } = input;
     const product = input.product ?? OrderProduct.DELIVERY;
     const triggerPriceP = rupeesToPaise(input.triggerPrice!);
-    const reserveP = triggerPriceP * BigInt(input.quantity);
 
     return this.prisma.$transaction(async (tx) => {
       const wallet = await this.wallet.getForUpdate(input.userId, tx);
@@ -466,14 +695,28 @@ export class OrdersService {
         },
       };
 
+      let leveraged = false;
+      let cashReservedP = 0n;
       if (input.side === OrderSide.BUY) {
-        const available = wallet.balanceP - wallet.reservedP;
-        if (available < reserveP) {
-          throw new BadRequestException('INSUFFICIENT_FUNDS');
+        const position = await tx.position.findUnique({ where: positionKey });
+        leveraged = this.buyIsLeveraged(inst, position);
+        cashReservedP = this.buyCommitP({
+          exchange: inst.exchange,
+          tradingsymbol: inst.symbol,
+          underlying: inst.name,
+          priceP: triggerPriceP,
+          quantity: input.quantity,
+          product,
+          leveraged,
+        });
+        if (this.available(wallet) < cashReservedP) {
+          throw new BadRequestException(
+            leveraged ? 'INSUFFICIENT_MARGIN' : 'INSUFFICIENT_FUNDS',
+          );
         }
         await tx.wallet.update({
           where: { userId: input.userId },
-          data: { reservedP: wallet.reservedP + reserveP },
+          data: { reservedP: wallet.reservedP + cashReservedP },
         });
       } else {
         const position = await tx.position.findUnique({ where: positionKey });
@@ -508,6 +751,8 @@ export class OrdersService {
           product,
           quantity: input.quantity,
           triggerPriceP,
+          leveraged,
+          cashReservedP,
           status: OrderStatus.PENDING,
         },
       });
@@ -524,10 +769,9 @@ export class OrdersService {
     const { inst } = input;
     const triggerPriceP = rupeesToPaise(input.triggerPrice!);
     const limitPriceP = rupeesToPaise(input.limitPrice!);
-    // BUY reserves cash up to the worst-case fill (limitPrice × qty); SELL
-    // reserves the qty itself.
+    // BUY reserves cash up to the worst-case fill (limitPrice × qty, or its
+    // margin for futures, plus fees); SELL reserves the qty itself.
     const product = input.product ?? OrderProduct.DELIVERY;
-    const reserveP = limitPriceP * BigInt(input.quantity);
 
     return this.prisma.$transaction(async (tx) => {
       const wallet = await this.wallet.getForUpdate(input.userId, tx);
@@ -540,14 +784,28 @@ export class OrdersService {
         },
       };
 
+      let leveraged = false;
+      let cashReservedP = 0n;
       if (input.side === OrderSide.BUY) {
-        const available = wallet.balanceP - wallet.reservedP;
-        if (available < reserveP) {
-          throw new BadRequestException('INSUFFICIENT_FUNDS');
+        const position = await tx.position.findUnique({ where: positionKey });
+        leveraged = this.buyIsLeveraged(inst, position);
+        cashReservedP = this.buyCommitP({
+          exchange: inst.exchange,
+          tradingsymbol: inst.symbol,
+          underlying: inst.name,
+          priceP: limitPriceP,
+          quantity: input.quantity,
+          product,
+          leveraged,
+        });
+        if (this.available(wallet) < cashReservedP) {
+          throw new BadRequestException(
+            leveraged ? 'INSUFFICIENT_MARGIN' : 'INSUFFICIENT_FUNDS',
+          );
         }
         await tx.wallet.update({
           where: { userId: input.userId },
-          data: { reservedP: wallet.reservedP + reserveP },
+          data: { reservedP: wallet.reservedP + cashReservedP },
         });
       } else {
         const position = await tx.position.findUnique({ where: positionKey });
@@ -583,6 +841,8 @@ export class OrdersService {
           quantity: input.quantity,
           triggerPriceP,
           limitPriceP,
+          leveraged,
+          cashReservedP,
           status: OrderStatus.PENDING,
         },
       });
@@ -627,16 +887,29 @@ export class OrdersService {
         },
       };
 
+      let leveraged = false;
+      let cashReservedP = 0n;
       if (isBuy) {
         const wallet = await this.wallet.getForUpdate(input.userId, tx);
-        const reserveP = initialTriggerP * BigInt(input.quantity);
-        const available = wallet.balanceP - wallet.reservedP;
-        if (available < reserveP) {
-          throw new BadRequestException('INSUFFICIENT_FUNDS');
+        const position = await tx.position.findUnique({ where: positionKey });
+        leveraged = this.buyIsLeveraged(inst, position);
+        cashReservedP = this.buyCommitP({
+          exchange: inst.exchange,
+          tradingsymbol: inst.symbol,
+          underlying: inst.name,
+          priceP: initialTriggerP,
+          quantity: input.quantity,
+          product,
+          leveraged,
+        });
+        if (this.available(wallet) < cashReservedP) {
+          throw new BadRequestException(
+            leveraged ? 'INSUFFICIENT_MARGIN' : 'INSUFFICIENT_FUNDS',
+          );
         }
         await tx.wallet.update({
           where: { userId: input.userId },
-          data: { reservedP: wallet.reservedP + reserveP },
+          data: { reservedP: wallet.reservedP + cashReservedP },
         });
       } else {
         const position = await tx.position.findUnique({ where: positionKey });
@@ -666,6 +939,8 @@ export class OrdersService {
           quantity: input.quantity,
           triggerPriceP: initialTriggerP,
           trailAmountP,
+          leveraged,
+          cashReservedP,
           status: OrderStatus.PENDING,
         },
       });
@@ -712,11 +987,29 @@ export class OrdersService {
       ) {
         return;
       }
-      const delta = order.triggerPriceP - newTriggerP;
-      const release = delta * BigInt(order.quantity);
+      let release: bigint;
+      let cashReservedP = order.cashReservedP;
+      if (order.cashReservedP > 0n) {
+        // Exact-reservation order: re-size the hold at the new trigger.
+        const next = this.buyCommitP({
+          exchange: order.exchange,
+          tradingsymbol: order.tradingsymbol,
+          underlying: order.symbol,
+          priceP: newTriggerP,
+          quantity: order.quantity,
+          product: order.product,
+          leveraged: order.leveraged,
+        });
+        release = order.cashReservedP - next;
+        if (release < 0n) release = 0n;
+        cashReservedP = order.cashReservedP - release;
+      } else {
+        // Legacy order reserved threshold × qty.
+        release = (order.triggerPriceP - newTriggerP) * BigInt(order.quantity);
+      }
       await tx.order.update({
         where: { id: orderId },
-        data: { triggerPriceP: newTriggerP },
+        data: { triggerPriceP: newTriggerP, cashReservedP },
       });
       const wallet = await this.wallet.getForUpdate(order.userId, tx);
       await tx.wallet.update({
@@ -755,11 +1048,6 @@ export class OrdersService {
 
   /** Triggered by LimitWatcherService when a tick crosses a pending order. */
   async fillLimit(orderId: string, ltpRupees: number): Promise<Order | null> {
-    // Defense-in-depth: never settle a fill while the market is closed (incl.
-    // weekday trading holidays), even if a caller forgets the session check.
-    // The tick-watcher already gates this in onTick(); this keeps the DB-level
-    // fill self-protecting so the off-hours-fill invariant can't be reopened.
-    if (!this.isTradingOpen()) return null;
     const fillPriceP = rupeesToPaise(ltpRupees);
     return this.prisma.$transaction(async (tx) => {
       const order = await tx.order.findUnique({ where: { id: orderId } });
@@ -773,6 +1061,11 @@ export class OrdersService {
       ) {
         return null;
       }
+      // Defense-in-depth: never settle a fill while THIS order's market is
+      // closed (incl. weekday trading holidays), even if a caller forgets the
+      // session check. Gated per exchange so MCX orders fill in the evening
+      // session (to 23:30/23:55) while equity orders stay bound to 15:30.
+      if (!this.isTradingOpen(order.exchange)) return null;
       // For a queued after-market MARKET order the reservation reference is its
       // limitPriceP (the last-known price captured at placement); it still fills
       // at the live tick price below.
@@ -791,35 +1084,46 @@ export class OrdersService {
         },
       };
       const position = await tx.position.findUnique({ where: positionKey });
-      const reservedP = thresholdP * BigInt(order.quantity);
+      const reservedP =
+        order.side === OrderSide.BUY ? this.buyReservationOf(order) : 0n;
       const notionalP = fillPriceP * BigInt(order.quantity);
-      const fees = computeFees({
-        side: order.side,
-        exchange: order.exchange,
+      const feesP = this.feesFor(
+        order.side,
+        order.exchange,
+        order.tradingsymbol,
         notionalP,
-        intraday: order.product === OrderProduct.INTRADAY,
-      });
-      const feesP = fees.total;
+        order.product,
+      );
+
+      // Releases this BUY's hold and marks it REJECTED — used whenever the
+      // fill can't be honoured, so a resting order can never push a balance
+      // negative (or retry forever against the DB constraint).
+      const rejectBuy = async (reason: string) => {
+        await tx.wallet.update({
+          where: { userId: order.userId },
+          data: { reservedP: wallet.reservedP - reservedP },
+        });
+        return tx.order.update({
+          where: { id: orderId },
+          data: { status: OrderStatus.REJECTED, rejectReason: reason },
+        });
+      };
 
       if (order.side === OrderSide.BUY) {
         const currentQty = position?.quantity ?? 0;
+        // Cash this user could spend on this fill once its own hold is freed.
+        const spendableP = this.available(wallet) + reservedP;
         if (currentQty < 0) {
           // COVER short fill. If a cover would cross zero into a long, reject
           // — same logic as placeMarket's cross-zero guard, applied at fill time.
           const newQty = currentQty + order.quantity;
           if (newQty > 0) {
-            await tx.wallet.update({
-              where: { userId: order.userId },
-              data: { reservedP: wallet.reservedP - reservedP },
-            });
-            return tx.order.update({
-              where: { id: orderId },
-              data: {
-                status: OrderStatus.REJECTED,
-                rejectReason:
-                  'BUY would cross zero on existing short; split into cover + fresh long',
-              },
-            });
+            return rejectBuy(
+              'BUY would cross zero on existing short; split into cover + fresh long',
+            );
+          }
+          if (spendableP < notionalP + feesP) {
+            return rejectBuy('Insufficient funds to cover at the fill price');
           }
           const newAbsQty = Math.abs(newQty);
           const newMarginP = requiredMarginP(
@@ -846,26 +1150,48 @@ export class OrdersService {
               realizedPnLP: position!.realizedPnLP + realized,
             },
           });
+        } else if (currentQty > 0 && position!.leveraged !== order.leveraged) {
+          // The open position was opened in the other mode (margined vs full
+          // value) after this order was placed — mixing them would corrupt
+          // the margin accounting.
+          return rejectBuy(
+            'Position changed since this order was placed — please place it again',
+          );
+        } else if (order.leveraged) {
+          // Futures BUY on margin: lock the initial margin at the FILL price,
+          // pay only the fees. A gap at the open can raise the margin beyond
+          // what was held — reject cleanly rather than over-commit.
+          const marginP = futuresMarginP(notionalP, order.exchange, order.symbol);
+          if (spendableP < marginP + feesP) {
+            return rejectBuy(
+              order.type === OrderType.MARKET
+                ? 'Insufficient margin to fill at the market-open price'
+                : 'Insufficient margin to fill at the trigger price',
+            );
+          }
+          await tx.wallet.update({
+            where: { userId: order.userId },
+            data: {
+              balanceP: wallet.balanceP - feesP,
+              reservedP: wallet.reservedP - reservedP,
+              marginReservedP: wallet.marginReservedP + marginP,
+            },
+          });
+          await this.upsertLongPositionRaw(tx, order, fillPriceP, position, {
+            leveraged: true,
+            marginAddP: marginP,
+          });
         } else {
-          // An after-market MARKET order reserved at the prior price; if the
-          // stock gaps up at open the live cost can exceed the reserved hold.
-          // Reject cleanly rather than let the balance go negative.
-          if (
-            order.type === OrderType.MARKET &&
-            wallet.balanceP < notionalP + feesP
-          ) {
-            await tx.wallet.update({
-              where: { userId: order.userId },
-              data: { reservedP: wallet.reservedP - reservedP },
-            });
-            return tx.order.update({
-              where: { id: orderId },
-              data: {
-                status: OrderStatus.REJECTED,
-                rejectReason:
-                  'Insufficient funds to fill at the market-open price',
-              },
-            });
+          // Full-value BUY. An after-market MARKET order reserved at the prior
+          // price, and a stop fills at whatever trades past its trigger, so the
+          // live cost can exceed the hold — reject cleanly rather than let the
+          // balance go negative.
+          if (spendableP < notionalP + feesP) {
+            return rejectBuy(
+              order.type === OrderType.MARKET
+                ? 'Insufficient funds to fill at the market-open price'
+                : 'Insufficient funds to fill at the trigger price',
+            );
           }
           await tx.wallet.update({
             where: { userId: order.userId },
@@ -945,20 +1271,43 @@ export class OrdersService {
         if (!position || position.reservedQty < order.quantity) {
           throw new Error('SELL fill missing reserved qty');
         }
-        const realized =
-          (fillPriceP - position.avgPriceP) * BigInt(order.quantity) - feesP;
-        await tx.position.update({
-          where: positionKey,
-          data: {
-            quantity: position.quantity - order.quantity,
-            reservedQty: position.reservedQty - order.quantity,
-            realizedPnLP: position.realizedPnLP + realized,
-          },
-        });
-        await tx.wallet.update({
-          where: { userId: order.userId },
-          data: { balanceP: wallet.balanceP + notionalP - feesP },
-        });
+        if (position.leveraged) {
+          // Close margined futures long: settle P&L, unblock margin.
+          const close = this.leveragedClose(
+            position,
+            order.quantity,
+            fillPriceP,
+            feesP,
+          );
+          await tx.position.update({
+            where: positionKey,
+            data: {
+              quantity: position.quantity - order.quantity,
+              reservedQty: position.reservedQty - order.quantity,
+              marginP: position.marginP - close.marginReleaseP,
+              realizedPnLP: position.realizedPnLP + close.realizedP,
+            },
+          });
+          await tx.wallet.update({
+            where: { userId: order.userId },
+            data: this.leveragedWalletAfterClose(wallet, close),
+          });
+        } else {
+          const realized =
+            (fillPriceP - position.avgPriceP) * BigInt(order.quantity) - feesP;
+          await tx.position.update({
+            where: positionKey,
+            data: {
+              quantity: position.quantity - order.quantity,
+              reservedQty: position.reservedQty - order.quantity,
+              realizedPnLP: position.realizedPnLP + realized,
+            },
+          });
+          await tx.wallet.update({
+            where: { userId: order.userId },
+            data: { balanceP: wallet.balanceP + notionalP - feesP },
+          });
+        }
       }
 
       const updated = await tx.order.update({
@@ -967,6 +1316,10 @@ export class OrdersService {
           status: OrderStatus.FILLED,
           fillPriceP,
           feesP,
+          leveraged:
+            order.side === OrderSide.SELL
+              ? (position?.leveraged ?? false)
+              : order.leveraged,
           filledAt: new Date(),
         },
       });
@@ -1072,25 +1425,32 @@ export class OrdersService {
         throw new BadRequestException('Order type does not support modify');
       }
 
+      let cashReservedP = order.cashReservedP;
       if (order.side === OrderSide.BUY) {
-        const oldReservedP = thresholdOldP * BigInt(order.quantity);
-        const newReservedP = thresholdNewP * BigInt(newQty);
+        const oldReservedP = this.buyReservationOf(order);
+        // Re-size with the same rule placement used (margin or notional,
+        // plus fees) — this also upgrades a legacy order to an exact hold.
+        const newReservedP = this.buyCommitP({
+          exchange: order.exchange,
+          tradingsymbol: order.tradingsymbol,
+          underlying: order.symbol,
+          priceP: thresholdNewP,
+          quantity: newQty,
+          product: order.product,
+          leveraged: order.leveraged,
+        });
         const deltaP = newReservedP - oldReservedP;
-        if (deltaP > 0n) {
-          const wallet = await this.wallet.getForUpdate(userId, tx);
-          const available =
-            wallet.balanceP - wallet.reservedP - wallet.marginReservedP;
-          if (available < deltaP) {
-            throw new BadRequestException(
-              'Insufficient cash to cover the modified reservation',
-            );
-          }
-        }
         const wallet = await this.wallet.getForUpdate(userId, tx);
+        if (deltaP > 0n && this.available(wallet) < deltaP) {
+          throw new BadRequestException(
+            'Insufficient cash to cover the modified reservation',
+          );
+        }
         await tx.wallet.update({
           where: { userId },
           data: { reservedP: wallet.reservedP + deltaP },
         });
+        cashReservedP = newReservedP;
       } else {
         // SELL: only quantity matters for reservedQty. Price changes
         // (trigger/limit) don't touch the position lock.
@@ -1126,6 +1486,7 @@ export class OrdersService {
           quantity: newQty,
           limitPriceP: newLimitP,
           triggerPriceP: newTriggerP,
+          cashReservedP,
         },
       });
       this.logger.log(
@@ -1168,22 +1529,12 @@ export class OrdersService {
         this.logger.log(`Cancelled short-intent order ${orderId}`);
         return updated;
       }
-      const thresholdP =
-        order.type === OrderType.LIMIT || order.type === OrderType.MARKET
-          ? order.limitPriceP
-          : order.type === OrderType.STOP_LOSS
-            ? order.triggerPriceP
-            : order.type === OrderType.STOP_LOSS_LIMIT
-              ? order.limitPriceP
-              : order.type === OrderType.TRAILING_STOP
-                ? order.triggerPriceP
-                : null;
-      if (thresholdP === null) {
+      if (this.thresholdOf(order) === null) {
         throw new BadRequestException('Order has no reservation to release');
       }
 
       if (order.side === OrderSide.BUY) {
-        const reservedP = thresholdP * BigInt(order.quantity);
+        const reservedP = this.buyReservationOf(order);
         const wallet = await this.wallet.getForUpdate(userId, tx);
         await tx.wallet.update({
           where: { userId },
@@ -1213,6 +1564,84 @@ export class OrdersService {
       });
       this.logger.log(`Cancelled order ${orderId}`);
       return updated;
+    });
+  }
+
+  /// Closes a whole position at a fixed settlement price — expiry settlement's
+  /// fallback for a contract the feed can no longer quote (already expired
+  /// and dropped from the scrip master). An exchange cash-settlement, not a
+  /// trade, so no fees. The caller cancels resting orders on it first.
+  async settleAtPrice(
+    positionId: string,
+    settlePriceP: bigint,
+  ): Promise<Order | null> {
+    return this.prisma.$transaction(async (tx) => {
+      const position = await tx.position.findUnique({
+        where: { id: positionId },
+      });
+      if (!position || position.quantity === 0) return null;
+      const wallet = await this.wallet.getForUpdate(position.userId, tx);
+      const qty = Math.abs(position.quantity);
+      const notionalP = settlePriceP * BigInt(qty);
+      let side: OrderSide;
+      let realizedP: bigint;
+      let walletData: Prisma.WalletUpdateInput;
+      if (position.quantity > 0 && position.leveraged) {
+        side = OrderSide.SELL;
+        const close = this.leveragedClose(position, qty, settlePriceP, 0n);
+        realizedP = close.realizedP;
+        walletData = this.leveragedWalletAfterClose(wallet, close);
+      } else if (position.quantity > 0) {
+        side = OrderSide.SELL;
+        realizedP = (settlePriceP - position.avgPriceP) * BigInt(qty);
+        walletData = { balanceP: wallet.balanceP + notionalP };
+      } else {
+        // Legacy short: buy back at the settlement price, release its margin.
+        side = OrderSide.BUY;
+        realizedP = (position.avgPriceP - settlePriceP) * BigInt(qty);
+        const balanceP = wallet.balanceP - notionalP;
+        const marginReservedP = wallet.marginReservedP - position.marginP;
+        walletData = {
+          balanceP: balanceP < 0n ? 0n : balanceP,
+          marginReservedP: marginReservedP < 0n ? 0n : marginReservedP,
+        };
+      }
+      await tx.wallet.update({
+        where: { userId: position.userId },
+        data: walletData,
+      });
+      await tx.position.update({
+        where: { id: position.id },
+        data: {
+          quantity: 0,
+          reservedQty: 0,
+          marginP: 0n,
+          realizedPnLP: position.realizedPnLP + realizedP,
+        },
+      });
+      const order = await tx.order.create({
+        data: {
+          userId: position.userId,
+          symbol: position.symbol,
+          tradingsymbol: position.tradingsymbol,
+          symboltoken: position.symboltoken,
+          exchange: position.exchange,
+          side,
+          type: OrderType.MARKET,
+          product: position.product,
+          origin: OrderOrigin.EXPIRY,
+          quantity: qty,
+          fillPriceP: settlePriceP,
+          feesP: 0n,
+          leveraged: position.leveraged,
+          status: OrderStatus.FILLED,
+          filledAt: new Date(),
+        },
+      });
+      this.logger.log(
+        `[${position.userId}] EXPIRY settle ${position.tradingsymbol} ${qty} @ ₹${Number(settlePriceP) / 100}`,
+      );
+      return order;
     });
   }
 
@@ -1255,47 +1684,29 @@ export class OrdersService {
     return order;
   }
 
+  /// Adds a filled BUY to the long position (weighted-average price). A
+  /// leveraged fill also accumulates the margin it blocked; a cash fill that
+  /// reopens a fully closed row resets it to cash mode.
   private async upsertLongPosition(
     tx: Prisma.TransactionClient,
     input: PlaceOrderInput,
     inst: Instrument,
     fillPriceP: bigint,
     existing: PositionRow | null,
+    margin?: LeveragedFill,
   ) {
-    const product = input.product ?? OrderProduct.DELIVERY;
-    const positionKey = {
-      userId_symboltoken_exchange_product: {
-        userId: input.userId,
-        symboltoken: inst.token,
-        exchange: inst.exchange,
-        product,
-      },
-    };
-    const oldQty = existing?.quantity ?? 0;
-    const oldAvg = existing?.avgPriceP ?? 0n;
-    const newQty = oldQty + input.quantity;
-    const newAvg =
-      (oldAvg * BigInt(oldQty) + fillPriceP * BigInt(input.quantity)) /
-      BigInt(newQty);
-    if (existing) {
-      await tx.position.update({
-        where: positionKey,
-        data: { quantity: newQty, avgPriceP: newAvg },
-      });
-    } else {
-      await tx.position.create({
-        data: {
-          userId: input.userId,
-          symbol: inst.name,
-          tradingsymbol: inst.symbol,
-          symboltoken: inst.token,
-          exchange: inst.exchange,
-          product,
-          quantity: input.quantity,
-          avgPriceP: fillPriceP,
-        },
-      });
-    }
+    await this.writeLongFill(tx, {
+      userId: input.userId,
+      symbol: inst.name,
+      tradingsymbol: inst.symbol,
+      symboltoken: inst.token,
+      exchange: inst.exchange,
+      product: input.product ?? OrderProduct.DELIVERY,
+      quantity: input.quantity,
+      fillPriceP,
+      existing,
+      margin,
+    });
   }
 
   private async upsertLongPositionRaw(
@@ -1303,37 +1714,78 @@ export class OrdersService {
     order: Order,
     fillPriceP: bigint,
     existing: PositionRow | null,
+    margin?: LeveragedFill,
+  ) {
+    await this.writeLongFill(tx, {
+      userId: order.userId,
+      symbol: order.symbol,
+      tradingsymbol: order.tradingsymbol,
+      symboltoken: order.symboltoken,
+      exchange: order.exchange,
+      product: order.product,
+      quantity: order.quantity,
+      fillPriceP,
+      existing,
+      margin,
+    });
+  }
+
+  private async writeLongFill(
+    tx: Prisma.TransactionClient,
+    f: {
+      userId: string;
+      symbol: string;
+      tradingsymbol: string;
+      symboltoken: string;
+      exchange: string;
+      product: OrderProduct;
+      quantity: number;
+      fillPriceP: bigint;
+      existing: PositionRow | null;
+      margin?: LeveragedFill;
+    },
   ) {
     const positionKey = {
       userId_symboltoken_exchange_product: {
-        userId: order.userId,
-        symboltoken: order.symboltoken,
-        exchange: order.exchange,
-        product: order.product,
+        userId: f.userId,
+        symboltoken: f.symboltoken,
+        exchange: f.exchange,
+        product: f.product,
       },
     };
-    const oldQty = existing?.quantity ?? 0;
-    const oldAvg = existing?.avgPriceP ?? 0n;
-    const newQty = oldQty + order.quantity;
+    const oldQty = f.existing?.quantity ?? 0;
+    const oldAvg = f.existing?.avgPriceP ?? 0n;
+    const newQty = oldQty + f.quantity;
     const newAvg =
-      (oldAvg * BigInt(oldQty) + fillPriceP * BigInt(order.quantity)) /
+      (oldAvg * BigInt(oldQty) + f.fillPriceP * BigInt(f.quantity)) /
       BigInt(newQty);
-    if (existing) {
+    const reopened = oldQty === 0;
+    const leveraged = f.margin
+      ? true
+      : reopened
+        ? false
+        : (f.existing?.leveraged ?? false);
+    const marginP =
+      (reopened ? 0n : (f.existing?.marginP ?? 0n)) +
+      (f.margin?.marginAddP ?? 0n);
+    if (f.existing) {
       await tx.position.update({
         where: positionKey,
-        data: { quantity: newQty, avgPriceP: newAvg },
+        data: { quantity: newQty, avgPriceP: newAvg, leveraged, marginP },
       });
     } else {
       await tx.position.create({
         data: {
-          userId: order.userId,
-          symbol: order.symbol,
-          tradingsymbol: order.tradingsymbol,
-          symboltoken: order.symboltoken,
-          exchange: order.exchange,
-          product: order.product,
-          quantity: order.quantity,
-          avgPriceP: fillPriceP,
+          userId: f.userId,
+          symbol: f.symbol,
+          tradingsymbol: f.tradingsymbol,
+          symboltoken: f.symboltoken,
+          exchange: f.exchange,
+          product: f.product,
+          quantity: f.quantity,
+          avgPriceP: f.fillPriceP,
+          leveraged,
+          marginP,
         },
       });
     }
@@ -1351,4 +1803,12 @@ interface Instrument {
 interface PositionRow {
   quantity: number;
   avgPriceP: bigint;
+  marginP: bigint;
+  leveraged: boolean;
+}
+
+interface LeveragedFill {
+  leveraged: true;
+  /** Initial margin this fill blocked (added to the position's marginP). */
+  marginAddP: bigint;
 }

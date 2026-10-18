@@ -17,6 +17,7 @@ import {
   OIBuildupType,
 } from '../smartapi/smartapi.types';
 import { CapSegment } from './cap-segments';
+import { CompanyDirectoryService } from './company-directory.service';
 import { HolidaysService } from './holidays.service';
 import { constituentsFor } from './index-constituents';
 import { MarketService, MoverType } from './market.service';
@@ -50,7 +51,22 @@ export class MarketController {
     private readonly scripMaster: ScripMasterService,
     private readonly holidays: HolidaysService,
     private readonly redis: RedisService,
+    private readonly directory: CompanyDirectoryService,
   ) {}
+
+  /// Ticker → full company name for every NSE-listed company (mainboard +
+  /// SME), refreshed daily from NSE's official lists. The app ships an
+  /// offline copy and syncs this to pick up new listings; `version` lets it
+  /// skip work when nothing changed. Served from memory — no upstream call.
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Get('company-names')
+  companyNames(@Query('since') since?: string) {
+    const snap = this.directory.snapshot();
+    if (since && since === `${snap.updatedAt}#${snap.count}`) {
+      return { unchanged: true, updatedAt: snap.updatedAt, count: snap.count };
+    }
+    return snap;
+  }
 
   /// NSE+BSE trading holidays. The service tries the live NSE
   /// holiday-master API first (and caches the result for 24h) and

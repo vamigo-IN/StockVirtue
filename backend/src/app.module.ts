@@ -32,6 +32,7 @@ import { AdminModule } from './admin/admin.module';
 import { SiteModule } from './site/site.module';
 import { MonitoringModule } from './monitoring/monitoring.module';
 import { FeedModule } from './feed/feed.module';
+import { IpoModule } from './ipo/ipo.module';
 
 @Module({
   imports: [
@@ -73,6 +74,7 @@ import { FeedModule } from './feed/feed.module';
     SiteModule,
     MonitoringModule,
     FeedModule,
+    IpoModule,
   ],
   controllers: [AppController],
   providers: [

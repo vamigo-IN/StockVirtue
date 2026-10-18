@@ -5,6 +5,8 @@ import '../../../data/models/portfolio.dart';
 import '../../../data/models/user.dart';
 import '../../bookmarks/bookmarks_storage.dart';
 import '../../bookmarks/widgets/bookmarks_rail.dart';
+import '../../ipo/ipo_repository.dart';
+import '../../ipo/widgets/ipo_home_section.dart';
 import '../../news/widgets/news_section.dart';
 import '../../market/market_repository.dart';
 import '../../portfolio/portfolio_live.dart';
@@ -91,6 +93,7 @@ class _HomeTabState extends ConsumerState<HomeTab> {
     ref.invalidate(homeTrendingProvider);
     ref.invalidate(portfolioProvider);
     ref.invalidate(watchlistsListProvider);
+    ref.invalidate(ipoBoardProvider);
     await Future.wait([
       ref.read(homeIndicesProvider.future),
       ref.read(homeTrendingProvider.future),
@@ -139,6 +142,8 @@ class _HomeTabState extends ConsumerState<HomeTab> {
             const SizedBox(height: 10),
             const TrendingStocksCarousel(),
             const SizedBox(height: 24),
+            const IpoHomeSection(),
+            const SizedBox(height: 16),
             const BookmarksRail(),
             const SizedBox(height: 24),
             const RecentlyViewedCarousel(),

@@ -241,8 +241,8 @@ export class RoomsService {
 
   /// Lists rooms the caller is a member of, plus rooms they own (which
   /// they're always a member of by construction). Each row carries the
-  /// caller's baseline and current return % so the list screen renders
-  /// the leaderboard chip without a per-row request.
+  /// caller's baseline and current TRADING return % (bonus credits
+  /// excluded) so the list screen renders the chip without a per-row request.
   async listMine(userId: string) {
     const memberships = await this.prisma.roomMember.findMany({
       where: { userId },
@@ -253,14 +253,111 @@ export class RoomsService {
       },
       orderBy: { joinedAt: 'desc' },
     });
-    const totals = await this.portfolio.computeTotalsP(userId);
+    if (memberships.length === 0) return { rooms: [] };
+    const earliest = memberships.reduce(
+      (min, m) => (m.baselineAt < min ? m.baselineAt : min),
+      memberships[0].baselineAt,
+    );
+    const [totals, credits] = await Promise.all([
+      this.portfolio.computeTotalsP(userId),
+      this.creditsSince([userId], earliest),
+    ]);
+    const now = new Date();
     return {
-      rooms: memberships.map((m) => ({
-        ...this.toListItem(m.room, m.baselineEquityP, true),
-        joinedAt: m.joinedAt.toISOString(),
-        returnPct: this.returnPct(totals.totalEquityP, m.baselineEquityP),
-      })),
+      rooms: memberships.map((m) => {
+        const standing = this.standingOf(
+          m,
+          m.room,
+          totals.totalEquityP,
+          credits.get(userId) ?? [],
+          now,
+        );
+        return {
+          ...this.toListItem(m.room, m.baselineEquityP, true),
+          joinedAt: m.joinedAt.toISOString(),
+          phase: this.phaseOf(m.room, now),
+          returnPct: standing.returnPct,
+          bonusExcluded: paiseToRupees(standing.creditsP),
+        };
+      }),
     };
+  }
+
+  // ─── fair-return maths ───────────────────────────────────────────────
+
+  /// Non-trading credits (referral bonuses, promos) for each user since
+  /// `since`, oldest first. One query for the whole room.
+  private async creditsSince(
+    userIds: string[],
+    since: Date,
+  ): Promise<Map<string, { amountP: bigint; createdAt: Date }[]>> {
+    const rows = await this.prisma.walletCredit.findMany({
+      where: { userId: { in: userIds }, createdAt: { gte: since } },
+      select: { userId: true, amountP: true, createdAt: true },
+      orderBy: { createdAt: 'asc' },
+    });
+    const out = new Map<string, { amountP: bigint; createdAt: Date }[]>();
+    for (const r of rows) {
+      const list = out.get(r.userId) ?? [];
+      list.push({ amountP: r.amountP, createdAt: r.createdAt });
+      out.set(r.userId, list);
+    }
+    return out;
+  }
+
+  private phaseOf(
+    room: { isTournament: boolean; startsAt: Date | null; endsAt: Date | null },
+    now: Date,
+  ): 'open' | 'upcoming' | 'live' | 'ended' {
+    if (!room.isTournament) return 'open';
+    if (room.startsAt && now < room.startsAt) return 'upcoming';
+    if (room.endsAt && now >= room.endsAt) return 'ended';
+    return 'live';
+  }
+
+  /// A member's standing in a room, measured on trading performance only:
+  ///
+  ///   change = equity − baseline − credits received since the baseline
+  ///   return = change / baseline
+  ///
+  /// so a referral bonus that lands after you joined grows your balance but
+  /// never your ranking. Tournaments score nothing before the start bell and
+  /// use the equity captured at the final bell once finalized.
+  private standingOf(
+    member: {
+      baselineEquityP: bigint;
+      baselineAt: Date;
+      finalEquityP: bigint | null;
+      finalCreditsP: bigint | null;
+    },
+    room: { isTournament: boolean; startsAt: Date | null; endsAt: Date | null },
+    liveEquityP: bigint,
+    credits: { amountP: bigint; createdAt: Date }[],
+    now: Date,
+  ): { equityP: bigint; creditsP: bigint; changeP: bigint; returnPct: number } {
+    const baselineP = member.baselineEquityP;
+    const phase = this.phaseOf(room, now);
+    if (phase === 'upcoming') {
+      return { equityP: liveEquityP, creditsP: 0n, changeP: 0n, returnPct: 0 };
+    }
+    let equityP = liveEquityP;
+    let creditsP: bigint;
+    if (phase === 'ended' && member.finalEquityP !== null) {
+      equityP = member.finalEquityP;
+      creditsP = member.finalCreditsP ?? 0n;
+    } else {
+      const until = phase === 'ended' ? room.endsAt : null;
+      creditsP = credits
+        .filter(
+          (c) =>
+            c.createdAt >= member.baselineAt && (!until || c.createdAt < until),
+        )
+        .reduce((sum, c) => sum + c.amountP, 0n);
+    }
+    const changeP = equityP - baselineP - creditsP;
+    const returnPct =
+      baselineP === 0n ? 0 : (Number(changeP) / Number(baselineP)) * 100;
+    return { equityP, creditsP, changeP, returnPct };
   }
 
   /// Browseable public rooms. Tournaments are surfaced first, then
@@ -348,47 +445,47 @@ export class RoomsService {
         'This room is private. Ask the owner for the invite code.',
       );
     }
-    // Tournament freeze: after endsAt the leaderboard is locked. We still
-    // compute current equities (could change in another room), but the
-    // ranking sort below treats them as final-frozen.
-    const frozen =
-      room.isTournament && room.endsAt && Date.now() >= room.endsAt.getTime();
+    const now = new Date();
+    const phase = this.phaseOf(room, now);
+    // Tournament freeze: once finalized, every member's equity at the final
+    // bell is stored and the ranking can no longer move.
+    const frozen = phase === 'ended';
+    const allFinal =
+      frozen && room.members.every((m) => m.finalEquityP !== null);
 
-    // Compute each member's current equity in parallel. Cheap because
-    // each call hits the same SmartAPI multi-quote path which is already
-    // batched per request internally.
-    const totalsByUser = await Promise.all(
-      room.members.map(async (m) => ({
-        userId: m.userId,
-        totals: await this.portfolio.computeTotalsP(m.userId),
-      })),
+    // ONE batched equity computation for the whole room (skipped entirely
+    // when the tournament is finalized — the stored figures are the truth).
+    const memberIds = room.members.map((m) => m.userId);
+    const totalsMap = allFinal
+      ? new Map<string, { totalEquityP: bigint }>()
+      : await this.portfolio.computeTotalsForUsersP(memberIds);
+    const earliest = room.members.reduce<Date | null>(
+      (min, m) => (min === null || m.baselineAt < min ? m.baselineAt : min),
+      null,
     );
-    const totalsMap = new Map(
-      totalsByUser.map((t) => [t.userId, t.totals.totalEquityP]),
-    );
+    const credits =
+      allFinal || earliest === null
+        ? new Map<string, { amountP: bigint; createdAt: Date }[]>()
+        : await this.creditsSince(memberIds, earliest);
 
     // Named rank per member (achievements unlocked + academy progress).
-    const badgeTags = await this.achievements.badgeTagsFor(
-      room.members.map((m) => m.userId),
-    );
+    const badgeTags = await this.achievements.badgeTagsFor(memberIds);
 
     const leaderboard = room.members
       .map((m) => {
-        const currentP = totalsMap.get(m.userId) ?? m.baselineEquityP;
-        const baselineP = m.baselineEquityP;
-        const changeP = currentP - baselineP;
-        const pct =
-          baselineP === 0n
-            ? 0
-            : (Number(changeP) / Number(baselineP)) * 100;
+        const liveP = totalsMap.get(m.userId)?.totalEquityP ?? m.baselineEquityP;
+        const s = this.standingOf(m, room, liveP, credits.get(m.userId) ?? [], now);
         return {
           userId: m.userId,
           displayName: m.user.displayName ?? 'Trader',
           badgeTag: badgeTags.get(m.userId) ?? 'Rookie',
-          baseline: paiseToRupees(baselineP),
-          current: paiseToRupees(currentP),
-          change: paiseToRupees(changeP),
-          returnPct: pct,
+          baseline: paiseToRupees(m.baselineEquityP),
+          // Account value right now (bonuses included)…
+          current: paiseToRupees(s.equityP),
+          // …but the score is trading P&L only.
+          change: paiseToRupees(s.changeP),
+          returnPct: s.returnPct,
+          bonusExcluded: paiseToRupees(s.creditsP),
           joinedAt: m.joinedAt.toISOString(),
           isOwner: m.userId === room.ownerId,
           isYou: m.userId === callerId,
@@ -411,6 +508,7 @@ export class RoomsService {
       maxMembers: room.maxMembers,
       memberCount: room.members.length,
       createdAt: room.createdAt.toISOString(),
+      phase,
       frozen,
       iAmMember: isMember,
       leaderboard,
@@ -460,11 +558,6 @@ export class RoomsService {
       myBaseline:
         myBaselineP === null ? null : paiseToRupees(myBaselineP),
     };
-  }
-
-  private returnPct(currentP: bigint, baselineP: bigint): number {
-    if (baselineP === 0n) return 0;
-    return (Number(currentP - baselineP) / Number(baselineP)) * 100;
   }
 
   /// 31-char alphabet drops 0/O/1/I/L to avoid invite-code copy mistakes.

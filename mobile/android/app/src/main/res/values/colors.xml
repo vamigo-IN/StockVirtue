@@ -1,4 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="ic_launcher_background">#FFFFFF</color>
+    <!-- Legacy colour slot; the adaptive icon now uses drawable/ic_launcher_background. -->
+    <color name="ic_launcher_background">#070A0F</color>
+    <!-- Native launch screen + Android 12 splash: the app's dark canvas, so the
+         hand-off to Flutter's first frame never flashes white. -->
+    <color name="splash_background">#070A0F</color>
+    <!-- Tint for the status-bar notification icon (brand emerald). -->
+    <color name="notification_accent">#22D38A</color>
 </resources>

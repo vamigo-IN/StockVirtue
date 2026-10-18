@@ -32,10 +32,44 @@ export function istNow(at?: Date): Date {
 }
 
 /// Commodity exchanges (MCX/NCO) trade a much longer session than equities —
-/// ~09:00 to 23:30 IST for the popular non-agri contracts. The simulator uses
-/// one broad window rather than modelling per-commodity agri cut-offs.
+/// 09:00 IST to 23:30 (or 23:55 while the US is on daylight-saving time, since
+/// the international-linked contracts follow COMEX/NYMEX hours) for the
+/// popular non-agri contracts. The simulator uses that one window rather than
+/// modelling per-commodity agri cut-offs.
 function isCommodityExchange(exchange?: string): boolean {
   return exchange === 'MCX' || exchange === 'NCO';
+}
+
+/// Day-of-month of the nth Sunday (1-based) of a month, in UTC calendar terms.
+function nthSunday(year: number, monthIndex: number, n: number): number {
+  const firstDow = new Date(Date.UTC(year, monthIndex, 1)).getUTCDay();
+  const firstSunday = 1 + ((7 - firstDow) % 7);
+  return firstSunday + (n - 1) * 7;
+}
+
+/// True when the US is on daylight-saving time for this IST calendar date
+/// (second Sunday of March → first Sunday of November). MCX extends its
+/// close to 23:55 IST over that period.
+export function isUsDaylightSaving(at: Date = new Date()): boolean {
+  const ist = istNow(at);
+  const y = ist.getUTCFullYear();
+  const m = ist.getUTCMonth();
+  const d = ist.getUTCDate();
+  const start = nthSunday(y, 2, 2); // March
+  const end = nthSunday(y, 10, 1); // November
+  if (m < 2 || m > 10) return false;
+  if (m > 2 && m < 10) return true;
+  if (m === 2) return d >= start;
+  return d < end; // November
+}
+
+/// Minutes after IST midnight when the MCX evening session closes.
+export function commodityCloseMinutes(at: Date = new Date()): number {
+  return isUsDaylightSaving(at) ? 23 * 60 + 55 : 23 * 60 + 30;
+}
+
+function formatMinutes(mins: number): string {
+  return `${pad(Math.floor(mins / 60))}:${pad(mins % 60)}`;
 }
 
 /// Decides the current trading session for `exchange` (defaults to equities —
@@ -61,14 +95,14 @@ export function marketSession(
   const mins = ist.getUTCHours() * 60 + ist.getUTCMinutes();
   if (isCommodityExchange(exchange)) {
     const START = 9 * 60; // 09:00
-    const END = 23 * 60 + 30; // 23:30
+    const END = commodityCloseMinutes(at);
     if (mins >= START && mins < END) {
       return { kind: 'open', reason: '' };
     }
     return {
       kind: 'closed',
       reason:
-        'MCX is closed. Commodities trade 09:00–23:30 IST, Monday–Friday. Place a LIMIT order to queue at your target price.',
+        `MCX is closed. Commodities trade 09:00–${formatMinutes(END)} IST, Monday–Friday. Place a LIMIT order to queue at your target price.`,
     };
   }
   const PRE_OPEN_START = 9 * 60;

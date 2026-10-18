@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/company_names.dart';
 import '../../../data/models/tick.dart';
 import '../../../widgets/price_flash.dart';
 import '../../market/market_repository.dart';
@@ -108,7 +109,7 @@ class _StockCard extends ConsumerWidget {
             ),
             const SizedBox(height: 10),
             Text(
-              quote.symbol,
+              companyNameFor(quote.symbol),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14),

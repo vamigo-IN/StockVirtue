@@ -1,5 +1,6 @@
 import '../../data/models/portfolio.dart';
 import '../../data/models/tick.dart';
+import '../../widgets/fno_badge.dart';
 import '../ticks/ticks_service.dart';
 
 /// Tick-map key for a position (`${exchange}:${symboltoken}` — matches
@@ -7,15 +8,14 @@ import '../ticks/ticks_service.dart';
 String tickKeyForPosition(PortfolioPosition p) =>
     '${p.exchange}:${p.symboltoken}';
 
-/// Live-feed subscription for a holding. F&O contracts must be addressed by
-/// their `tradingsymbol` — the underlying name (e.g. "NIFTY") doesn't resolve
-/// on NFO/BFO, only the individual contract does. Cash equity uses its plain
-/// symbol. Either way the streamed tick is keyed by exchange:token, so it
-/// matches [tickKeyForPosition].
+/// Live-feed subscription for a holding. Derivative contracts (NFO/BFO, and
+/// MCX/CDS commodities & currency) must be addressed by their
+/// `tradingsymbol` — the underlying name ("NIFTY", "GOLD") doesn't resolve
+/// to a contract. Cash equity uses its plain symbol. Either way the streamed
+/// tick is keyed by exchange:token, so it matches [tickKeyForPosition].
 TickSubscription subForPosition(PortfolioPosition p) {
-  final isFno = p.exchange == 'NFO' || p.exchange == 'BFO';
   return TickSubscription(
-    symbol: isFno ? p.tradingsymbol : p.symbol,
+    symbol: isFnoExchange(p.exchange) ? p.tradingsymbol : p.symbol,
     exchange: p.exchange,
   );
 }
@@ -28,36 +28,57 @@ class LivePosition {
   final double currentValue;
   final double unrealizedPnL;
   final double unrealizedPnLPct;
+
+  /// Signed amount this position adds to total equity beyond the wallet:
+  /// market value for cash longs, −market value for shorts, and only the
+  /// P&L for margined futures (their margin never left the balance).
+  final double equityContribution;
+
   const LivePosition(
     this.ltp,
     this.currentValue,
     this.unrealizedPnL,
     this.unrealizedPnLPct,
+    this.equityContribution,
   );
 
   factory LivePosition.of(PortfolioPosition p, double? liveLtp) {
     final ltp = liveLtp ?? p.ltp;
+    final absQty = p.quantity.abs();
+    final isShort = p.quantity < 0;
     if (ltp == null) {
+      final equity = p.leveraged && !isShort
+          ? p.unrealizedPnL
+          : (isShort ? -p.currentValue : p.currentValue);
       return LivePosition(
         null,
         p.currentValue,
         p.unrealizedPnL,
         p.unrealizedPnLPct,
+        equity,
       );
     }
-    final absQty = p.quantity.abs();
+    if (p.leveraged && !isShort) {
+      final pnl = (ltp - p.avgPrice) * absQty;
+      final pct = p.margin > 0 ? (pnl / p.margin) * 100 : 0.0;
+      return LivePosition(ltp, p.margin + pnl, pnl, pct, pnl);
+    }
     final invested = p.invested;
     final currentAbs = ltp * absQty;
-    final isShort = p.quantity < 0;
     final pnl = isShort ? invested - currentAbs : currentAbs - invested;
     final pct = invested > 0 ? (pnl / invested) * 100 : 0.0;
-    return LivePosition(ltp, currentAbs, pnl, pct);
+    return LivePosition(
+      ltp,
+      currentAbs,
+      pnl,
+      pct,
+      isShort ? -currentAbs : currentAbs,
+    );
   }
 }
 
 /// Live-overlaid totals for the equity hero / home strip. Cost basis
-/// (invested) doesn't move; equity = cash + signed current value across all
-/// positions.
+/// (invested) doesn't move; equity = cash + each position's contribution.
 typedef LiveSummary = ({
   double totalEquity,
   double unrealizedPnL,
@@ -65,15 +86,15 @@ typedef LiveSummary = ({
 });
 
 LiveSummary liveSummaryOf(PortfolioSnapshot snap, Map<String, Tick> ticks) {
-  double currentSigned = 0;
+  double equity = snap.wallet.balance;
   double unrealized = 0;
   for (final p in snap.positions) {
     final live = LivePosition.of(p, ticks[tickKeyForPosition(p)]?.ltp);
-    currentSigned += p.quantity < 0 ? -live.currentValue : live.currentValue;
+    equity += live.equityContribution;
     unrealized += live.unrealizedPnL;
   }
   return (
-    totalEquity: snap.wallet.balance + currentSigned,
+    totalEquity: equity,
     unrealizedPnL: unrealized,
     invested: snap.summary.invested,
   );

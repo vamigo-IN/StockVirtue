@@ -13,15 +13,64 @@ import {
   MultiQuoteFetched,
   OIBuildupType,
 } from '../smartapi/smartapi.types';
+import {
+  commoditySpec,
+  isContractSupported,
+} from '../common/contract-specs';
+import {
+  futuresMarginBps,
+  isFutureInstrumentType,
+} from '../common/margin';
 import { CAP_LISTS, CapSegment } from './cap-segments';
+import { CompanyDirectoryService } from './company-directory.service';
 import { ScripMasterService } from './scrip-master.service';
 import { Instrument } from './scrip-master.types';
+
+/// NSE series that are tradeable equity-like instruments (shares, SME,
+/// trade-for-trade, REIT/InvIT units). Everything else on NSE's cash segment
+/// is debt — G-secs (GS/SG), T-bills (TB), gold bonds (GB), NCDs (N*/Y*/Z*) —
+/// which search demotes so "HDFC" finds the bank, not its bonds.
+const EQUITY_SERIES = new Set(['EQ', 'BE', 'BZ', 'SM', 'ST', 'SZ', 'IV', 'RR']);
+
+/// Brand names / old names people still type that match neither the ticker
+/// nor the current legal name ("zomato" → Eternal after the 2025 rename).
+const SEARCH_ALIASES: Readonly<Record<string, readonly string[]>> = {
+  ZOMATO: ['ETERNAL'],
+  BLINKIT: ['ETERNAL'],
+  'TATA MOTORS': ['TMPV', 'TMCV'],
+  TATAMOTORS: ['TMPV', 'TMCV'],
+  MINDTREE: ['LTIM'],
+  'L&T': ['LT'],
+  LIC: ['LICI'],
+  JIO: ['JIOFIN'],
+};
+
+/// Popularity tiebreak: names people trade most should beat obscure ones
+/// that match equally well ("hdfc" → HDFC Bank before an HDFC ETF).
+const CAP_BOOST = new Map<string, number>([
+  ...CAP_LISTS.smallcap.map((s) => [s, 15] as [string, number]),
+  ...CAP_LISTS.midcap.map((s) => [s, 25] as [string, number]),
+  ...CAP_LISTS.largecap.map((s) => [s, 40] as [string, number]),
+]);
+
+function nseSeriesOf(inst: Instrument): string | null {
+  if (inst.exchange !== 'NSE' || !inst.isEquity) return null;
+  const dash = inst.symbol.lastIndexOf('-');
+  return dash > 0 ? inst.symbol.slice(dash + 1).toUpperCase() : '';
+}
 
 export type MoverType = 'gainers' | 'losers' | 'intraday';
 
 type MultiQuoteFetchedLike = MultiQuoteFetched;
 
-const QUOTE_NOT_AVAILABLE = 'Snapshot unavailable for this symbol';
+const QUOTE_NOT_AVAILABLE =
+  'Live data for this symbol is unavailable right now. Please try again in a moment.';
+const MARKET_DATA_LOADING =
+  'Market data is still loading. Please try again in a few seconds.';
+
+function notFoundMessage(symbol: string, exchange: string): string {
+  return `We couldn't find "${symbol}" on ${exchange}. It may have been delisted or renamed.`;
+}
 
 const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
 
@@ -70,16 +119,22 @@ const COMMODITIES: ReadonlyArray<{
 }> = [
   { name: 'GOLD', label: 'Gold', unit: '10 g' },
   { name: 'SILVER', label: 'Silver', unit: '1 kg' },
-  { name: 'CRUDEOIL', label: 'Crude Oil', unit: 'bbl' },
-  { name: 'NATURALGAS', label: 'Natural Gas', unit: 'mmBtu' },
+  { name: 'CRUDEOIL', label: 'Crude Oil', unit: '1 bbl' },
+  { name: 'NATURALGAS', label: 'Natural Gas', unit: '1 mmBtu' },
   { name: 'COPPER', label: 'Copper', unit: '1 kg' },
-  { name: 'GOLDM', label: 'Gold Mini', unit: '1 g' },
+  { name: 'GOLDM', label: 'Gold Mini', unit: '10 g' },
   { name: 'SILVERM', label: 'Silver Mini', unit: '1 kg' },
-  { name: 'CRUDEOILM', label: 'Crude Oil Mini', unit: 'bbl' },
+  { name: 'CRUDEOILM', label: 'Crude Oil Mini', unit: '1 bbl' },
+  { name: 'GOLDPETAL', label: 'Gold Petal', unit: '1 g' },
+  { name: 'SILVERMIC', label: 'Silver Micro', unit: '1 kg' },
+  { name: 'NATGASMINI', label: 'Natural Gas Mini', unit: '1 mmBtu' },
   { name: 'ZINC', label: 'Zinc', unit: '1 kg' },
   { name: 'ALUMINIUM', label: 'Aluminium', unit: '1 kg' },
   { name: 'LEAD', label: 'Lead', unit: '1 kg' },
   { name: 'NICKEL', label: 'Nickel', unit: '1 kg' },
+  { name: 'ZINCMINI', label: 'Zinc Mini', unit: '1 kg' },
+  { name: 'ALUMINI', label: 'Aluminium Mini', unit: '1 kg' },
+  { name: 'LEADMINI', label: 'Lead Mini', unit: '1 kg' },
 ];
 
 @Injectable()
@@ -89,25 +144,125 @@ export class MarketService {
   constructor(
     private readonly smartapi: SmartApiService,
     private readonly scripMaster: ScripMasterService,
+    private readonly directory: CompanyDirectoryService,
   ) {}
 
+  /// Full company name for a cash-equity ticker ("KOTAKBANK" → "Kotak
+  /// Mahindra Bank"); the display name for an index ("Nifty 50"); else null.
+  companyNameOf(inst: Instrument): string | null {
+    if (inst.isEquity) return this.directory.nameFor(inst.name);
+    if (inst.instrumentType === 'AMXIDX' || inst.instrumentType === 'INDEX') {
+      return inst.symbol;
+    }
+    return null;
+  }
+
+  /// Search by ticker OR company name ("kotak", "kotak mah", "KOTAKBANK" all
+  /// find Kotak Mahindra Bank). Candidates come from the scrip master (ticker
+  /// matches) plus the NSE company directory (name matches), then one score
+  /// ranks them: exact ticker → ticker prefix → name prefix → every query word
+  /// prefixing a name word → substring hits. Debt series are demoted.
   search(query: string, exchange: Exchange = 'NSE', limit = 20) {
     if (!this.scripMaster.isReady()) {
-      throw new ServiceUnavailableException('Scrip master not loaded yet');
+      throw new ServiceUnavailableException(MARKET_DATA_LOADING);
     }
-    return this.scripMaster
-      .searchInstruments(query, exchange, limit)
-      .map((i) => this.toListItem(i));
+    const q = query.trim().toUpperCase();
+    if (!q) return [];
+    const qWords = q.split(/\s+/).filter(Boolean);
+
+    const candidates = new Map<string, Instrument>();
+    for (const inst of this.scripMaster.searchInstruments(q, exchange, 400)) {
+      candidates.set(`${inst.exchange}:${inst.token}`, inst);
+    }
+    const aliased = new Set<string>();
+    if (exchange === 'NSE' || exchange === 'BSE') {
+      for (const hit of this.directory.matchByName(q, 60)) {
+        const inst = this.scripMaster.getEquity(hit.symbol, exchange);
+        if (inst) candidates.set(`${inst.exchange}:${inst.token}`, inst);
+      }
+      if (q.length >= 3) {
+        for (const [alias, symbols] of Object.entries(SEARCH_ALIASES)) {
+          if (!alias.startsWith(q)) continue;
+          for (const sym of symbols) {
+            const inst = this.scripMaster.getEquity(sym, exchange);
+            if (!inst) continue;
+            candidates.set(`${inst.exchange}:${inst.token}`, inst);
+            aliased.add(inst.token);
+          }
+        }
+      }
+    }
+
+    const scored: { inst: Instrument; score: number }[] = [];
+    for (const inst of candidates.values()) {
+      const ticker = inst.name.toUpperCase();
+      const company = this.companyNameOf(inst)?.toUpperCase() ?? '';
+      const companyWords = company.split(/[\s\-&().,/]+/).filter(Boolean);
+      let score = 0;
+      if (ticker === q) score = 1000;
+      else if (ticker.startsWith(q)) score = 850 - ticker.length;
+      else if (aliased.has(inst.token)) score = 780;
+      else if (company && company.startsWith(q)) score = 700;
+      else if (
+        company &&
+        qWords.every((w) => companyWords.some((cw) => cw.startsWith(w)))
+      ) {
+        score = 600;
+      } else if (ticker.includes(q)) score = 400;
+      else if (company.includes(q)) score = 300;
+      if (score === 0) continue;
+      score += CAP_BOOST.get(ticker) ?? 0;
+
+      const series = nseSeriesOf(inst);
+      if (series !== null) {
+        if (!EQUITY_SERIES.has(series)) score -= 600;
+        else if (series !== 'EQ') score -= 5;
+      }
+      if (inst.instrumentType === 'AMXIDX' || inst.instrumentType === 'INDEX') {
+        score += 15; // indices are what users usually mean by "nifty"
+      }
+      if (score > 0) scored.push({ inst, score });
+    }
+    scored.sort(
+      (a, b) => b.score - a.score || a.inst.name.length - b.inst.name.length,
+    );
+    return scored.slice(0, limit).map(({ inst }) => this.toListItem(inst));
+  }
+
+  /// Contract facts the trade ticket needs to price an order like a real
+  /// broker: whether it's margined, the margin rate, and (MCX) the physical
+  /// lot / quote units so "1 lot" can read "1 kg, priced per 10 g".
+  contractInfo(inst: Instrument) {
+    const isFuture = isFutureInstrumentType(inst.instrumentType);
+    const spec = commoditySpec(inst.exchange, inst.name);
+    // F&O availability for the UNDERLYING (the stock / index this is, or
+    // the contract's underlying). Drives whether the app offers an option
+    // chain at all — most stocks aren't in the F&O list.
+    const underlying = inst.name;
+    return {
+      instrumentType: inst.instrumentType || 'EQ',
+      expiry: inst.expiry,
+      fnoUnderlying: underlying,
+      hasOptions: this.scripMaster.hasLiveOptions(underlying),
+      hasFutures: this.scripMaster.hasLiveFutures(underlying),
+      isFuture,
+      marginRatePct: isFuture
+        ? Number(futuresMarginBps(inst.exchange, inst.name)) / 100
+        : null,
+      lotLabel: spec?.lotLabel ?? null,
+      quoteUnit: spec?.quoteUnit ?? null,
+      contractSupported: isContractSupported(inst.exchange, inst.name),
+    };
   }
 
   async getQuote(symbol: string, exchange: Exchange = 'NSE') {
     if (!this.scripMaster.isReady()) {
-      throw new ServiceUnavailableException('Scrip master not loaded yet');
+      throw new ServiceUnavailableException(MARKET_DATA_LOADING);
     }
     const inst = this.scripMaster.getInstrument(symbol, exchange);
     if (!inst) {
       throw new NotFoundException(
-        `Symbol "${symbol}" not found on ${exchange}`,
+        notFoundMessage(symbol, exchange),
       );
     }
     const base = {
@@ -115,8 +270,10 @@ export class MarketService {
       tradingsymbol: inst.symbol,
       exchange: inst.exchange,
       symboltoken: inst.token,
+      companyName: this.companyNameOf(inst),
       lotSize: inst.lotSize,
       tickSize: inst.tickSize,
+      ...this.contractInfo(inst),
     };
     // FULL multi-quote works across ALL exchanges (getLtp is cash-only) and
     // carries the richer stats — VWAP, traded volume, OI, and total buy/sell
@@ -191,7 +348,7 @@ export class MarketService {
     exchange: Exchange = 'NSE',
   ) {
     if (!this.scripMaster.isReady()) {
-      throw new ServiceUnavailableException('Scrip master not loaded yet');
+      throw new ServiceUnavailableException(MARKET_DATA_LOADING);
     }
     const resolved: { inst: Instrument }[] = [];
     for (const raw of symbols) {
@@ -412,12 +569,12 @@ export class MarketService {
     hours = 4,
   ) {
     if (!this.scripMaster.isReady()) {
-      throw new ServiceUnavailableException('Scrip master not loaded yet');
+      throw new ServiceUnavailableException(MARKET_DATA_LOADING);
     }
     const inst = this.scripMaster.getInstrument(symbol, exchange);
     if (!inst) {
       throw new NotFoundException(
-        `Symbol "${symbol}" not found on ${exchange}`,
+        notFoundMessage(symbol, exchange),
       );
     }
     // SmartAPI's historical-data endpoint doesn't reliably serve intraday
@@ -509,12 +666,12 @@ export class MarketService {
     hours = 24 * 30,
   ) {
     if (!this.scripMaster.isReady()) {
-      throw new ServiceUnavailableException('Scrip master not loaded yet');
+      throw new ServiceUnavailableException(MARKET_DATA_LOADING);
     }
     const inst = this.scripMaster.getInstrument(symbol, exchange);
     if (!inst) {
       throw new NotFoundException(
-        `Symbol "${symbol}" not found on ${exchange}`,
+        notFoundMessage(symbol, exchange),
       );
     }
     const now = new Date();
@@ -554,13 +711,15 @@ export class MarketService {
    */
   async getCommodities() {
     if (!this.scripMaster.isReady()) {
-      throw new ServiceUnavailableException('Scrip master not loaded yet');
+      throw new ServiceUnavailableException(MARKET_DATA_LOADING);
     }
     const entries: { meta: (typeof COMMODITIES)[number]; inst: Instrument }[] =
       [];
     const tokens: string[] = [];
     for (const meta of COMMODITIES) {
-      const inst = this.scripMaster.getNearestFuture(meta.name, 'MCX');
+      // Roll off a contract in its last 2 days so nobody buys into a series
+      // that's about to be cash-settled at the next close.
+      const inst = this.scripMaster.getNearestFuture(meta.name, 'MCX', 2);
       if (!inst) continue;
       entries.push({ meta, inst });
       tokens.push(inst.token);
@@ -585,14 +744,21 @@ export class MarketService {
       const change = q?.netChange ?? (close > 0 ? ltp - close : 0);
       const changePct =
         q?.percentChange ?? (close > 0 ? (change / close) * 100 : 0);
+      const spec = commoditySpec(inst.exchange, inst.name);
+      const marginRatePct =
+        Number(futuresMarginBps(inst.exchange, inst.name)) / 100;
+      // lotSize is in quotation units, so this is the real MCX contract value.
+      const contractValue = ltp * inst.lotSize;
       return {
         name: meta.name,
-        label: meta.label,
-        unit: meta.unit,
+        label: spec?.label ?? meta.label,
+        unit: spec?.quoteUnit ?? meta.unit,
         tradingsymbol: inst.symbol,
         symboltoken: inst.token,
         exchange: inst.exchange,
         lotSize: inst.lotSize,
+        lotLabel: spec?.lotLabel ?? null,
+        quoteUnit: spec?.quoteUnit ?? meta.unit,
         expiry: inst.expiry,
         ltp,
         open: q?.open ?? 0,
@@ -601,6 +767,9 @@ export class MarketService {
         close,
         change,
         changePct,
+        contractValue,
+        marginRatePct,
+        marginPerLot: (contractValue * marginRatePct) / 100,
       };
     });
     return { results, fetchedAt: new Date().toISOString() };
@@ -694,12 +863,12 @@ export class MarketService {
 
   getExpiries(underlying: string) {
     if (!this.scripMaster.isReady()) {
-      throw new ServiceUnavailableException('Scrip master not loaded yet');
+      throw new ServiceUnavailableException(MARKET_DATA_LOADING);
     }
     const expiries = this.scripMaster.getExpiries(underlying);
     if (expiries.length === 0) {
       throw new NotFoundException(
-        `No options found for underlying "${underlying}"`,
+        `${underlying.toUpperCase()} isn't in the F&O segment, so it has no option chain.`,
       );
     }
     return { underlying: underlying.toUpperCase(), expiries };
@@ -714,12 +883,12 @@ export class MarketService {
    */
   async getOptionChain(underlying: string, expiry: string) {
     if (!this.scripMaster.isReady()) {
-      throw new ServiceUnavailableException('Scrip master not loaded yet');
+      throw new ServiceUnavailableException(MARKET_DATA_LOADING);
     }
     const rows = this.scripMaster.getOptionChain(underlying, expiry);
     if (rows.length === 0) {
       throw new NotFoundException(
-        `No option chain for "${underlying}" expiry "${expiry}"`,
+        `No option contracts for ${underlying.toUpperCase()} expiring ${expiry}. Pick another expiry.`,
       );
     }
     // Batch multi-quote across CE+PE tokens grouped by exchange.
@@ -807,12 +976,12 @@ export class MarketService {
    */
   async getSnapshot(symbol: string, exchange: Exchange = 'NSE') {
     if (!this.scripMaster.isReady()) {
-      throw new ServiceUnavailableException('Scrip master not loaded yet');
+      throw new ServiceUnavailableException(MARKET_DATA_LOADING);
     }
     const inst = this.scripMaster.getInstrument(symbol, exchange);
     if (!inst) {
       throw new NotFoundException(
-        `Symbol "${symbol}" not found on ${exchange}`,
+        notFoundMessage(symbol, exchange),
       );
     }
     const fetched = await this.smartapi.getMultiQuote(
@@ -828,8 +997,10 @@ export class MarketService {
       tradingsymbol: inst.symbol,
       exchange: inst.exchange,
       symboltoken: inst.token,
+      companyName: this.companyNameOf(inst),
       lotSize: inst.lotSize,
       tickSize: inst.tickSize,
+      ...this.contractInfo(inst),
       ltp: q.ltp,
       open: q.open,
       high: q.high,
@@ -862,6 +1033,7 @@ export class MarketService {
       symboltoken: i.token,
       exchange: i.exchange,
       type: instrumentTypeLabel(i),
+      companyName: this.companyNameOf(i),
       lotSize: i.lotSize,
       tickSize: i.tickSize,
     };
