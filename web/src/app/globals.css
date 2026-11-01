@@ -1820,36 +1820,6 @@ p {
   }
 }
 
-/* ── Admin (kept simple, unchanged look) ────────────────────────────────── */
-.admin-wrap {
-  max-width: 820px;
-  margin: 0 auto;
-  padding: 40px 20px 80px;
-}
-.admin-login {
-  max-width: 380px;
-  margin: 80px auto;
-  padding: 0 20px;
-}
-.admin-card {
-  background: var(--panel);
-  border: 1px solid var(--line-2);
-  border-radius: var(--radius);
-  padding: 28px;
-  box-shadow: var(--shadow);
-}
-.admin-section {
-  margin-top: 28px;
-}
-.admin-section h3 {
-  padding-bottom: 8px;
-  border-bottom: 1px solid var(--line-2);
-}
-.code-input {
-  font-family: var(--font-mono);
-  font-size: 0.85rem;
-}
-
 /* ── Section helpers ────────────────────────────────────────────────────── */
 .zone-dark {
   position: relative;

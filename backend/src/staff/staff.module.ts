@@ -3,6 +3,8 @@ import { UsersModule } from '../users/users.module';
 import { StaffAuthController } from './staff-auth.controller';
 import { StaffAuthGuard } from './staff-auth.guard';
 import { StaffAuthService } from './staff-auth.service';
+import { StaffDashboardService } from './staff-dashboard.service';
+import { StaffSecurityService } from './staff-security.service';
 import { StaffController } from './staff.controller';
 import { StaffService } from './staff.service';
 
@@ -10,7 +12,13 @@ import { StaffService } from './staff.service';
 @Module({
   imports: [UsersModule],
   controllers: [StaffAuthController, StaffController],
-  providers: [StaffAuthService, StaffService, StaffAuthGuard],
+  providers: [
+    StaffAuthService,
+    StaffService,
+    StaffSecurityService,
+    StaffDashboardService,
+    StaffAuthGuard,
+  ],
   // Exported so later newsroom modules can protect their routes with
   // @StaffOnly(...) — the guard needs StaffAuthService in scope.
   exports: [StaffAuthService, StaffAuthGuard],

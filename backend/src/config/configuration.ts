@@ -65,9 +65,10 @@ export interface AdminConfig {
   shield: AdminShieldConfig;
 }
 
-/// Marketing website (stockvirtue.com) integration. `adminKey` authenticates
-/// the website's Next.js server when it saves site settings (server-to-server);
-/// blank disables the write endpoint. `contactTo` receives contact-form emails.
+/// Marketing website (stockvirtue.com) integration. `adminKey` identifies the
+/// website's Next.js server, which runs the newsroom portal: only with it are
+/// the browser IP / user agent it forwards trusted (staff sessions, audit).
+/// `contactTo` receives contact-form emails.
 export interface SiteConfig {
   adminKey: string;
   contactTo: string;

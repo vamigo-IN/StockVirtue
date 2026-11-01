@@ -6,6 +6,7 @@ import {
   HttpCode,
   Param,
   ParseUUIDPipe,
+  Patch,
   Post,
   Req,
 } from '@nestjs/common';
@@ -15,7 +16,12 @@ import type { Request } from 'express';
 import { AppConfig } from '../config/configuration';
 import { StaffAuthService } from './staff-auth.service';
 import { CurrentStaff, StaffOnly } from './staff-auth.guard';
-import { StaffLoginDto, StaffResendDto, StaffVerifyDto } from './staff.dto';
+import {
+  StaffLoginDto,
+  StaffResendDto,
+  StaffVerifyDto,
+  UpdateStaffProfileDto,
+} from './staff.dto';
 import { clientInfo, StaffPrincipal } from './staff-request';
 
 /**
@@ -57,6 +63,15 @@ export class StaffAuthController {
   }
 
   @StaffOnly()
+  @Patch('me')
+  updateMe(
+    @CurrentStaff() staff: StaffPrincipal,
+    @Body() dto: UpdateStaffProfileDto,
+  ) {
+    return this.auth.updateProfile(staff, dto);
+  }
+
+  @StaffOnly()
   @Post('logout')
   @HttpCode(200)
   async logout(@CurrentStaff() staff: StaffPrincipal) {
@@ -68,6 +83,13 @@ export class StaffAuthController {
   @Get('sessions')
   sessions(@CurrentStaff() staff: StaffPrincipal) {
     return this.auth.listSessions(staff);
+  }
+
+  @StaffOnly()
+  @Post('sessions/revoke-others')
+  @HttpCode(200)
+  revokeOtherSessions(@CurrentStaff() staff: StaffPrincipal) {
+    return this.auth.revokeOtherSessions(staff);
   }
 
   @StaffOnly()

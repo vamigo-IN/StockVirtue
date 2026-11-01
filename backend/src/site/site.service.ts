@@ -1,20 +1,24 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { ForbiddenException, Injectable, Logger } from '@nestjs/common';
 import { ContactStatus } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
+import { AuditService } from '../audit/audit.service';
 import { AppConfig } from '../config/configuration';
 import { PrismaService } from '../prisma/prisma.service';
 import { MailService, escapeHtml } from '../mail/mail.service';
+import { SUPER_ADMIN } from '../rbac/rbac.catalog';
+import { ClientInfo, StaffPrincipal } from '../staff/staff-request';
 import { ContactDto, UpdateSiteSettingsDto } from './site.dto';
 
 const SINGLETON = 'singleton';
 
-interface Social {
+// A type alias (not an interface) so it is assignable to Prisma JSON input.
+type Social = {
   twitter?: string;
   instagram?: string;
   linkedin?: string;
   youtube?: string;
   facebook?: string;
-}
+};
 
 export interface PublicSiteSettings {
   siteTitle: string;
@@ -25,6 +29,24 @@ export interface PublicSiteSettings {
   headCode: string;
   bodyStartCode: string;
   bodyEndCode: string;
+}
+
+/** Raw HTML injected into every public page: needs its own permission. */
+export const CODE_FIELDS = [
+  'headCode',
+  'bodyStartCode',
+  'bodyEndCode',
+] as const;
+
+/** Which settings a save would change, compared field by field. */
+export function changedSettings(
+  current: PublicSiteSettings,
+  next: PublicSiteSettings,
+): (keyof PublicSiteSettings)[] {
+  return (Object.keys(next) as (keyof PublicSiteSettings)[]).filter(
+    (k) =>
+      JSON.stringify(current[k] ?? null) !== JSON.stringify(next[k] ?? null),
+  );
 }
 
 const DEFAULTS: PublicSiteSettings = {
@@ -45,6 +67,7 @@ export class SiteService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly mail: MailService,
+    private readonly audit: AuditService,
     private readonly config: ConfigService<AppConfig, true>,
   ) {}
 
@@ -56,25 +79,85 @@ export class SiteService {
     return row ? this.shape(row) : DEFAULTS;
   }
 
-  /** Upsert the singleton settings (called by the website admin, key-guarded). */
-  async update(dto: UpdateSiteSettingsDto): Promise<PublicSiteSettings> {
-    const data = {
-      siteTitle: dto.siteTitle ?? '',
-      siteDescription: dto.siteDescription ?? '',
-      contactEmail: dto.contactEmail ?? '',
-      playStoreUrl: dto.playStoreUrl ?? '',
-      social: (dto.social ?? {}) as object,
+  /** Settings plus when they last changed, for the staff portal. */
+  async getForStaff() {
+    const row = await this.prisma.siteSetting.findUnique({
+      where: { id: SINGLETON },
+    });
+    return {
+      settings: row ? this.shape(row) : DEFAULTS,
+      updatedAt: row?.updatedAt ?? null,
+    };
+  }
+
+  /**
+   * Saves the singleton settings from the staff portal. Changing any injected
+   * code block also needs settings.code_injection, since that HTML runs on
+   * every public page. Old and new values land in the audit log.
+   */
+  async updateByStaff(
+    actor: StaffPrincipal,
+    dto: UpdateSiteSettingsDto,
+    client: ClientInfo,
+  ) {
+    const next: PublicSiteSettings = {
+      siteTitle: dto.siteTitle?.trim() ?? '',
+      siteDescription: dto.siteDescription?.trim() ?? '',
+      contactEmail: dto.contactEmail?.trim() ?? '',
+      playStoreUrl: dto.playStoreUrl?.trim() ?? '',
+      social: Object.fromEntries(
+        Object.entries(dto.social ?? {})
+          .map(([k, v]) => [k, typeof v === 'string' ? v.trim() : ''])
+          .filter(([, v]) => v),
+      ) as Social,
       headCode: dto.headCode ?? '',
       bodyStartCode: dto.bodyStartCode ?? '',
       bodyEndCode: dto.bodyEndCode ?? '',
     };
-    const row = await this.prisma.siteSetting.upsert({
-      where: { id: SINGLETON },
-      create: { id: SINGLETON, ...data },
-      update: data,
-    });
-    this.logger.log('Site settings updated');
-    return this.shape(row);
+    const current = await this.get();
+    const changed = changedSettings(current, next);
+    const codeChanged = changed.filter((k) =>
+      (CODE_FIELDS as readonly string[]).includes(k),
+    );
+    if (
+      codeChanged.length > 0 &&
+      !actor.roles.includes(SUPER_ADMIN) &&
+      !actor.permissions.has('settings.code_injection')
+    ) {
+      throw new ForbiddenException(
+        'Changing injected code needs the "settings.code_injection" permission. Your other changes were not saved either.',
+      );
+    }
+    if (changed.length > 0) {
+      const data = { ...next, social: next.social as object };
+      await this.prisma.$transaction(async (tx) => {
+        await tx.siteSetting.upsert({
+          where: { id: SINGLETON },
+          create: { id: SINGLETON, ...data },
+          update: data,
+        });
+        await this.audit.record(
+          {
+            actor: { userId: actor.userId, email: actor.email },
+            action:
+              codeChanged.length > 0
+                ? 'site.settings.code_injection'
+                : 'site.settings.update',
+            entityType: 'SiteSetting',
+            entityId: SINGLETON,
+            before: Object.fromEntries(changed.map((k) => [k, current[k]])),
+            after: Object.fromEntries(changed.map((k) => [k, next[k]])),
+            meta: { changed },
+            ...client,
+          },
+          tx,
+        );
+      });
+      this.logger.log(
+        `Site settings updated by ${actor.email}: ${changed.join(', ')}`,
+      );
+    }
+    return { ...(await this.getForStaff()), changed };
   }
 
   /**
@@ -101,8 +184,8 @@ export class SiteService {
       <p style="margin:0 0 16px;color:#71717a"><strong>Subject:</strong> ${escapeHtml(saved.subject || '—')}</p>
       <div style="white-space:pre-wrap">${escapeHtml(saved.message)}</div>`;
     const text = `From: ${saved.name} <${saved.email}>\nSubject: ${saved.subject || '—'}\n\n${saved.message}`;
-    await this.safeMail(() =>
-      this.mail.notify(to, subject, 'New website message', html, text),
+    await this.safeMail(
+      () => this.mail.notify(to, subject, 'New website message', html, text),
       `contact notify (id ${saved.id})`,
     );
 
@@ -113,14 +196,15 @@ export class SiteService {
       <p style="margin:0 0 6px;color:#71717a"><strong>Your message:</strong></p>
       <div style="white-space:pre-wrap;color:#52525b">${escapeHtml(saved.message)}</div>`;
     const ackText = `Hi ${saved.name},\n\nThanks for reaching out to StockVirtue — we've received your message and will get back to you soon.\n\nYour message:\n${saved.message}`;
-    await this.safeMail(() =>
-      this.mail.notify(
-        saved.email,
-        'We received your message — StockVirtue',
-        'Thanks for contacting us',
-        ackHtml,
-        ackText,
-      ),
+    await this.safeMail(
+      () =>
+        this.mail.notify(
+          saved.email,
+          'We received your message — StockVirtue',
+          'Thanks for contacting us',
+          ackHtml,
+          ackText,
+        ),
       `contact ack (id ${saved.id})`,
     );
   }
@@ -201,7 +285,10 @@ export class SiteService {
   }
 
   /** Run a mail send without letting a failure bubble up to the caller. */
-  private async safeMail(fn: () => Promise<void>, label: string): Promise<void> {
+  private async safeMail(
+    fn: () => Promise<void>,
+    label: string,
+  ): Promise<void> {
     try {
       await fn();
     } catch (err) {

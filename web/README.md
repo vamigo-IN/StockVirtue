@@ -1,23 +1,31 @@
 # StockVirtue — Website (stockvirtue.com)
 
-Marketing / portfolio site for the StockVirtue app, plus a small admin panel for
-site settings and code injection. Built with **Next.js (App Router) + TypeScript**,
-server-rendered for SEO. No heavy UI dependencies.
+Marketing / portfolio site for the StockVirtue app, plus the **newsroom portal**
+at `/admin` (staff sign-in, team and roles, app-user moderation, website settings,
+audit log). Built with **Next.js (App Router) + TypeScript**, server-rendered for
+SEO. The marketing pages use hand-written CSS; the portal uses Tailwind CSS v4 +
+shadcn/ui, loaded only under `/admin`.
 
 ## Structure
 
 ```
 src/
   app/
-    (site)/        public marketing + legal pages (shared header/footer + code injection)
-    admin/         password-protected settings panel (isolated from the site chrome)
-    layout.tsx     root <html><body> + global SEO metadata
+    (site)/        public marketing + legal pages (globals.css, header/footer, code injection)
+    admin/         newsroom portal (portal.css; isolated from the site chrome)
+      login/ invite/   sign-in (password + emailed code) and invitation acceptance
+      (portal)/        signed-in pages: dashboard, staff, roles, users, settings, audit, security
+      api/[...path]/   the portal's backend-for-frontend (see below)
+    layout.tsx     root <html><body> + global SEO metadata (no stylesheet)
+    not-found.tsx  branded 404 for unknown URLs
     sitemap.ts robots.ts manifest.ts icon.svg
   components/      Header, Footer, Icon, JsonLd, CodeInjection
+    ui/            shadcn/ui primitives (portal only: they need portal.css)
+    portal/        portal shell and shared portal components
+  portal/          portal API client, server helpers, session cookie, types
   lib/
     site.ts        static brand/nav/content config
-    settings.ts    runtime settings (fetched from the backend) + save/contact helpers
-    auth.ts        admin session (password-derived httpOnly cookie)
+    settings.ts    runtime settings (fetched from the backend) + contact helper
 ```
 
 ## How it talks to the backend
@@ -26,24 +34,29 @@ All backend calls happen **server-side** (Next.js server → `api.stockvirtue.co
 so there are no CORS changes and no secret ever reaches the browser:
 
 - `GET  /site/settings`  — public site settings (read on every page, cached 60s)
-- `PUT  /site/settings`  — admin save (sent with the `x-site-admin-key` header)
 - `POST /site/contact`   — contact-form submissions (emailed by the backend)
+- `/v1/staff/...`        — the newsroom portal, via `/admin/api/...` (below)
+
+The portal's browser code only calls `/admin/api/staff/...` on this server. That
+route accepts same-origin requests carrying the portal's `x-sv-portal` header,
+swaps the httpOnly session cookie (`__Host-sv_staff`, SameSite=Strict) for the
+API's `x-staff-session` header, and adds `x-site-admin-key` plus the browser's
+real IP / user agent. Every permission is checked by the API on every call.
 
 If the backend endpoints aren't deployed yet, the site still renders with sensible
 defaults (see `DEFAULT_SETTINGS`).
 
 ## Environment
 
-Copy `.env.example` → `.env.local` (dev) or set on the server. **Secrets:**
-`ADMIN_PASSWORD`, `SITE_ADMIN_KEY` (the latter must match the backend).
+Copy `.env.example` → `.env.local` (dev) or set on the server. **Secret:**
+`SITE_ADMIN_KEY` (must match the backend's).
 
 | var | purpose |
 | --- | --- |
 | `NEXT_PUBLIC_SITE_URL` | canonical URL (SEO/sitemap/OG) — `https://stockvirtue.com` |
 | `NEXT_PUBLIC_PLAY_URL` | Google Play listing |
 | `API_BASE` | backend base — `https://api.stockvirtue.com` |
-| `ADMIN_PASSWORD` | password for `/admin` |
-| `SITE_ADMIN_KEY` | server-to-server key for saving settings (matches backend) |
+| `SITE_ADMIN_KEY` | server-to-server key the portal sends to the API (matches backend); required for `/admin` |
 
 ## Run
 
@@ -62,19 +75,24 @@ npm ci && npm run build
 npm run start            # next start -p 3001  (e.g. pm2 start npm --name stockvirtue-web -- run start)
 ```
 
-Point nginx `stockvirtue.com` → `127.0.0.1:3001`. (The backend stays on
-`api.stockvirtue.com`.)
+Point nginx `stockvirtue.com` → `127.0.0.1:3001` and pass the visitor's address
+(`proxy_set_header X-Real-IP $remote_addr;`), which the portal forwards to the API
+for rate limits and the audit log. (The backend stays on `api.stockvirtue.com`.)
 
-## Admin & code injection
+## Newsroom portal (`/admin`)
 
-- Visit `/admin`, sign in with `ADMIN_PASSWORD`.
-- Edit site title/description, contact email, Play URL, social links.
-- **Code injection** — paste raw HTML for verification (Google Search Console,
-  Bing, Meta domain verification) and analytics (GA4, GTM, Pixel). It's injected
-  **server-side** into the page, so verification tags appear in the HTML source
-  and scripts execute on load.
-- `/admin` is `noindex` and isolated from the public chrome, so a broken pasted
-  snippet can never break the marketing site or lock you out of settings.
-- Note: header code is injected at the top of `<body>` (works for analytics and
-  most verification). For methods that strictly require the `<head>` (e.g. GSC
-  HTML-tag), the GA or DNS verification method is the simplest alternative.
+- Staff sign in with their StockVirtue account password, then a 6-digit code
+  emailed to them. Nobody has portal access until a Super Admin grants it: the
+  first one on the server with
+  `node dist/cli/grant-staff-role.js --email you@… --role SUPER_ADMIN` (backend),
+  everyone else by invitation from **Staff**.
+- Each role sees only the pages its permissions cover; the API enforces the same
+  permissions on every request.
+- **Site settings** (was the old password panel): title/description, contact
+  email, Play URL, social links and **code injection** — raw HTML for
+  verification (Google Search Console, Bing, Meta) and analytics (GA4, GTM,
+  Pixel), injected server-side into every public page. Changing injected code
+  needs the `settings.code_injection` permission (Super Admin by default), and
+  every change is in the audit log with the old and new code.
+- `/admin` is `noindex` and never loads the public chrome or injected code, so a
+  broken snippet can't break the portal.

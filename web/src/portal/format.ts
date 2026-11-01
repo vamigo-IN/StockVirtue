@@ -1,0 +1,150 @@
+/** Display helpers for the portal. Times show in India Standard Time. */
+
+const TZ = 'Asia/Kolkata';
+
+const dateTime = new Intl.DateTimeFormat('en-IN', {
+  timeZone: TZ,
+  day: 'numeric',
+  month: 'short',
+  year: 'numeric',
+  hour: '2-digit',
+  minute: '2-digit',
+  hour12: false,
+});
+
+const dateOnly = new Intl.DateTimeFormat('en-IN', {
+  timeZone: TZ,
+  day: 'numeric',
+  month: 'short',
+  year: 'numeric',
+});
+
+export function formatDateTime(iso: string | null | undefined): string {
+  return iso ? dateTime.format(new Date(iso)) : '—';
+}
+
+export function formatDate(iso: string | null | undefined): string {
+  return iso ? dateOnly.format(new Date(iso)) : '—';
+}
+
+/** "just now", "5 min ago", "3 h ago", "2 days ago", then the date. */
+export function timeAgo(
+  iso: string | null | undefined,
+  now = Date.now(),
+): string {
+  if (!iso) return 'Never';
+  const diff = now - new Date(iso).getTime();
+  const future = diff < 0;
+  const s = Math.abs(diff) / 1000;
+  const say = (n: number, unit: string) =>
+    future ? `in ${n} ${unit}` : `${n} ${unit} ago`;
+  if (s < 45) return future ? 'in a moment' : 'just now';
+  if (s < 3600) return say(Math.round(s / 60), 'min');
+  if (s < 86_400) return say(Math.round(s / 3600), 'h');
+  if (s < 7 * 86_400) {
+    const d = Math.round(s / 86_400);
+    return say(d, d === 1 ? 'day' : 'days');
+  }
+  return formatDate(iso);
+}
+
+/** "Chrome on Windows" from a user-agent string. */
+export function deviceLabel(ua: string | null | undefined): string {
+  if (!ua) return 'Unknown device';
+  const browser = /Edg\//.test(ua)
+    ? 'Edge'
+    : /OPR\//.test(ua)
+      ? 'Opera'
+      : /Firefox\//.test(ua)
+        ? 'Firefox'
+        : /Chrome\//.test(ua)
+          ? 'Chrome'
+          : /Safari\//.test(ua)
+            ? 'Safari'
+            : 'Browser';
+  const os = /iPhone|iPad/.test(ua)
+    ? 'iOS'
+    : /Android/.test(ua)
+      ? 'Android'
+      : /Windows/.test(ua)
+        ? 'Windows'
+        : /Mac OS X|Macintosh/.test(ua)
+          ? 'macOS'
+          : /Linux/.test(ua)
+            ? 'Linux'
+            : null;
+  return os ? `${browser} on ${os}` : browser;
+}
+
+export function initials(name: string | null | undefined): string {
+  const parts = (name ?? '').trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return '?';
+  return (parts[0][0] + (parts.length > 1 ? parts[parts.length - 1][0] : ''))
+    .toUpperCase()
+    .slice(0, 2);
+}
+
+export function formatINR(n: number | null | undefined): string {
+  if (n === null || n === undefined) return '—';
+  return new Intl.NumberFormat('en-IN', {
+    style: 'currency',
+    currency: 'INR',
+    maximumFractionDigits: 0,
+  }).format(n);
+}
+
+/** How an app account signs in (from the API's `signIn` list). */
+export const SIGN_IN_LABELS: Record<string, string> = {
+  password: 'Email',
+  google: 'Google',
+  phone: 'Phone',
+};
+
+export function formatCount(n: number): string {
+  return new Intl.NumberFormat('en-IN').format(n);
+}
+
+const AUDIT_LABELS: Record<string, string> = {
+  'staff.login': 'Signed in to the portal',
+  'staff.login.failed': 'Failed sign-in: wrong email or password',
+  'staff.login.code_failed': 'Failed sign-in: wrong code',
+  'staff.logout': 'Signed out',
+  'staff.session.revoke': 'Ended one of their sessions',
+  'staff.session.revoke_others': 'Signed out their other sessions',
+  'staff.session.revoke_admin': "Ended someone's session",
+  'staff.session.sign_out_all': 'Signed a staff member out everywhere',
+  'staff.roles.set': "Changed a staff member's roles",
+  'staff.roles.grant_cli': 'Role granted from the server',
+  'staff.suspend': 'Suspended a staff member',
+  'staff.reactivate': 'Reactivated a staff member',
+  'staff.invite': 'Sent an invitation',
+  'staff.invite.revoke': 'Revoked an invitation',
+  'staff.invite.accept': 'Accepted an invitation',
+  'staff.profile.update': 'Updated their profile',
+  'staff.role.create': 'Created a custom role',
+  'staff.role.update': 'Edited a custom role',
+  'staff.role.delete': 'Deleted a custom role',
+  'user.rename': 'Renamed an app user',
+  'user.block': 'Blocked an app user',
+  'user.unblock': 'Unblocked an app user',
+  'site.settings.update': 'Updated website settings',
+  'site.settings.code_injection': 'Changed injected website code',
+};
+
+export function auditLabel(action: string): string {
+  return (
+    AUDIT_LABELS[action] ??
+    action.replace(/[._]/g, ' ').replace(/^\w/, (c) => c.toUpperCase())
+  );
+}
+
+/** Failed sign-ins and code changes stand out in the log. */
+export function auditTone(action: string): 'danger' | 'warning' | 'default' {
+  if (action.includes('failed')) return 'danger';
+  if (
+    /\.(block|suspend|code_injection|revoke_admin|sign_out_all)$/.test(action)
+  ) {
+    return 'warning';
+  }
+  return 'default';
+}

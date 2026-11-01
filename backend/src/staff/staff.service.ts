@@ -16,6 +16,8 @@ import { AppConfig, NewsroomConfig } from '../config/configuration';
 import { MailService } from '../mail/mail.service';
 import { PrismaService } from '../prisma/prisma.service';
 import {
+  ALL_PERMISSION_KEYS,
+  customRoleKey,
   PERMISSIONS,
   permissionGroup,
   SUPER_ADMIN,
@@ -230,6 +232,131 @@ export class StaffService {
     }));
   }
 
+  /** A custom role: a named set of permissions made in the portal. */
+  async createRole(
+    actor: StaffPrincipal,
+    body: { name: string; description?: string; permissions: string[] },
+    client: ClientInfo,
+  ) {
+    const name = body.name.trim();
+    const permissions = this.assertKnownPermissions(body.permissions);
+    this.assertHoldsAll(actor, permissions);
+    await this.assertRoleNameFree(name);
+    const key = await this.freeRoleKey(customRoleKey(name));
+    await this.prisma.$transaction(async (tx) => {
+      const role = await tx.role.create({
+        data: {
+          key,
+          name,
+          description: body.description?.trim() ?? '',
+          isSystem: false,
+          permissions: {
+            createMany: {
+              data: permissions.map((permissionKey) => ({ permissionKey })),
+            },
+          },
+        },
+      });
+      await this.audit.record(
+        {
+          actor: { userId: actor.userId, email: actor.email },
+          action: 'staff.role.create',
+          entityType: 'Role',
+          entityId: role.id,
+          after: { key, name, permissions },
+          ...client,
+        },
+        tx,
+      );
+    });
+    return this.roleView(key);
+  }
+
+  async updateRole(
+    actor: StaffPrincipal,
+    key: string,
+    body: { name: string; description?: string; permissions: string[] },
+    client: ClientInfo,
+  ) {
+    const role = await this.findCustomRole(key);
+    const name = body.name.trim();
+    const description = body.description?.trim() ?? '';
+    const permissions = this.assertKnownPermissions(body.permissions);
+    const current = role.permissions.map((p) => p.permissionKey).sort();
+    // Editing a role changes what everyone holding it can do, so you must
+    // hold every permission it had and every permission it will have.
+    this.assertHoldsAll(actor, [...current, ...permissions]);
+    await this.assertRoleNameFree(name, role.id);
+    const removed = current.filter((k) => !permissions.includes(k));
+    const added = permissions.filter((k) => !current.includes(k));
+    await this.prisma.$transaction(async (tx) => {
+      await tx.role.update({
+        where: { id: role.id },
+        data: { name, description },
+      });
+      if (removed.length > 0) {
+        await tx.rolePermission.deleteMany({
+          where: { roleId: role.id, permissionKey: { in: removed } },
+        });
+      }
+      if (added.length > 0) {
+        await tx.rolePermission.createMany({
+          data: added.map((permissionKey) => ({
+            roleId: role.id,
+            permissionKey,
+          })),
+          skipDuplicates: true,
+        });
+      }
+      await this.audit.record(
+        {
+          actor: { userId: actor.userId, email: actor.email },
+          action: 'staff.role.update',
+          entityType: 'Role',
+          entityId: role.id,
+          before: {
+            name: role.name,
+            description: role.description,
+            permissions: current,
+          },
+          after: { name, description, permissions },
+          ...client,
+        },
+        tx,
+      );
+    });
+    await this.rbac.bumpVersion();
+    return this.roleView(key);
+  }
+
+  async deleteRole(actor: StaffPrincipal, key: string, client: ClientInfo) {
+    const role = await this.findCustomRole(key);
+    const permissions = role.permissions.map((p) => p.permissionKey).sort();
+    this.assertHoldsAll(actor, permissions);
+    const holders = await this.prisma.userRole.count({
+      where: { roleId: role.id },
+    });
+    if (holders > 0) {
+      throw new ConflictException(
+        `${holders} ${holders === 1 ? 'person still has' : 'people still have'} this role. Remove it from them first.`,
+      );
+    }
+    await this.prisma.$transaction(async (tx) => {
+      await tx.role.delete({ where: { id: role.id } });
+      await this.audit.record(
+        {
+          actor: { userId: actor.userId, email: actor.email },
+          action: 'staff.role.delete',
+          entityType: 'Role',
+          entityId: role.id,
+          before: { key: role.key, name: role.name, permissions },
+          ...client,
+        },
+        tx,
+      );
+    });
+  }
+
   listPermissions() {
     return PERMISSIONS.map((p) => ({
       key: p.key,
@@ -421,6 +548,14 @@ export class StaffService {
         passwordHash: await hashPassword(password),
       });
       await this.users.markEmailVerified(user.id);
+      // A brand-new account takes the name they gave instead of the app's
+      // random "Trader-XXXX" (60 = the app's own display-name limit).
+      if (displayName?.trim()) {
+        user = await this.prisma.user.update({
+          where: { id: user.id },
+          data: { displayName: displayName.trim().slice(0, 60) },
+        });
+      }
     }
 
     const name =
@@ -534,6 +669,76 @@ export class StaffService {
       }
     }
     return roles;
+  }
+
+  private async roleView(key: string) {
+    const roles = await this.listRoles();
+    const found = roles.find((r) => r.key === key);
+    if (!found) throw new NotFoundException('Role not found.');
+    return found;
+  }
+
+  private async findCustomRole(key: string) {
+    const role = await this.prisma.role.findUnique({
+      where: { key },
+      include: { permissions: true },
+    });
+    if (!role) throw new NotFoundException('Role not found.');
+    if (role.isSystem) {
+      throw new BadRequestException(
+        "Built-in roles can't be changed here. Create a custom role instead.",
+      );
+    }
+    return role;
+  }
+
+  private async assertRoleNameFree(name: string, exceptRoleId?: string) {
+    const clash = await this.prisma.role.findFirst({
+      where: {
+        name: { equals: name, mode: 'insensitive' },
+        ...(exceptRoleId ? { id: { not: exceptRoleId } } : {}),
+      },
+      select: { id: true },
+    });
+    if (clash) {
+      throw new ConflictException('A role with this name already exists.');
+    }
+  }
+
+  /** CUSTOM_DESK, then CUSTOM_DESK_2, ... if a role already uses the key. */
+  private async freeRoleKey(base: string): Promise<string> {
+    for (let n = 1; n <= 50; n++) {
+      const key = n === 1 ? base : `${base.slice(0, 37)}_${n}`;
+      const taken = await this.prisma.role.findUnique({
+        where: { key },
+        select: { id: true },
+      });
+      if (!taken) return key;
+    }
+    throw new ConflictException('Pick a more distinctive role name.');
+  }
+
+  private assertKnownPermissions(keys: string[]): string[] {
+    const known = new Set<string>(ALL_PERMISSION_KEYS);
+    const unique = [...new Set(keys)];
+    const unknown = unique.filter((k) => !known.has(k));
+    if (unknown.length > 0) {
+      throw new BadRequestException(
+        `Unknown permission: ${unknown.join(', ')}.`,
+      );
+    }
+    return unique.sort();
+  }
+
+  /** No escalation through roles: you can only hand out what you hold. */
+  private assertHoldsAll(actor: StaffPrincipal, keys: string[]) {
+    if (actor.roles.includes(SUPER_ADMIN)) return;
+    const missing = [...new Set(keys)].filter((k) => !actor.permissions.has(k));
+    if (missing.length > 0) {
+      throw new ForbiddenException(
+        `You can't change a role with permissions you don't have (${missing.join(', ')}).`,
+      );
+    }
   }
 
   /** Non-super-admins can't suspend or reactivate a Super Admin. */

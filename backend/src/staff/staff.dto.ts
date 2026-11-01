@@ -122,3 +122,35 @@ export class AuditQueryDto {
   @Max(200)
   limit?: number;
 }
+
+export class UpdateStaffProfileDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  displayName?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  title?: string;
+}
+
+const PERMISSION_KEY = /^[a-z]+\.[a-z_]+$/;
+
+export class RoleBodyDto {
+  @IsString()
+  @MinLength(2, { message: 'Give the role a name of at least 2 characters.' })
+  @MaxLength(60)
+  name!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(300)
+  description?: string;
+
+  @IsArray()
+  @ArrayNotEmpty({ message: 'Pick at least one permission.' })
+  @ArrayMaxSize(100)
+  @Matches(PERMISSION_KEY, { each: true, message: 'Unknown permission.' })
+  permissions!: string[];
+}

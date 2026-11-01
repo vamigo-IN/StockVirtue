@@ -255,3 +255,18 @@ export const SYSTEM_ROLES: readonly SystemRoleDef[] = [
 export const SYSTEM_ROLE_KEYS: readonly string[] = SYSTEM_ROLES.map(
   (r) => r.key,
 );
+
+/**
+ * Key for a role created in the portal. The CUSTOM_ prefix keeps it clear of
+ * any system role key a later release adds, which the boot sync would
+ * otherwise take over.
+ */
+export function customRoleKey(name: string): string {
+  const slug = name
+    .normalize('NFKD')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 30);
+  return `CUSTOM_${slug || 'ROLE'}`;
+}

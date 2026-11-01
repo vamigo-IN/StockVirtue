@@ -1,13 +1,14 @@
 import { SITE } from './site';
 
 /**
- * Runtime-editable site settings, owned by the admin panel and persisted in the
- * existing backend (`/site/settings`). Fetched server-side only.
+ * Runtime-editable site settings, edited in the newsroom portal
+ * (/admin/settings) and persisted in the backend (`/site/settings`). Fetched
+ * server-side only.
  *
  * `headCode` / `bodyStartCode` / `bodyEndCode` are raw HTML snippets injected
  * into the page — used for search-engine / domain verification, analytics tags,
- * and other third-party scripts. They are intentionally trusted: only an
- * authenticated admin can set them.
+ * and other third-party scripts. They are intentionally trusted: changing them
+ * needs the settings.code_injection permission, and every change is audited.
  */
 export interface SiteSettings {
   siteTitle: string;
@@ -74,29 +75,6 @@ export async function getSettings(): Promise<SiteSettings> {
     };
   } catch {
     return DEFAULT_SETTINGS;
-  }
-}
-
-/** Server-to-server: persist settings via the backend admin key. */
-export async function saveSettings(
-  settings: SiteSettings,
-): Promise<{ ok: boolean; error?: string }> {
-  try {
-    const res = await fetch(`${API_BASE}/site/settings`, {
-      method: 'PUT',
-      headers: {
-        'content-type': 'application/json',
-        'x-site-admin-key': process.env.SITE_ADMIN_KEY || '',
-      },
-      body: JSON.stringify(settings),
-      cache: 'no-store',
-    });
-    if (!res.ok) {
-      return { ok: false, error: `Backend returned ${res.status}` };
-    }
-    return { ok: true };
-  } catch (err) {
-    return { ok: false, error: (err as Error).message };
   }
 }
 

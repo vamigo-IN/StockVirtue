@@ -22,10 +22,13 @@ import {
   AuditQueryDto,
   CreateInvitationDto,
   InvitationTokenDto,
+  RoleBodyDto,
   SetRolesDto,
   SuspendStaffDto,
 } from './staff.dto';
+import { StaffDashboardService } from './staff-dashboard.service';
 import { clientInfo, StaffPrincipal } from './staff-request';
+import { StaffSecurityService } from './staff-security.service';
 import { StaffService } from './staff.service';
 
 /** Newsroom team management. Every route checks permissions server-side. */
@@ -33,9 +36,18 @@ import { StaffService } from './staff.service';
 export class StaffController {
   constructor(
     private readonly staff: StaffService,
+    private readonly security: StaffSecurityService,
+    private readonly dashboard: StaffDashboardService,
     private readonly audit: AuditService,
     private readonly config: ConfigService<AppConfig, true>,
   ) {}
+
+  /** Home-page figures; each section only for those allowed to see it. */
+  @StaffOnly()
+  @Get('dashboard')
+  overview(@CurrentStaff() staff: StaffPrincipal) {
+    return this.dashboard.overview(staff);
+  }
 
   // ── Members ─────────────────────────────────────────────────────────
 
@@ -79,6 +91,17 @@ export class StaffController {
     return this.staff.reactivate(actor, id, this.client(req));
   }
 
+  @StaffOnly('security.manage')
+  @Post('members/:id/sign-out')
+  @HttpCode(200)
+  signOutMember(
+    @CurrentStaff() actor: StaffPrincipal,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: Request,
+  ) {
+    return this.security.signOutEverywhere(actor, id, this.client(req));
+  }
+
   // ── Roles ───────────────────────────────────────────────────────────
 
   @StaffOnly('staff.read')
@@ -91,6 +114,38 @@ export class StaffController {
   @Get('permissions')
   permissions() {
     return this.staff.listPermissions();
+  }
+
+  @StaffOnly('roles.manage')
+  @Post('roles')
+  createRole(
+    @CurrentStaff() actor: StaffPrincipal,
+    @Body() dto: RoleBodyDto,
+    @Req() req: Request,
+  ) {
+    return this.staff.createRole(actor, dto, this.client(req));
+  }
+
+  @StaffOnly('roles.manage')
+  @Put('roles/:key')
+  updateRole(
+    @CurrentStaff() actor: StaffPrincipal,
+    @Param('key') key: string,
+    @Body() dto: RoleBodyDto,
+    @Req() req: Request,
+  ) {
+    return this.staff.updateRole(actor, key, dto, this.client(req));
+  }
+
+  @StaffOnly('roles.manage')
+  @Delete('roles/:key')
+  async deleteRole(
+    @CurrentStaff() actor: StaffPrincipal,
+    @Param('key') key: string,
+    @Req() req: Request,
+  ) {
+    await this.staff.deleteRole(actor, key, this.client(req));
+    return { ok: true };
   }
 
   // ── Invitations ─────────────────────────────────────────────────────
@@ -146,6 +201,25 @@ export class StaffController {
       dto.displayName,
       this.client(req),
     );
+  }
+
+  // ── Security ────────────────────────────────────────────────────────
+
+  @StaffOnly('security.manage')
+  @Get('security/sessions')
+  allSessions(@CurrentStaff() actor: StaffPrincipal) {
+    return this.security.listSessions(actor);
+  }
+
+  @StaffOnly('security.manage')
+  @Delete('security/sessions/:id')
+  async revokeAnySession(
+    @CurrentStaff() actor: StaffPrincipal,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: Request,
+  ) {
+    await this.security.revokeSession(actor, id, this.client(req));
+    return { ok: true };
   }
 
   // ── Audit log ───────────────────────────────────────────────────────

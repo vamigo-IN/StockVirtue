@@ -12,6 +12,7 @@ import { FeatureFlagsModule } from './feature-flags/feature-flags.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
 import { UsersModule } from './users/users.module';
+import { AppUsersModule } from './app-users/app-users.module';
 import { AuthModule } from './auth/auth.module';
 import { SmartApiModule } from './smartapi/smartapi.module';
 import { MarketModule } from './market/market.module';
@@ -83,6 +84,7 @@ import { StorageModule } from './storage/storage.module';
     RbacModule,
     AuditModule,
     StaffModule,
+    AppUsersModule,
     StorageModule,
   ],
   controllers: [AppController],

@@ -4,6 +4,16 @@ const nextConfig = {
   poweredByHeader: false,
   // We hand-author clean markup; don't let a missing eslint config fail prod builds.
   eslint: { ignoreDuringBuilds: true },
+  // The old single-page admin's bookmark; its settings now live here.
+  async redirects() {
+    return [
+      {
+        source: '/admin/dashboard',
+        destination: '/admin/settings',
+        permanent: true,
+      },
+    ];
+  },
   async headers() {
     return [
       {

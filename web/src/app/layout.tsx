@@ -1,6 +1,5 @@
 import type { Metadata, Viewport } from 'next';
 import { Space_Grotesk, JetBrains_Mono } from 'next/font/google';
-import './globals.css';
 import { SITE } from '@/lib/site';
 import { getSettings } from '@/lib/settings';
 
@@ -73,6 +72,12 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
+/**
+ * Shared shell only: fonts, metadata and <html>/<body>. Stylesheets live in the
+ * area layouts — globals.css in (site)/layout.tsx for the marketing pages and
+ * portal.css in admin/layout.tsx for the staff portal — so neither area's
+ * resets or utilities can leak into the other.
+ */
 export default function RootLayout({
   children,
 }: {

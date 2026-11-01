@@ -51,6 +51,33 @@ const SUSPENDED =
   'Your newsroom access is suspended. Ask a newsroom admin to restore it.';
 const RESTART = 'This sign-in attempt is no longer valid. Sign in again.';
 const SIGN_IN = 'Sign in to the newsroom to continue.';
+const IDLE = 'You were signed out after a period of inactivity. Sign in again.';
+const EXPIRED = 'Your newsroom session has ended. Sign in again.';
+
+/**
+ * Why a staff session can't be used. Sent as `code` beside the message so the
+ * portal can sign the browser out and say why, while an ordinary 403 (a
+ * missing permission) leaves the session alone.
+ */
+export type StaffSessionEnd =
+  | 'staff_session_required'
+  | 'staff_session_expired'
+  | 'staff_session_idle'
+  | 'staff_session_revoked'
+  | 'staff_suspended'
+  | 'staff_blocked'
+  | 'staff_no_access';
+
+function sessionEnded(
+  code: StaffSessionEnd,
+  message: string,
+  forbidden = false,
+): UnauthorizedException | ForbiddenException {
+  const body = { message, code };
+  return forbidden
+    ? new ForbiddenException(body)
+    : new UnauthorizedException(body);
+}
 
 export interface StaffProfileView {
   id: string;
@@ -305,7 +332,9 @@ export class StaffAuthService {
     token: string,
     client: ClientInfo,
   ): Promise<StaffPrincipal> {
-    if (!token || token.length > 200) throw new UnauthorizedException(SIGN_IN);
+    if (!token || token.length > 200) {
+      throw sessionEnded('staff_session_required', SIGN_IN);
+    }
     const session = await this.prisma.staffSession.findUnique({
       where: { tokenHash: sha256Hex(token) },
       include: {
@@ -316,36 +345,33 @@ export class StaffAuthService {
         },
       },
     });
-    if (!session || session.revokedAt) {
-      throw new UnauthorizedException(SIGN_IN);
-    }
+    if (!session) throw sessionEnded('staff_session_required', SIGN_IN);
+    if (session.revokedAt) throw this.revokedError(session.revokedReason);
     const now = Date.now();
     if (session.expiresAt.getTime() <= now) {
       await this.revoke(session.id, 'expired');
-      throw new UnauthorizedException(
-        'Your newsroom session has ended. Sign in again.',
-      );
+      throw sessionEnded('staff_session_expired', EXPIRED);
     }
     if (
       session.lastSeenAt.getTime() + this.cfg.sessionIdleMinutes * 60_000 <=
       now
     ) {
       await this.revoke(session.id, 'idle');
-      throw new UnauthorizedException(
-        'You were signed out after a period of inactivity. Sign in again.',
-      );
+      throw sessionEnded('staff_session_idle', IDLE);
     }
     const { staff } = session;
     if (staff.status !== StaffStatus.ACTIVE) {
       await this.revoke(session.id, 'suspended');
-      throw new ForbiddenException(SUSPENDED);
+      throw sessionEnded('staff_suspended', SUSPENDED, true);
     }
     if (staff.user.status === UserStatus.BLOCKED) {
       await this.revoke(session.id, 'blocked');
-      throw new UnauthorizedException('This account is blocked.');
+      throw sessionEnded('staff_blocked', 'This account is blocked.');
     }
     const access = await this.rbac.accessFor(staff.userId);
-    if (access.roles.length === 0) throw new ForbiddenException(NO_ACCESS);
+    if (access.roles.length === 0) {
+      throw sessionEnded('staff_no_access', NO_ACCESS, true);
+    }
 
     if (now - session.lastSeenAt.getTime() >= TOUCH_EVERY_MS) {
       await this.prisma.staffSession.update({
@@ -373,11 +399,56 @@ export class StaffAuthService {
       where: { id: principal.staffId },
       include: { user: true },
     });
-    if (!staff) throw new UnauthorizedException(SIGN_IN);
+    if (!staff) throw sessionEnded('staff_session_required', SIGN_IN);
     return this.profileView(staff, staff.user, {
       roles: principal.roles,
       permissions: principal.permissions,
     });
+  }
+
+  /** The signed-in person's own portal name and job title. */
+  async updateProfile(
+    principal: StaffPrincipal,
+    patch: { displayName?: string; title?: string },
+  ): Promise<StaffProfileView> {
+    const data: { displayName?: string; title?: string | null } = {};
+    if (patch.displayName !== undefined) {
+      const name = patch.displayName.trim();
+      if (name.length < 2) {
+        throw new BadRequestException(
+          'Use at least 2 characters for your name.',
+        );
+      }
+      data.displayName = name;
+    }
+    if (patch.title !== undefined) data.title = patch.title.trim() || null;
+    if (Object.keys(data).length > 0) {
+      await this.prisma.$transaction(async (tx) => {
+        const before = await tx.staffProfile.findUniqueOrThrow({
+          where: { id: principal.staffId },
+          select: { displayName: true, title: true },
+        });
+        const after = await tx.staffProfile.update({
+          where: { id: principal.staffId },
+          data,
+          select: { displayName: true, title: true },
+        });
+        await this.audit.record(
+          {
+            actor: { userId: principal.userId, email: principal.email },
+            action: 'staff.profile.update',
+            entityType: 'StaffProfile',
+            entityId: principal.staffId,
+            before,
+            after,
+            ip: principal.ip,
+            userAgent: principal.userAgent,
+          },
+          tx,
+        );
+      });
+    }
+    return this.me(principal);
   }
 
   async logout(principal: StaffPrincipal): Promise<void> {
@@ -428,6 +499,30 @@ export class StaffAuthService {
     });
   }
 
+  /** Signs this person out everywhere except the browser asking. */
+  async revokeOtherSessions(principal: StaffPrincipal) {
+    const result = await this.prisma.staffSession.updateMany({
+      where: {
+        staffId: principal.staffId,
+        revokedAt: null,
+        id: { not: principal.sessionId },
+      },
+      data: { revokedAt: new Date(), revokedReason: 'signed_out_by_user' },
+    });
+    if (result.count > 0) {
+      await this.audit.recordSafely({
+        actor: { userId: principal.userId, email: principal.email },
+        action: 'staff.session.revoke_others',
+        entityType: 'StaffProfile',
+        entityId: principal.staffId,
+        meta: { sessions: result.count },
+        ip: principal.ip,
+        userAgent: principal.userAgent,
+      });
+    }
+    return { signedOut: result.count };
+  }
+
   // ── Internals ───────────────────────────────────────────────────────
 
   private async assertCanUsePortal(
@@ -450,6 +545,36 @@ export class StaffAuthService {
       );
     }
     return staff;
+  }
+
+  /**
+   * A session that was ended explicitly says why, so a suspended or blocked
+   * person learns it on their next click instead of at the next sign-in.
+   */
+  private revokedError(reason: string | null) {
+    switch (reason) {
+      case 'suspended':
+        return sessionEnded('staff_suspended', SUSPENDED);
+      case 'blocked':
+        return sessionEnded('staff_blocked', 'This account is blocked.');
+      case 'idle':
+        return sessionEnded('staff_session_idle', IDLE);
+      case 'expired':
+        return sessionEnded('staff_session_expired', EXPIRED);
+      case 'signed_out_by_admin':
+        return sessionEnded(
+          'staff_session_revoked',
+          'A newsroom admin ended this session. Sign in again.',
+        );
+      case 'signed_out_by_user':
+      case 'session_limit':
+        return sessionEnded(
+          'staff_session_revoked',
+          'This session was signed out from another device. Sign in again.',
+        );
+      default:
+        return sessionEnded('staff_session_required', SIGN_IN);
+    }
   }
 
   private async sendCode(challengeId: string, email: string, code: string) {

@@ -85,10 +85,10 @@ export const validationSchema = Joi.object({
   ADMIN_DEVICE_FAIL_THRESHOLD: Joi.number().min(2).default(5),
   ADMIN_ALERT_EMAIL: Joi.string().email().allow('').default(''),
 
-  // Marketing website (stockvirtue.com). SITE_ADMIN_KEY authenticates the
-  // website server when saving site settings; blank disables that write
-  // endpoint. SITE_CONTACT_TO receives contact-form emails (defaults to
-  // ADMIN_EMAIL). Both optional so the backend boots without the website.
+  // Marketing website (stockvirtue.com). SITE_ADMIN_KEY identifies the
+  // website server that runs the newsroom portal (its forwarded client IPs are
+  // trusted only with it). SITE_CONTACT_TO receives contact-form emails
+  // (defaults to ADMIN_EMAIL). Both optional so the backend boots without it.
   SITE_ADMIN_KEY: Joi.string().allow('').default(''),
   SITE_CONTACT_TO: Joi.string().email().allow('').default(''),
 
