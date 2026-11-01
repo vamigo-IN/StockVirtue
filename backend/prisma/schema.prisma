@@ -351,6 +351,9 @@ model User {
   achievements    UserAchievement[]
   lessonProgress  LessonProgress[]
   quizAttempts    QuizAttempt[]
+  /// Present only for newsroom staff (see StaffProfile).
+  staffProfile    StaffProfile?
+  roles           UserRole[]
 
   @@index([phone])
   @@index([referredById])
@@ -777,4 +780,497 @@ model ContactMessage {
   @@index([status, createdAt])
   @@index([createdAt])
   @@map("contact_messages")
+}
+
+// ─── Newsroom: staff, roles & permissions ───────────────────────────────────
+//
+// Staff are ordinary [User] accounts — one identity across the app, the
+// website and the newsroom portal — with a StaffProfile and one or more roles
+// on top. Newsroom tables use UUID ids; keys into the older cuid tables stay
+// text.
+
+enum StaffStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+/// A newsroom staff member. Created when a user is first granted a role;
+/// suspending it ends every portal session at once.
+model StaffProfile {
+  id                String      @id @default(uuid()) @db.Uuid
+  userId            String      @unique
+  displayName       String
+  title             String?
+  status            StaffStatus @default(ACTIVE)
+  suspendedAt       DateTime?
+  suspendedReason   String?
+  lastPortalLoginAt DateTime?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  user            User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sessions        StaffSession[]
+  loginChallenges StaffLoginChallenge[]
+  author          NewsAuthor?
+  createdArticles NewsArticle[]         @relation("ArticleCreatedBy")
+  versions        NewsVersion[]
+  reviews         NewsReview[]
+  assignments     NewsAssignment[]      @relation("AssignmentAssignee")
+  assignedByMe    NewsAssignment[]      @relation("AssignmentAssigner")
+  comments        NewsComment[]
+  uploads         MediaAsset[]
+
+  @@index([status])
+  @@map("staff_profiles")
+}
+
+/// A named bundle of permissions. The ten default roles are system roles,
+/// seeded and kept in sync from code (rbac/rbac.catalog.ts); admins can add
+/// custom roles alongside them.
+model Role {
+  id          String   @id @default(uuid()) @db.Uuid
+  key         String   @unique
+  name        String
+  description String   @default("")
+  isSystem    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  permissions RolePermission[]
+  users       UserRole[]
+
+  @@map("roles")
+}
+
+/// One granular capability, e.g. `news.publish`. The catalogue lives in code
+/// and is synced on boot, so a deploy can add permissions without a migration.
+model Permission {
+  key         String @id
+  group       String
+  description String
+
+  roles RolePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  roleId        String @db.Uuid
+  permissionKey String
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionKey], references: [key], onDelete: Cascade)
+
+  @@id([roleId, permissionKey])
+  @@index([permissionKey])
+  @@map("role_permissions")
+}
+
+/// A role granted to a user. A role that is still assigned can't be deleted.
+model UserRole {
+  userId      String
+  roleId      String   @db.Uuid
+  grantedById String?
+  grantedAt   DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Restrict)
+
+  @@id([userId, roleId])
+  @@index([roleId])
+  @@map("user_roles")
+}
+
+/// A signed-in newsroom portal session. The portal holds an opaque random
+/// token; only its SHA-256 is stored, so a database leak can't be replayed.
+model StaffSession {
+  id            String    @id @default(uuid()) @db.Uuid
+  staffId       String    @db.Uuid
+  tokenHash     String    @unique
+  ip            String?
+  userAgent     String?
+  createdAt     DateTime  @default(now())
+  lastSeenAt    DateTime  @default(now())
+  expiresAt     DateTime
+  revokedAt     DateTime?
+  revokedReason String?
+
+  staff StaffProfile @relation(fields: [staffId], references: [id], onDelete: Cascade)
+
+  @@index([staffId, revokedAt])
+  @@index([expiresAt])
+  @@map("staff_sessions")
+}
+
+enum StaffChallengeStatus {
+  PENDING
+  VERIFIED
+  FAILED
+  EXPIRED
+}
+
+/// The second sign-in step: a one-time code emailed after the password check.
+/// Only a keyed hash of the code is stored.
+model StaffLoginChallenge {
+  id         String               @id @default(uuid()) @db.Uuid
+  staffId    String               @db.Uuid
+  codeHash   String
+  attempts   Int                  @default(0)
+  resends    Int                  @default(0)
+  status     StaffChallengeStatus @default(PENDING)
+  ip         String?
+  userAgent  String?
+  createdAt  DateTime             @default(now())
+  expiresAt  DateTime
+  verifiedAt DateTime?
+
+  staff StaffProfile @relation(fields: [staffId], references: [id], onDelete: Cascade)
+
+  @@index([staffId, createdAt])
+  @@index([expiresAt])
+  @@map("staff_login_challenges")
+}
+
+/// An invitation to join the newsroom with the given roles. The emailed link
+/// carries a random token; only its SHA-256 is stored.
+model StaffInvitation {
+  id             String    @id @default(uuid()) @db.Uuid
+  email          String
+  roleKeys       String[]
+  tokenHash      String    @unique
+  invitedById    String?
+  expiresAt      DateTime
+  acceptedAt     DateTime?
+  acceptedUserId String?
+  revokedAt      DateTime?
+  createdAt      DateTime  @default(now())
+
+  @@index([email])
+  @@map("staff_invitations")
+}
+
+/// Append-only record of every privileged newsroom action. Never updated or
+/// deleted; actor and entity ids are plain text so history survives deletes.
+model AuditLog {
+  id          String   @id @default(uuid()) @db.Uuid
+  actorUserId String?
+  actorEmail  String?
+  action      String
+  entityType  String?
+  entityId    String?
+  before      Json?
+  after       Json?
+  meta        Json?
+  ip          String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([entityType, entityId])
+  @@index([actorUserId, createdAt])
+  @@index([action, createdAt])
+  @@map("audit_logs")
+}
+
+// ─── Newsroom: editorial content ────────────────────────────────────────────
+
+enum NewsStatus {
+  DRAFT
+  IN_REVIEW
+  CHANGES_REQUESTED
+  APPROVED
+  SCHEDULED
+  PUBLISHED
+  REJECTED
+  CANCELLED
+  ARCHIVED
+}
+
+model NewsCategory {
+  id          String   @id @default(uuid()) @db.Uuid
+  slug        String   @unique
+  name        String
+  description String   @default("")
+  parentId    String?  @db.Uuid
+  position    Int      @default(0)
+  isActive    Boolean  @default(true)
+  seo         Json     @default("{}")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  parent   NewsCategory?  @relation("CategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children NewsCategory[] @relation("CategoryTree")
+  articles NewsArticle[]
+
+  @@index([parentId, position])
+  @@map("news_categories")
+}
+
+model NewsTag {
+  id        String   @id @default(uuid()) @db.Uuid
+  slug      String   @unique
+  name      String
+  createdAt DateTime @default(now())
+
+  articles NewsArticleTag[]
+
+  @@map("news_tags")
+}
+
+/// Public byline. Usually a staff member, but outside contributors get one too.
+model NewsAuthor {
+  id        String   @id @default(uuid()) @db.Uuid
+  slug      String   @unique
+  name      String
+  bio       String   @default("")
+  avatarUrl String?
+  socials   Json     @default("{}")
+  staffId   String?  @unique @db.Uuid
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  staff    StaffProfile? @relation(fields: [staffId], references: [id], onDelete: SetNull)
+  articles NewsArticle[]
+
+  @@map("news_authors")
+}
+
+enum MediaStatus {
+  PENDING
+  READY
+  DELETED
+}
+
+/// An uploaded image or file in object storage. PENDING until the upload is
+/// confirmed and checked; only READY assets can be used in articles.
+model MediaAsset {
+  id           String      @id @default(uuid()) @db.Uuid
+  storageKey   String      @unique
+  originalName String?
+  mimeType     String
+  bytes        Int
+  width        Int?
+  height       Int?
+  sha256       String?
+  alt          String      @default("")
+  caption      String?
+  credit       String?
+  variants     Json        @default("{}")
+  status       MediaStatus @default(PENDING)
+  uploadedById String?     @db.Uuid
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  uploadedBy         StaffProfile? @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
+  featuredInArticles NewsArticle[]
+
+  @@index([status, createdAt])
+  @@map("media_assets")
+}
+
+model NewsArticle {
+  id                   String     @id @default(uuid()) @db.Uuid
+  slug                 String     @unique
+  title                String
+  subtitle             String?
+  summary              String     @default("") @db.Text
+  /// Rich-text document (TipTap/ProseMirror JSON), validated against the
+  /// allowed node schema before every save.
+  content              Json       @default("{}")
+  /// Sanitised HTML rendered from `content`, the only HTML ever served.
+  contentHtml          String     @default("") @db.Text
+  /// Plain text of `content`, for search and reading time.
+  contentText          String     @default("") @db.Text
+  status               NewsStatus @default(DRAFT)
+  categoryId           String?    @db.Uuid
+  authorId             String?    @db.Uuid
+  createdById          String?    @db.Uuid
+  featuredImageId      String?    @db.Uuid
+  featuredImageCaption String?
+  /// Sector names the story is about ("Banking", "IT").
+  sectors              String[]   @default([])
+  isFeatured           Boolean    @default(false)
+  isBreaking           Boolean    @default(false)
+  isAiGenerated        Boolean    @default(false)
+  readingMinutes       Int        @default(1)
+  /// { title, description, canonicalUrl, noIndex, noFollow, ogImageId }
+  seo                  Json       @default("{}")
+  /// [{ name, url, publishedAt, licence }]
+  sourceAttribution    Json       @default("[]")
+  editorialNotes       String?    @db.Text
+  correctionNote       String?    @db.Text
+  retractedAt          DateTime?
+  retractionNote       String?    @db.Text
+  version              Int        @default(1)
+  scheduledAt          DateTime?
+  publishedAt          DateTime?
+  firstPublishedAt     DateTime?
+  createdAt            DateTime   @default(now())
+  updatedAt            DateTime   @updatedAt
+
+  category      NewsCategory?        @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  author        NewsAuthor?          @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  createdBy     StaffProfile?        @relation("ArticleCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  featuredImage MediaAsset?          @relation(fields: [featuredImageId], references: [id], onDelete: SetNull)
+  tags          NewsArticleTag[]
+  versions      NewsVersion[]
+  reviews       NewsReview[]
+  assignments   NewsAssignment[]
+  comments      NewsComment[]
+  stocks        NewsArticleStock[]
+  related       NewsRelatedArticle[] @relation("RelatedFrom")
+  relatedBy     NewsRelatedArticle[] @relation("RelatedTo")
+
+  @@index([status, publishedAt(sort: Desc)])
+  @@index([categoryId, status, publishedAt(sort: Desc)])
+  @@index([authorId, status, publishedAt(sort: Desc)])
+  @@index([createdById, status])
+  @@index([status, scheduledAt])
+  @@map("news_articles")
+}
+
+enum NewsVersionReason {
+  AUTOSAVE
+  MANUAL
+  SUBMIT
+  APPROVE
+  PUBLISH
+  CORRECTION
+  RESTORE
+}
+
+/// A full snapshot of an article at a meaningful moment; revision comparison
+/// diffs two of these.
+model NewsVersion {
+  id        String            @id @default(uuid()) @db.Uuid
+  articleId String            @db.Uuid
+  version   Int
+  reason    NewsVersionReason
+  snapshot  Json
+  editorId  String?           @db.Uuid
+  createdAt DateTime          @default(now())
+
+  article NewsArticle   @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  editor  StaffProfile? @relation(fields: [editorId], references: [id], onDelete: SetNull)
+
+  @@unique([articleId, version])
+  @@map("news_versions")
+}
+
+model NewsArticleTag {
+  articleId String @db.Uuid
+  tagId     String @db.Uuid
+
+  article NewsArticle @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  tag     NewsTag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([articleId, tagId])
+  @@index([tagId])
+  @@map("news_article_tags")
+}
+
+enum NewsAssignmentRole {
+  WRITER
+  EDITOR
+  REVIEWER
+}
+
+enum NewsAssignmentStatus {
+  OPEN
+  DONE
+  CANCELLED
+}
+
+model NewsAssignment {
+  id           String               @id @default(uuid()) @db.Uuid
+  articleId    String               @db.Uuid
+  assigneeId   String               @db.Uuid
+  role         NewsAssignmentRole
+  status       NewsAssignmentStatus @default(OPEN)
+  note         String?
+  dueAt        DateTime?
+  assignedById String?              @db.Uuid
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+
+  article    NewsArticle   @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  assignee   StaffProfile  @relation("AssignmentAssignee", fields: [assigneeId], references: [id], onDelete: Cascade)
+  assignedBy StaffProfile? @relation("AssignmentAssigner", fields: [assignedById], references: [id], onDelete: SetNull)
+
+  @@index([assigneeId, status])
+  @@index([articleId])
+  @@map("news_assignments")
+}
+
+enum NewsReviewDecision {
+  APPROVED
+  CHANGES_REQUESTED
+  REJECTED
+}
+
+model NewsReview {
+  id         String             @id @default(uuid()) @db.Uuid
+  articleId  String             @db.Uuid
+  version    Int
+  reviewerId String?            @db.Uuid
+  decision   NewsReviewDecision
+  comment    String?            @db.Text
+  createdAt  DateTime           @default(now())
+
+  article  NewsArticle   @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  reviewer StaffProfile? @relation(fields: [reviewerId], references: [id], onDelete: SetNull)
+
+  @@index([articleId, createdAt])
+  @@map("news_reviews")
+}
+
+/// Editorial discussion on an article, optionally anchored to one block.
+/// Public reader comments are a separate, later feature.
+model NewsComment {
+  id           String    @id @default(uuid()) @db.Uuid
+  articleId    String    @db.Uuid
+  authorId     String?   @db.Uuid
+  parentId     String?   @db.Uuid
+  blockId      String?
+  body         String    @db.Text
+  resolvedAt   DateTime?
+  resolvedById String?   @db.Uuid
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  article NewsArticle   @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  author  StaffProfile? @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  parent  NewsComment?  @relation("CommentThread", fields: [parentId], references: [id], onDelete: Cascade)
+  replies NewsComment[] @relation("CommentThread")
+
+  @@index([articleId, createdAt])
+  @@map("news_comments")
+}
+
+/// A stock the article is about, keyed into the existing scrip master by
+/// exchange + symbol (no duplicate instrument table).
+model NewsArticleStock {
+  articleId String  @db.Uuid
+  exchange  String
+  symbol    String
+  isPrimary Boolean @default(false)
+
+  article NewsArticle @relation(fields: [articleId], references: [id], onDelete: Cascade)
+
+  @@id([articleId, exchange, symbol])
+  @@index([exchange, symbol])
+  @@map("news_article_stocks")
+}
+
+model NewsRelatedArticle {
+  articleId String @db.Uuid
+  relatedId String @db.Uuid
+  position  Int    @default(0)
+
+  article NewsArticle @relation("RelatedFrom", fields: [articleId], references: [id], onDelete: Cascade)
+  related NewsArticle @relation("RelatedTo", fields: [relatedId], references: [id], onDelete: Cascade)
+
+  @@id([articleId, relatedId])
+  @@map("news_related_articles")
 }

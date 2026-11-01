@@ -120,4 +120,24 @@ export const validationSchema = Joi.object({
   FEED_UNIVERSE_REFRESH_MS: Joi.number().min(60000).default(21600000),
   FEED_MAX_CONNECTIONS: Joi.number().min(1).default(5000),
   FEED_MAX_CONNECTIONS_PER_IP: Joi.number().min(1).default(20),
+
+  // ─── Newsroom ─────────────────────────────────────────────────────────
+  // All optional-with-default for the same reason as the feed block above:
+  // a missing newsroom value must never stop the trading API from booting.
+  // Blank STAFF_AUTH_SECRET = derived from JWT_ACCESS_SECRET.
+  STAFF_AUTH_SECRET: Joi.string().allow('').min(32).default(''),
+  STAFF_SESSION_IDLE_MINUTES: Joi.number().min(5).max(1440).default(60),
+  STAFF_SESSION_MAX_HOURS: Joi.number().min(1).max(168).default(12),
+  STAFF_LOGIN_CODE_TTL: Joi.number().min(60).max(1800).default(300),
+  STAFF_INVITE_TTL_HOURS: Joi.number().min(1).max(720).default(72),
+  NEWSROOM_PORTAL_URL: Joi.string().allow('').default(''),
+  // Media storage: Cloudflare R2. Driver "none" (default) disables uploads.
+  MEDIA_STORAGE_DRIVER: Joi.string().valid('r2', 'none').default('none'),
+  R2_ACCOUNT_ID: Joi.string().allow('').default(''),
+  R2_ACCESS_KEY_ID: Joi.string().allow('').default(''),
+  R2_SECRET_ACCESS_KEY: Joi.string().allow('').default(''),
+  R2_BUCKET: Joi.string().allow('').default(''),
+  MEDIA_PUBLIC_BASE_URL: Joi.string().allow('').default(''),
+  MEDIA_MAX_UPLOAD_MB: Joi.number().min(1).max(100).default(10),
+  QUEUE_PREFIX: Joi.string().allow('').default('sv'),
 });

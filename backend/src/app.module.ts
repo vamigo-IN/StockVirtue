@@ -33,6 +33,10 @@ import { SiteModule } from './site/site.module';
 import { MonitoringModule } from './monitoring/monitoring.module';
 import { FeedModule } from './feed/feed.module';
 import { IpoModule } from './ipo/ipo.module';
+import { RbacModule } from './rbac/rbac.module';
+import { AuditModule } from './audit/audit.module';
+import { StaffModule } from './staff/staff.module';
+import { StorageModule } from './storage/storage.module';
 
 @Module({
   imports: [
@@ -75,6 +79,11 @@ import { IpoModule } from './ipo/ipo.module';
     MonitoringModule,
     FeedModule,
     IpoModule,
+    // Newsroom foundations (all routes under /api/v1).
+    RbacModule,
+    AuditModule,
+    StaffModule,
+    StorageModule,
   ],
   controllers: [AppController],
   providers: [

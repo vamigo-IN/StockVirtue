@@ -2,7 +2,13 @@ import { randomBytes } from 'node:crypto';
 import { NestFactory } from '@nestjs/core';
 import type { NextFunction, Request, Response } from 'express';
 import { ConfigService } from '@nestjs/config';
-import { Logger, RequestMethod, ValidationPipe } from '@nestjs/common';
+import {
+  Logger,
+  RequestMethod,
+  ValidationPipe,
+  VERSION_NEUTRAL,
+  VersioningType,
+} from '@nestjs/common';
 import helmet from 'helmet';
 import compression from 'compression';
 import { AppModule } from './app.module';
@@ -116,6 +122,13 @@ async function bootstrap() {
       { path: 'admin', method: RequestMethod.ALL },
       { path: 'admin/(.*)', method: RequestMethod.ALL },
     ],
+  });
+  // URI versioning for the newsroom APIs (/api/v1/...). Every existing
+  // controller is version-neutral by default, so all current /api/... routes
+  // (and the app versions calling them) keep working unchanged.
+  app.enableVersioning({
+    type: VersioningType.URI,
+    defaultVersion: VERSION_NEUTRAL,
   });
   app.useGlobalPipes(
     new ValidationPipe({
