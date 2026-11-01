@@ -1,8 +1,14 @@
 'use client';
 
 import {
+  AlertTriangle,
   ArrowRight,
+  CalendarClock,
+  ClipboardCheck,
+  FilePen,
   KeyRound,
+  MessageSquareWarning,
+  Newspaper,
   MonitorSmartphone,
   ShieldAlert,
   UserRound,
@@ -10,6 +16,7 @@ import {
 } from 'lucide-react';
 import Link from 'next/link';
 import { PageHeader, QueryError, StatCard } from '@/components/portal/common';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { usePortalMe } from '@/components/portal/PortalShell';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -23,7 +30,7 @@ import {
 } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { cn } from '@/lib/utils';
-import { groupLabel } from '@/portal/access';
+import { can, groupLabel } from '@/portal/access';
 import {
   auditLabel,
   auditTone,
@@ -57,7 +64,6 @@ export function DashboardView() {
     const g = p.split('.')[0];
     groups.set(g, (groups.get(g) ?? 0) + 1);
   }
-  const editorial = me.permissions.some((p) => p.startsWith('news.'));
 
   return (
     <>
@@ -71,6 +77,94 @@ export function DashboardView() {
       />
 
       {error && <QueryError error={error} onRetry={() => void refetch()} />}
+
+      {data?.articles && data.articles.overdueScheduled > 0 && (
+        <Alert variant="destructive" className="mb-6">
+          <AlertTriangle />
+          <AlertTitle>
+            {data.articles.overdueScheduled} scheduled{' '}
+            {data.articles.overdueScheduled === 1 ? 'story is' : 'stories are'}{' '}
+            overdue
+          </AlertTitle>
+          <AlertDescription>
+            Scheduled publishing looks stalled. Check that the newsroom worker
+            (stockvirtue-worker) is running.
+          </AlertDescription>
+        </Alert>
+      )}
+
+      {data?.articles && (
+        <div className="mb-6 grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+          {data.articles.scope === 'all' ? (
+            <>
+              <StatCard
+                label="Waiting for review"
+                value={formatCount(data.articles.inReview)}
+                icon={ClipboardCheck}
+                href={
+                  can(me, 'news.approve') ? '/admin/review' : '/admin/articles'
+                }
+                tone={data.articles.inReview >= 10 ? 'warning' : 'default'}
+                hint={`${data.articles.approved} approved, not yet live`}
+              />
+              <StatCard
+                label="Published today"
+                value={formatCount(data.articles.publishedToday)}
+                icon={Newspaper}
+                href="/admin/articles"
+                hint={`${formatCount(data.articles.published)} live in total`}
+              />
+              <StatCard
+                label="Scheduled"
+                value={formatCount(data.articles.scheduled)}
+                icon={CalendarClock}
+                href="/admin/articles"
+                hint="Going live automatically"
+              />
+              <StatCard
+                label="Drafts"
+                value={formatCount(data.articles.drafts)}
+                icon={FilePen}
+                href="/admin/articles"
+                hint={`${data.articles.changesRequested} sent back for changes`}
+              />
+            </>
+          ) : (
+            <>
+              <StatCard
+                label="Your drafts"
+                value={formatCount(
+                  data.articles.drafts - data.articles.changesRequested,
+                )}
+                icon={FilePen}
+                href="/admin/my-work"
+              />
+              <StatCard
+                label="Changes requested"
+                value={formatCount(data.articles.changesRequested)}
+                icon={MessageSquareWarning}
+                href="/admin/my-work"
+                tone={
+                  data.articles.changesRequested > 0 ? 'warning' : 'default'
+                }
+              />
+              <StatCard
+                label="With the editors"
+                value={formatCount(data.articles.inReview)}
+                icon={ClipboardCheck}
+                href="/admin/my-work"
+              />
+              <StatCard
+                label="Published"
+                value={formatCount(data.articles.published)}
+                icon={Newspaper}
+                href="/admin/articles"
+                hint={`${data.articles.publishedToday} today`}
+              />
+            </>
+          )}
+        </div>
+      )}
 
       {(isPending || data?.people || data?.users || data?.security) && (
         <div className="mb-6 grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
@@ -230,12 +324,6 @@ export function DashboardView() {
                   aria-hidden
                 />
               </Link>
-            )}
-            {editorial && (
-              <p className="rounded-lg bg-muted px-3 py-2 text-xs text-muted-foreground">
-                Writing and review tools for articles will appear in this portal
-                when they are switched on.
-              </p>
             )}
           </CardContent>
         </Card>

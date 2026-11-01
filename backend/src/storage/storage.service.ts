@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import {
   DeleteObjectCommand,
+  GetObjectCommand,
   HeadObjectCommand,
   PutObjectCommand,
   S3Client,
@@ -29,6 +30,8 @@ export interface StoredObject {
 
 /// Short on purpose: the URL is a bearer credential for one upload.
 const DEFAULT_UPLOAD_TTL_SEC = 300;
+/// Keys are unique per file, so the CDN may cache them forever.
+const IMMUTABLE = 'public, max-age=31536000, immutable';
 
 /**
  * Media files in Cloudflare R2 through its S3-compatible API. Browsers upload
@@ -103,6 +106,30 @@ export class StorageService {
     }
   }
 
+  /** Whole object as bytes (callers bound the size with head() first). */
+  async getBytes(key: string): Promise<Buffer> {
+    const client = this.requireClient();
+    const res = await client.send(
+      new GetObjectCommand({ Bucket: this.cfg.r2Bucket, Key: key }),
+    );
+    if (!res.Body) return Buffer.alloc(0);
+    return Buffer.from(await res.Body.transformToByteArray());
+  }
+
+  /** Server-side write, e.g. a cleaned or resized image. */
+  async putBytes(key: string, body: Buffer, contentType: string) {
+    const client = this.requireClient();
+    await client.send(
+      new PutObjectCommand({
+        Bucket: this.cfg.r2Bucket,
+        Key: key,
+        Body: body,
+        ContentType: contentType,
+        CacheControl: IMMUTABLE,
+      }),
+    );
+  }
+
   async delete(key: string): Promise<void> {
     const client = this.requireClient();
     await client.send(
@@ -133,7 +160,7 @@ export class StorageService {
     }
     const missing = (
       [
-        ['R2_ACCOUNT_ID', c.r2AccountId],
+        ['R2_ACCOUNT_ID', c.r2Endpoint || c.r2AccountId],
         ['R2_ACCESS_KEY_ID', c.r2AccessKeyId],
         ['R2_SECRET_ACCESS_KEY', c.r2SecretAccessKey],
         ['R2_BUCKET', c.r2Bucket],
@@ -150,7 +177,15 @@ export class StorageService {
     }
     return new S3Client({
       region: 'auto',
-      endpoint: `https://${c.r2AccountId}.r2.cloudflarestorage.com`,
+      endpoint:
+        c.r2Endpoint || `https://${c.r2AccountId}.r2.cloudflarestorage.com`,
+      // Other S3-compatible stores (MinIO) address buckets by path.
+      forcePathStyle: !!c.r2Endpoint,
+      // SDK v3 otherwise signs a checksum of the (empty) body into presigned
+      // PUT URLs, so the browser's real upload fails with BadDigest.
+      // Cloudflare's R2 docs ask for exactly these two settings.
+      requestChecksumCalculation: 'WHEN_REQUIRED',
+      responseChecksumValidation: 'WHEN_REQUIRED',
       credentials: {
         accessKeyId: c.r2AccessKeyId,
         secretAccessKey: c.r2SecretAccessKey,

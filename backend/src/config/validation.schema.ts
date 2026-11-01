@@ -137,6 +137,7 @@ export const validationSchema = Joi.object({
   R2_ACCESS_KEY_ID: Joi.string().allow('').default(''),
   R2_SECRET_ACCESS_KEY: Joi.string().allow('').default(''),
   R2_BUCKET: Joi.string().allow('').default(''),
+  R2_ENDPOINT: Joi.string().allow('').default(''),
   MEDIA_PUBLIC_BASE_URL: Joi.string().allow('').default(''),
   MEDIA_MAX_UPLOAD_MB: Joi.number().min(1).max(100).default(10),
   QUEUE_PREFIX: Joi.string().allow('').default('sv'),

@@ -2,7 +2,8 @@
 
 Marketing / portfolio site for the StockVirtue app, plus the **newsroom portal**
 at `/admin` (staff sign-in, team and roles, app-user moderation, website settings,
-audit log). Built with **Next.js (App Router) + TypeScript**, server-rendered for
+audit log, and the editorial desk: articles, review queue, media library,
+categories and tags). Built with **Next.js (App Router) + TypeScript**, server-rendered for
 SEO. The marketing pages use hand-written CSS; the portal uses Tailwind CSS v4 +
 shadcn/ui, loaded only under `/admin`.
 
@@ -14,7 +15,8 @@ src/
     (site)/        public marketing + legal pages (globals.css, header/footer, code injection)
     admin/         newsroom portal (portal.css; isolated from the site chrome)
       login/ invite/   sign-in (password + emailed code) and invitation acceptance
-      (portal)/        signed-in pages: dashboard, staff, roles, users, settings, audit, security
+      (portal)/        signed-in pages: dashboard, articles (+ editor, history), review,
+                       my-work, media, taxonomy, staff, roles, users, settings, audit, security
       api/[...path]/   the portal's backend-for-frontend (see below)
     layout.tsx     root <html><body> + global SEO metadata (no stylesheet)
     not-found.tsx  branded 404 for unknown URLs
@@ -22,6 +24,7 @@ src/
   components/      Header, Footer, Icon, JsonLd, CodeInjection
     ui/            shadcn/ui primitives (portal only: they need portal.css)
     portal/        portal shell and shared portal components
+    editor/        the article editor (TipTap) and its custom blocks
   portal/          portal API client, server helpers, session cookie, types
   lib/
     site.ts        static brand/nav/content config
@@ -96,3 +99,17 @@ for rate limits and the audit log. (The backend stays on `api.stockvirtue.com`.)
   every change is in the audit log with the old and new code.
 - `/admin` is `noindex` and never loads the public chrome or injected code, so a
   broken snippet can't break the portal.
+- **Articles**: writers draft in the editor (autosaves every few seconds; every
+  milestone is kept in **History**, where versions can be compared and
+  restored), then submit it. Editors pick stories up from the **Review** queue
+  and approve, send back, schedule or publish them. Writers can't approve or
+  publish their own work unless their role grants it. Scheduled stories are published by the
+  backend worker (`stockvirtue-worker`), so it must be running.
+- Story content is stored as structured blocks, not HTML: the API accepts only
+  known blocks (headings, lists, quotes, tables, callouts, library images,
+  YouTube/Vimeo, related stories) and renders the HTML itself, so no script or
+  arbitrary embed can get into a story.
+- **Media library**: images upload from the browser straight to the R2 bucket,
+  then the API checks the file, strips its metadata and makes resized copies.
+  The bucket needs a CORS rule allowing `PUT` and `GET` from this site's origin
+  (see the backend's `.env.example`).

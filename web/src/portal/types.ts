@@ -91,6 +91,7 @@ export interface Dashboard {
   users: { total: number; joinedLast7Days: number; blocked: number } | null;
   activity: AuditEntry[] | null;
   security: { activeSessions: number; failedSignIns24h: number } | null;
+  articles: ArticleFigures | null;
 }
 
 export interface MySession {
@@ -165,4 +166,295 @@ export interface SiteSettings {
 export interface SiteSettingsView {
   settings: SiteSettings;
   updatedAt: string | null;
+}
+
+// ── Newsroom (Phase 4) ─────────────────────────────────────────────────
+
+export type ArticleStatus =
+  | 'DRAFT'
+  | 'IN_REVIEW'
+  | 'CHANGES_REQUESTED'
+  | 'APPROVED'
+  | 'SCHEDULED'
+  | 'PUBLISHED'
+  | 'REJECTED'
+  | 'CANCELLED'
+  | 'ARCHIVED';
+
+export interface ArticleCapabilities {
+  ownWork: boolean;
+  read: boolean;
+  edit: boolean;
+  editSeo: boolean;
+  submit: boolean;
+  withdraw: boolean;
+  review: boolean;
+  publish: boolean;
+  schedule: boolean;
+  unschedule: boolean;
+  unpublish: boolean;
+  archive: boolean;
+  cancel: boolean;
+  reopen: boolean;
+  delete: boolean;
+  correct: boolean;
+  feature: boolean;
+  assign: boolean;
+  comment: boolean;
+}
+
+export interface ArticleListItem {
+  id: string;
+  slug: string;
+  title: string;
+  status: ArticleStatus;
+  version: number;
+  isFeatured: boolean;
+  isBreaking: boolean;
+  isAiGenerated: boolean;
+  createdAt: string;
+  updatedAt: string;
+  publishedAt: string | null;
+  scheduledAt: string | null;
+  category: { id: string; name: string } | null;
+  author: { id: string; name: string } | null;
+  createdBy: { id: string; displayName: string } | null;
+  thumbUrl: string | null;
+  comments: number;
+}
+
+export interface ArticlePage {
+  items: ArticleListItem[];
+  nextCursor: string | null;
+}
+
+export type ArticleCounts = Record<ArticleStatus, number> & { total: number };
+
+export interface MediaAsset {
+  id: string;
+  url: string | null;
+  thumbUrl: string | null;
+  mimeType: string;
+  bytes: number;
+  width: number | null;
+  height: number | null;
+  alt: string;
+  caption: string | null;
+  credit: string | null;
+  status: 'PENDING' | 'READY' | 'DELETED';
+  originalName: string | null;
+  uploadedBy: { id: string; displayName: string } | null;
+  createdAt: string;
+}
+
+export interface MediaPage {
+  items: MediaAsset[];
+  nextCursor: string | null;
+  enabled: boolean;
+  maxBytes: number;
+}
+
+export interface ArticleSeo {
+  title?: string;
+  description?: string;
+  canonicalUrl?: string;
+  noIndex?: boolean;
+  noFollow?: boolean;
+  ogImageId?: string;
+}
+
+export interface SourceCredit {
+  name: string;
+  url?: string;
+  note?: string;
+}
+
+export interface ArticleAssignment {
+  id: string;
+  role: 'WRITER' | 'EDITOR' | 'REVIEWER';
+  status: 'OPEN' | 'DONE' | 'CANCELLED';
+  note: string | null;
+  dueAt: string | null;
+  assignee: { id: string; displayName: string };
+  assignedBy: { id: string; displayName: string } | null;
+  createdAt: string;
+}
+
+export interface ArticleReview {
+  id: string;
+  decision: 'APPROVED' | 'CHANGES_REQUESTED' | 'REJECTED';
+  comment: string | null;
+  version: number;
+  reviewer: { id: string; displayName: string } | null;
+  createdAt: string;
+}
+
+export interface RelatedRef {
+  id: string;
+  title: string;
+  slug: string;
+  status: ArticleStatus;
+}
+
+export interface ArticleDetail {
+  id: string;
+  slug: string;
+  title: string;
+  subtitle: string | null;
+  summary: string;
+  content: Record<string, unknown>;
+  contentHtml: string;
+  readingMinutes: number;
+  status: ArticleStatus;
+  version: number;
+  category: { id: string; name: string; slug: string } | null;
+  author: { id: string; name: string; slug: string } | null;
+  createdBy: { id: string; displayName: string } | null;
+  tags: { id: string; name: string; slug: string }[];
+  featuredImage: MediaAsset | null;
+  featuredImageCaption: string | null;
+  sectors: string[];
+  isFeatured: boolean;
+  isBreaking: boolean;
+  isAiGenerated: boolean;
+  seo: ArticleSeo;
+  sourceAttribution: SourceCredit[];
+  editorialNotes: string | null;
+  correctionNote: string | null;
+  retractedAt: string | null;
+  retractionNote: string | null;
+  related: RelatedRef[];
+  scheduledAt: string | null;
+  publishedAt: string | null;
+  firstPublishedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  assignments: ArticleAssignment[];
+  reviews: ArticleReview[];
+  can: ArticleCapabilities;
+}
+
+export interface SaveResult {
+  id: string;
+  version: number;
+  status: ArticleStatus;
+  slug: string;
+  updatedAt: string;
+  readingMinutes: number;
+}
+
+export interface VersionInfo {
+  id: string;
+  version: number;
+  reason:
+    | 'AUTOSAVE'
+    | 'MANUAL'
+    | 'SUBMIT'
+    | 'APPROVE'
+    | 'PUBLISH'
+    | 'CORRECTION'
+    | 'RESTORE';
+  createdAt: string;
+  title: string;
+  words: number;
+  editor: { id: string; displayName: string } | null;
+}
+
+export interface VersionDetail extends Omit<VersionInfo, 'title' | 'words'> {
+  snapshot: {
+    title: string;
+    subtitle: string | null;
+    summary: string;
+    contentText: string;
+    sectors: string[];
+    tagIds: string[];
+    categoryId: string | null;
+  };
+}
+
+export interface ArticleComment {
+  id: string;
+  parentId: string | null;
+  blockId: string | null;
+  body: string;
+  author: { id: string; displayName: string } | null;
+  resolvedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  mine: boolean;
+}
+
+export interface Category {
+  id: string;
+  slug: string;
+  name: string;
+  description: string;
+  parentId: string | null;
+  position: number;
+  isActive: boolean;
+  articleCount: number;
+}
+
+export interface Tag {
+  id: string;
+  slug: string;
+  name: string;
+  articleCount: number;
+}
+
+export interface Byline {
+  id: string;
+  slug: string;
+  name: string;
+  bio: string;
+  avatarUrl: string | null;
+  socials: { twitter?: string; linkedin?: string; website?: string };
+  isActive: boolean;
+  staff: { id: string; displayName: string } | null;
+  articleCount: number;
+}
+
+export interface ArticleBrief {
+  id: string;
+  title: string;
+  status: ArticleStatus;
+  updatedAt: string;
+  scheduledAt: string | null;
+  category: { name: string } | null;
+}
+
+export interface MyWork {
+  assignments: {
+    id: string;
+    role: 'WRITER' | 'EDITOR' | 'REVIEWER';
+    note: string | null;
+    dueAt: string | null;
+    assignedBy: { id: string; displayName: string } | null;
+    createdAt: string;
+    article: ArticleBrief;
+  }[];
+  drafts: ArticleBrief[];
+  changesRequested: ArticleBrief[];
+  inReview: ArticleBrief[];
+  reviewQueue: number | null;
+}
+
+export interface DirectoryEntry {
+  id: string;
+  displayName: string;
+  title: string | null;
+  roles: string[];
+}
+
+export interface ArticleFigures {
+  scope: 'all' | 'mine';
+  total: number;
+  drafts: number;
+  changesRequested: number;
+  inReview: number;
+  approved: number;
+  scheduled: number;
+  published: number;
+  publishedToday: number;
+  overdueScheduled: number;
 }

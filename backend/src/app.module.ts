@@ -14,6 +14,7 @@ import { RedisModule } from './redis/redis.module';
 import { UsersModule } from './users/users.module';
 import { AppUsersModule } from './app-users/app-users.module';
 import { AuthModule } from './auth/auth.module';
+import { NewsroomModule } from './newsroom/newsroom.module';
 import { SmartApiModule } from './smartapi/smartapi.module';
 import { MarketModule } from './market/market.module';
 import { WatchlistsModule } from './watchlists/watchlists.module';
@@ -85,6 +86,7 @@ import { StorageModule } from './storage/storage.module';
     AuditModule,
     StaffModule,
     AppUsersModule,
+    NewsroomModule,
     StorageModule,
   ],
   controllers: [AppController],

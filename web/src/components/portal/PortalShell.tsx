@@ -1,8 +1,13 @@
 'use client';
 
 import {
+  ClipboardCheck,
   ExternalLink,
+  FileText,
+  FolderTree,
   Globe,
+  Images,
+  Inbox,
   KeyRound,
   LayoutDashboard,
   LogOut,
@@ -61,6 +66,41 @@ interface NavItem {
 
 const NAV: { title?: string; items: NavItem[] }[] = [
   { items: [{ href: '/admin', label: 'Dashboard', icon: LayoutDashboard }] },
+  {
+    title: 'Newsroom',
+    items: [
+      {
+        href: '/admin/my-work',
+        label: 'My work',
+        icon: Inbox,
+        permission: 'news.read',
+      },
+      {
+        href: '/admin/articles',
+        label: 'Articles',
+        icon: FileText,
+        permission: 'news.read',
+      },
+      {
+        href: '/admin/review',
+        label: 'Review queue',
+        icon: ClipboardCheck,
+        permission: 'news.approve',
+      },
+      {
+        href: '/admin/media',
+        label: 'Media library',
+        icon: Images,
+        permission: 'media.upload',
+      },
+      {
+        href: '/admin/taxonomy',
+        label: 'Categories & tags',
+        icon: FolderTree,
+        permission: 'news.read',
+      },
+    ],
+  },
   {
     title: 'People',
     items: [

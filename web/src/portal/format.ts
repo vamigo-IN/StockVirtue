@@ -129,6 +129,43 @@ const AUDIT_LABELS: Record<string, string> = {
   'user.unblock': 'Unblocked an app user',
   'site.settings.update': 'Updated website settings',
   'site.settings.code_injection': 'Changed injected website code',
+  'news.article.create': 'Started an article',
+  'news.article.update': 'Saved an article',
+  'news.article.delete': 'Deleted a draft',
+  'news.article.restore': 'Restored an older version',
+  'news.article.submit': 'Sent an article for review',
+  'news.article.withdraw': 'Withdrew an article from review',
+  'news.article.approve': 'Approved an article',
+  'news.article.request_changes': 'Asked for changes',
+  'news.article.reject': 'Rejected an article',
+  'news.article.publish': 'Published an article',
+  'news.article.schedule': 'Scheduled an article',
+  'news.article.unschedule': 'Unscheduled an article',
+  'news.article.unpublish': 'Took an article down',
+  'news.article.archive': 'Archived an article',
+  'news.article.cancel': 'Spiked an article',
+  'news.article.reopen': 'Reopened an article',
+  'news.article.correct': 'Published a correction',
+  'news.article.retract': 'Retracted an article',
+  'news.article.flags': 'Changed featured/breaking',
+  'news.comment.create': 'Commented on an article',
+  'news.comment.resolve': 'Resolved a comment',
+  'news.comment.reopen': 'Reopened a comment',
+  'news.comment.edit': 'Edited a comment',
+  'news.comment.delete': 'Deleted a comment',
+  'news.assignment.create': 'Assigned work',
+  'news.assignment.update': 'Updated an assignment',
+  'news.category.create': 'Created a category',
+  'news.category.update': 'Edited a category',
+  'news.category.delete': 'Deleted a category',
+  'news.tag.create': 'Created a tag',
+  'news.tag.update': 'Renamed a tag',
+  'news.tag.delete': 'Deleted a tag',
+  'news.author.create': 'Created a byline',
+  'news.author.update': 'Edited a byline',
+  'media.upload': 'Uploaded an image',
+  'media.update': 'Edited image details',
+  'media.delete': 'Deleted an image',
 };
 
 export function auditLabel(action: string): string {
@@ -142,9 +179,29 @@ export function auditLabel(action: string): string {
 export function auditTone(action: string): 'danger' | 'warning' | 'default' {
   if (action.includes('failed')) return 'danger';
   if (
-    /\.(block|suspend|code_injection|revoke_admin|sign_out_all)$/.test(action)
+    /\.(block|suspend|code_injection|revoke_admin|sign_out_all|reject|unpublish|retract|delete)$/.test(
+      action,
+    )
   ) {
     return 'warning';
   }
   return 'default';
+}
+
+export const ARTICLE_STATUS_LABELS: Record<string, string> = {
+  DRAFT: 'Draft',
+  IN_REVIEW: 'In review',
+  CHANGES_REQUESTED: 'Changes requested',
+  APPROVED: 'Approved',
+  SCHEDULED: 'Scheduled',
+  PUBLISHED: 'Published',
+  REJECTED: 'Rejected',
+  CANCELLED: 'Spiked',
+  ARCHIVED: 'Archived',
+};
+
+export function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1048576) return `${Math.round(n / 1024)} KB`;
+  return `${(n / 1048576).toFixed(1)} MB`;
 }

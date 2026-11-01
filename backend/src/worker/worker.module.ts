@@ -1,8 +1,14 @@
 import { BullModule } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { AuditModule } from '../audit/audit.module';
 import configuration from '../config/configuration';
 import { validationSchema } from '../config/validation.schema';
+import { ArticlePublisher } from '../newsroom/publishing/article-publisher';
+import {
+  PublishingProcessor,
+  PublishingScheduler,
+} from '../newsroom/publishing/publishing.processor';
 import { PrismaModule } from '../prisma/prisma.module';
 import { QueueModule, QUEUES } from '../queue/queue.module';
 import {
@@ -27,9 +33,17 @@ import {
       cache: true,
     }),
     PrismaModule,
+    AuditModule,
     QueueModule,
     BullModule.registerQueue({ name: QUEUES.maintenance }),
+    BullModule.registerQueue({ name: QUEUES.publishing }),
   ],
-  providers: [MaintenanceProcessor, MaintenanceScheduler],
+  providers: [
+    MaintenanceProcessor,
+    MaintenanceScheduler,
+    ArticlePublisher,
+    PublishingProcessor,
+    PublishingScheduler,
+  ],
 })
 export class WorkerModule {}

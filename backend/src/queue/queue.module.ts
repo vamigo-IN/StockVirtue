@@ -6,6 +6,8 @@ import { AppConfig } from '../config/configuration';
 /** Queue names. One per kind of newsroom work, so each can scale and fail alone. */
 export const QUEUES = {
   maintenance: 'newsroom-maintenance',
+  /** Scheduled article publishing (delayed jobs plus a one-minute sweep). */
+  publishing: 'newsroom-publishing',
 } as const;
 
 /**

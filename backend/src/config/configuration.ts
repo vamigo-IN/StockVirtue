@@ -177,6 +177,9 @@ export interface StorageConfig {
   r2AccessKeyId: string;
   r2SecretAccessKey: string;
   r2Bucket: string;
+  /// Optional S3-compatible endpoint instead of R2's (e.g. MinIO for local
+  /// testing). Blank = https://<account>.r2.cloudflarestorage.com.
+  r2Endpoint: string;
   /// CDN base that serves the bucket, e.g. https://media.stockvirtue.com
   publicBaseUrl: string;
   maxUploadBytes: number;
@@ -375,6 +378,7 @@ export default (): AppConfig => ({
     r2AccessKeyId: process.env.R2_ACCESS_KEY_ID ?? '',
     r2SecretAccessKey: process.env.R2_SECRET_ACCESS_KEY ?? '',
     r2Bucket: process.env.R2_BUCKET ?? '',
+    r2Endpoint: (process.env.R2_ENDPOINT ?? '').replace(/\/+$/, ''),
     publicBaseUrl: (process.env.MEDIA_PUBLIC_BASE_URL ?? '').replace(
       /\/+$/,
       '',
