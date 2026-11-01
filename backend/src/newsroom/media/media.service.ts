@@ -16,6 +16,8 @@ import { ClientInfo, StaffPrincipal } from '../../staff/staff-request';
 import { StorageService } from '../../storage/storage.service';
 import { has } from '../articles/article-access';
 import { RenderMedia } from '../content/article-content';
+import { NewsCache } from '../public/news-cache';
+import { PublicImage } from '../public/public-articles';
 import {
   IMAGE_EXT,
   IMAGE_MIME,
@@ -55,6 +57,7 @@ export class MediaService {
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
     private readonly audit: AuditService,
+    private readonly cache: NewsCache,
   ) {}
 
   view(a: AssetRow | MediaAsset) {
@@ -78,6 +81,21 @@ export class MediaService {
       originalName: a.originalName,
       uploadedBy: 'uploadedBy' in a ? a.uploadedBy : null,
       createdAt: a.createdAt,
+    };
+  }
+
+  /** An image as readers get it; null when it isn't ready or storage is off. */
+  publicImage(a: MediaAsset | null | undefined): PublicImage | null {
+    if (!a || a.status !== MediaStatus.READY || !this.storage.enabled) {
+      return null;
+    }
+    return {
+      url: this.storage.publicUrl(a.storageKey),
+      width: a.width,
+      height: a.height,
+      alt: a.alt,
+      credit: a.credit,
+      variants: this.variantList(a),
     };
   }
 
@@ -284,6 +302,8 @@ export class MediaService {
       );
       return updated;
     });
+    // Alt text and credits show on the public site.
+    await this.cache.invalidate('media');
     return this.view(row);
   }
 
@@ -330,14 +350,11 @@ export class MediaService {
       );
     }
     for (const r of rows) {
-      const variants = Object.values((r.variants ?? {}) as unknown as Variants)
-        .sort((a, b) => a.width - b.width)
-        .map((v) => ({ url: this.storage.publicUrl(v.key), width: v.width }));
       map.set(r.id, {
         url: this.storage.publicUrl(r.storageKey),
         width: r.width,
         height: r.height,
-        variants,
+        variants: this.variantList(r),
       });
     }
     return map;
@@ -462,5 +479,12 @@ export class MediaService {
         this.logger.warn(`Couldn't delete ${key}: ${(err as Error).message}`);
       }
     }
+  }
+
+  /** Smaller copies, narrowest first, as public URLs. */
+  private variantList(a: MediaAsset) {
+    return Object.values((a.variants ?? {}) as unknown as Variants)
+      .sort((x, y) => x.width - y.width)
+      .map((v) => ({ url: this.storage.publicUrl(v.key), width: v.width }));
   }
 }

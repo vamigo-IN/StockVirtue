@@ -1121,12 +1121,20 @@ model NewsArticle {
   stocks        NewsArticleStock[]
   related       NewsRelatedArticle[] @relation("RelatedFrom")
   relatedBy     NewsRelatedArticle[] @relation("RelatedTo")
+  dailyStats    NewsDailyStat[]
+
+  /// Full-text search document. A STORED generated column (headline weight A,
+  /// standfirst + summary B, body text C) that Postgres keeps up to date; the
+  /// app only reads it. The default below mirrors the generation expression
+  /// from the news_public_site migration so `migrate diff` sees no drift.
+  searchVector Unsupported("tsvector")? @default(dbgenerated("((setweight(to_tsvector('english'::regconfig, COALESCE(title, ''::text)), 'A'::\"char\") || setweight(to_tsvector('english'::regconfig, ((COALESCE(subtitle, ''::text) || ' '::text) || COALESCE(summary, ''::text))), 'B'::\"char\")) || setweight(to_tsvector('english'::regconfig, COALESCE(\"contentText\", ''::text)), 'C'::\"char\"))"))
 
   @@index([status, publishedAt(sort: Desc)])
   @@index([categoryId, status, publishedAt(sort: Desc)])
   @@index([authorId, status, publishedAt(sort: Desc)])
   @@index([createdById, status])
   @@index([status, scheduledAt])
+  @@index([searchVector], type: Gin)
   @@map("news_articles")
 }
 
@@ -1273,4 +1281,33 @@ model NewsRelatedArticle {
 
   @@id([articleId, relatedId])
   @@map("news_related_articles")
+}
+
+/// Reader views per article per day (IST), from de-duplicated page views. No
+/// reader identity is stored, so "Trending" needs no personal data.
+model NewsDailyStat {
+  articleId String   @db.Uuid
+  day       DateTime @db.Date
+  views     Int      @default(0)
+
+  article NewsArticle @relation(fields: [articleId], references: [id], onDelete: Cascade)
+
+  @@id([articleId, day])
+  @@index([day])
+  @@map("news_daily_stats")
+}
+
+// ─── Website configuration ──────────────────────────────────────────────────
+
+/// Versioned website configuration sections edited in the portal, one row per
+/// section (e.g. `news.homepage`). Values are JSON checked against a schema in
+/// code before every save; their history lives in the audit log.
+model SiteConfig {
+  key         String   @id
+  value       Json
+  version     Int      @default(1)
+  updatedById String?  @db.Uuid
+  updatedAt   DateTime @updatedAt
+
+  @@map("site_config")
 }

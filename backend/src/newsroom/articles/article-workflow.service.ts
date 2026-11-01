@@ -14,6 +14,7 @@ import {
 import { AuditService } from '../../audit/audit.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ClientInfo, StaffPrincipal } from '../../staff/staff-request';
+import { NewsCache } from '../public/news-cache';
 import { PublishingQueue } from '../publishing/publishing.queue';
 import { ArticleCapabilities, capabilities, has } from './article-access';
 import { recordVersion } from './article-versions';
@@ -66,6 +67,7 @@ export class ArticleWorkflowService {
     private readonly audit: AuditService,
     private readonly articles: ArticlesService,
     private readonly publishing: PublishingQueue,
+    private readonly cache: NewsCache,
   ) {}
 
   submit(
@@ -378,6 +380,7 @@ export class ArticleWorkflowService {
         tx,
       );
     });
+    if (a.status === S.PUBLISHED) await this.cache.invalidate('flags');
     return this.articles.get(actor, id);
   }
 
@@ -445,6 +448,10 @@ export class ArticleWorkflowService {
       );
     });
     await m.after?.(a);
+    // Going live, coming down, or a correction to a live story.
+    if (a.status === S.PUBLISHED || m.to === S.PUBLISHED) {
+      await this.cache.invalidate(m.action);
+    }
     return this.articles.get(actor, id);
   }
 

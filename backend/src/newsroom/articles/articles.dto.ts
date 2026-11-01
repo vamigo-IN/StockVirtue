@@ -60,6 +60,18 @@ class SourceDto {
   note?: string;
 }
 
+/** A listed company the story is about (NSE/BSE ticker). */
+class StockRefDto {
+  @IsIn(['NSE', 'BSE'])
+  exchange!: 'NSE' | 'BSE';
+
+  @IsString()
+  @Matches(/^[A-Za-z0-9][A-Za-z0-9&_.-]{0,29}$/, {
+    message: 'That isn’t a stock symbol.',
+  })
+  symbol!: string;
+}
+
 /**
  * A save. Only the fields sent are changed. `version` is the article version
  * the editor last loaded; a save against an older one is refused (409) so
@@ -139,6 +151,14 @@ export class UpdateArticleDto {
   @ArrayMaxSize(6)
   @IsUUID('all', { each: true })
   relatedIds?: string[];
+
+  /** Companies the story is about; the first is the main one. */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(10)
+  @ValidateNested({ each: true })
+  @Type(() => StockRefDto)
+  stocks?: StockRefDto[];
 
   @IsOptional()
   @ValidateNested()
@@ -286,4 +306,11 @@ export class AssignmentDto {
 export class AssignmentUpdateDto {
   @IsIn(['OPEN', 'DONE', 'CANCELLED'])
   status!: 'OPEN' | 'DONE' | 'CANCELLED';
+}
+
+export class StockSearchQueryDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(60)
+  q?: string;
 }

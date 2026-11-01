@@ -9,6 +9,7 @@ import { AuditService } from '../../audit/audit.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ClientInfo, StaffPrincipal } from '../../staff/staff-request';
 import { safeHref } from '../content/article-content';
+import { NewsCache } from '../public/news-cache';
 import { freeSlug, slugify } from '../slug';
 
 type Db = Prisma.TransactionClient | PrismaService;
@@ -19,6 +20,7 @@ export class TaxonomyService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly cache: NewsCache,
   ) {}
 
   // ── Categories ──────────────────────────────────────────────────────
@@ -82,6 +84,7 @@ export class TaxonomyService {
       );
       return created;
     });
+    await this.cache.invalidate('taxonomy');
     return (await this.listCategories()).find((c) => c.id === row.id);
   }
 
@@ -132,6 +135,7 @@ export class TaxonomyService {
         data,
       );
     });
+    await this.cache.invalidate('taxonomy');
     return (await this.listCategories()).find((c) => c.id === id);
   }
 
@@ -157,6 +161,7 @@ export class TaxonomyService {
         slug: before.slug,
       });
     });
+    await this.cache.invalidate('taxonomy');
   }
 
   // ── Tags ────────────────────────────────────────────────────────────
@@ -248,6 +253,7 @@ export class TaxonomyService {
         { name },
       );
     });
+    await this.cache.invalidate('taxonomy');
     return (await this.listTags()).find((t) => t.id === id);
   }
 
@@ -260,6 +266,7 @@ export class TaxonomyService {
         name: before.name,
       });
     });
+    await this.cache.invalidate('taxonomy');
   }
 
   // ── Authors (public bylines) ────────────────────────────────────────
@@ -367,6 +374,7 @@ export class TaxonomyService {
       );
       return saved;
     });
+    await this.cache.invalidate('taxonomy');
     return (await this.listAuthors()).find((a) => a.id === row.id);
   }
 

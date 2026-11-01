@@ -4,6 +4,7 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import {
   NewsAssignmentStatus,
@@ -12,6 +13,8 @@ import {
   Prisma,
 } from '@prisma/client';
 import { AuditService } from '../../audit/audit.service';
+import { CompanyDirectoryService } from '../../market/company-directory.service';
+import { ScripMasterService } from '../../market/scrip-master.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ClientInfo, StaffPrincipal } from '../../staff/staff-request';
 import {
@@ -24,7 +27,8 @@ import {
   safeHref,
 } from '../content/article-content';
 import { MediaService } from '../media/media.service';
-import { freeSlug, slugify } from '../slug';
+import { NewsCache } from '../public/news-cache';
+import { freeSlug, RESERVED_ARTICLE_SLUGS, slugify } from '../slug';
 import { TaxonomyService } from '../taxonomy/taxonomy.service';
 import { ArticleCapabilities, capabilities, has } from './article-access';
 import { ArticleSnapshot, recordVersion } from './article-versions';
@@ -81,6 +85,10 @@ const DETAIL_INCLUDE = {
     take: 20,
     include: { reviewer: { select: { id: true, displayName: true } } },
   },
+  stocks: {
+    select: { exchange: true, symbol: true },
+    orderBy: [{ isPrimary: 'desc' }, { symbol: 'asc' }],
+  },
 } satisfies Prisma.NewsArticleInclude;
 type DetailRow = Prisma.NewsArticleGetPayload<{
   include: typeof DETAIL_INCLUDE;
@@ -116,6 +124,9 @@ export class ArticlesService {
     private readonly audit: AuditService,
     private readonly media: MediaService,
     private readonly taxonomy: TaxonomyService,
+    private readonly scripMaster: ScripMasterService,
+    private readonly directory: CompanyDirectoryService,
+    private readonly cache: NewsCache,
   ) {}
 
   // ── Reading ─────────────────────────────────────────────────────────
@@ -334,6 +345,7 @@ export class ArticlesService {
       'featuredImageCaption',
       'sectors',
       'relatedIds',
+      'stocks',
       'sourceAttribution',
       'editorialNotes',
       'isAiGenerated',
@@ -412,6 +424,11 @@ export class ArticlesService {
       data.seo = await this.cleanSeo(dto.seo, current.seo);
     }
     if (dto.slug !== undefined && dto.slug !== a.slug) {
+      if (RESERVED_ARTICLE_SLUGS.has(dto.slug)) {
+        throw new BadRequestException(
+          'That web address belongs to a section of the news site. Pick another.',
+        );
+      }
       if (a.firstPublishedAt) {
         throw new BadRequestException(
           "The web address can't change once an article has been published.",
@@ -447,6 +464,8 @@ export class ArticlesService {
         );
       }
     }
+    const stocks =
+      dto.stocks !== undefined ? this.resolveStocks(dto.stocks) : undefined;
 
     const result = await this.prisma.$transaction(async (tx) => {
       const res = await tx.newsArticle.updateMany({
@@ -473,6 +492,16 @@ export class ArticlesService {
               relatedId,
               position,
             })),
+        });
+      }
+      if (stocks !== undefined) {
+        await tx.newsArticleStock.deleteMany({ where: { articleId: id } });
+        await tx.newsArticleStock.createMany({
+          data: stocks.map((s, i) => ({
+            articleId: id,
+            ...s,
+            isPrimary: i === 0,
+          })),
         });
       }
       let recorded = false;
@@ -532,6 +561,10 @@ export class ArticlesService {
         },
       });
     });
+    // Editors may change a live story: readers get the new text right away.
+    if (result.status === NewsStatus.PUBLISHED) {
+      await this.cache.invalidate('article');
+    }
     return result;
   }
 
@@ -621,6 +654,18 @@ export class ArticlesService {
           position,
         })),
       });
+      // Versions saved before stocks existed leave them as they are.
+      if (snap.stocks) {
+        await tx.newsArticleStock.deleteMany({ where: { articleId: id } });
+        await tx.newsArticleStock.createMany({
+          data: snap.stocks.map((s, i) => ({
+            articleId: id,
+            exchange: s.exchange,
+            symbol: s.symbol,
+            isPrimary: i === 0,
+          })),
+        });
+      }
       await recordVersion(tx, id, NewsVersionReason.RESTORE, actor.staffId, {
         force: true,
       });
@@ -636,6 +681,9 @@ export class ArticlesService {
         tx,
       );
     });
+    if (a.status === NewsStatus.PUBLISHED) {
+      await this.cache.invalidate('article');
+    }
     return this.get(actor, id);
   }
 
@@ -817,11 +865,40 @@ export class ArticlesService {
     return freeSlug(
       base,
       async (s) =>
+        RESERVED_ARTICLE_SLUGS.has(s) ||
         !!(await this.prisma.newsArticle.findUnique({
           where: { slug: s },
           select: { id: true },
         })),
     );
+  }
+
+  /**
+   * Checks each company against the exchange's list and returns canonical
+   * tickers, main company first, without repeats.
+   */
+  private resolveStocks(list: { exchange: 'NSE' | 'BSE'; symbol: string }[]) {
+    if (!list.length) return [];
+    if (!this.scripMaster.isReady()) {
+      throw new ServiceUnavailableException(
+        'The stock list is still loading. Try again in a minute.',
+      );
+    }
+    const seen = new Set<string>();
+    const out: { exchange: string; symbol: string }[] = [];
+    for (const s of list) {
+      const inst = this.scripMaster.getEquity(s.symbol, s.exchange);
+      if (!inst) {
+        throw new BadRequestException(
+          `${s.symbol.toUpperCase()} isn't a listed ${s.exchange} stock.`,
+        );
+      }
+      const key = `${s.exchange}:${inst.name}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      out.push({ exchange: s.exchange, symbol: inst.name });
+    }
+    return out;
   }
 
   private async staffNames(ids: (string | null)[]) {
@@ -865,6 +942,10 @@ export class ArticlesService {
       retractedAt: a.retractedAt,
       retractionNote: a.retractionNote,
       related: a.related.map((r) => r.related),
+      stocks: a.stocks.map((s) => ({
+        ...s,
+        name: this.directory.nameFor(s.symbol),
+      })),
       scheduledAt: a.scheduledAt,
       publishedAt: a.publishedAt,
       firstPublishedAt: a.firstPublishedAt,

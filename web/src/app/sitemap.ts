@@ -6,6 +6,8 @@ export default function sitemap(): MetadataRoute.Sitemap {
   const routes: { path: string; priority: number }[] = [
     { path: '', priority: 1 },
     { path: '/features', priority: 0.9 },
+    // The news site lists its own stories in /news/sitemap.xml.
+    { path: '/news', priority: 0.8 },
     { path: '/download', priority: 0.9 },
     { path: '/about', priority: 0.7 },
     { path: '/faq', priority: 0.7 },

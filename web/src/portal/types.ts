@@ -324,6 +324,8 @@ export interface ArticleDetail {
   retractedAt: string | null;
   retractionNote: string | null;
   related: RelatedRef[];
+  /** Companies the story is about; the first is the main one. */
+  stocks: StockRef[];
   scheduledAt: string | null;
   publishedAt: string | null;
   firstPublishedAt: string | null;
@@ -332,6 +334,40 @@ export interface ArticleDetail {
   assignments: ArticleAssignment[];
   reviews: ArticleReview[];
   can: ArticleCapabilities;
+}
+
+/** A listed company (NSE/BSE ticker) with its name, when known. */
+export interface StockRef {
+  exchange: string;
+  symbol: string;
+  name: string | null;
+}
+
+export type HomeSectionType =
+  'breaking' | 'featured' | 'latest' | 'category' | 'trending' | 'app_promo';
+
+export interface HomeSectionConfig {
+  id: string;
+  type: HomeSectionType;
+  enabled: boolean;
+  title: string;
+  limit?: number;
+  categorySlug?: string;
+}
+
+export interface HomepageView {
+  sections: HomeSectionConfig[];
+  /** 0 until the layout is first saved (the default layout shows). */
+  version: number;
+  updatedAt: string | null;
+  updatedBy: { id: string; displayName: string } | null;
+  categories: {
+    slug: string;
+    name: string;
+    isActive: boolean;
+    parent: { slug: string; name: string } | null;
+  }[];
+  defaultLimits: Record<HomeSectionType, number>;
 }
 
 export interface SaveResult {

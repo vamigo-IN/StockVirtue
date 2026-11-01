@@ -396,13 +396,20 @@ export function ArticleEditor({
     onUpdate: ({ editor: e }) =>
       onChangeRef.current(e.getJSON() as Record<string, unknown>),
   });
-  const words = useEditorState({
+  // Re-render whenever the document changes, and count from the editor's
+  // current document: a selected value would read 0 for a story just opened
+  // (the first one is taken before the editor exists).
+  useEditorState({
     editor,
-    selector: ({ editor: e }) =>
-      (
-        e?.storage as { characterCount?: { words: () => number } } | undefined
-      )?.characterCount?.words() ?? 0,
+    selector: ({ editor: e }) => e?.state.doc ?? null,
+    equalityFn: (a, b) => a === b,
   });
+  const words = editor
+    ? editor.state.doc
+        .textBetween(0, editor.state.doc.content.size, ' ', ' ')
+        .split(/\s+/)
+        .filter(Boolean).length
+    : 0;
 
   useEffect(() => {
     // false: switching to read-only is not an edit, so no autosave.

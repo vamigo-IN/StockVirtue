@@ -55,7 +55,11 @@ export function Footer({ settings }: { settings: SiteSettings }) {
               <h4>{col.title}</h4>
               {col.links.map((l) => (
                 <div key={l.href}>
-                  <Link href={l.href}>{l.label}</Link>
+                  {l.fullLoad ? (
+                    <a href={l.href}>{l.label}</a>
+                  ) : (
+                    <Link href={l.href}>{l.label}</Link>
+                  )}
                 </div>
               ))}
             </div>

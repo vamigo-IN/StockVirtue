@@ -2,7 +2,7 @@
 
 import { useQueryClient } from '@tanstack/react-query';
 import { ImagePlus, Newspaper, Plus, X } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { RelatedDialog } from '@/components/editor/EditorDialogs';
 import { MediaPicker } from '@/components/portal/MediaPicker';
@@ -26,9 +26,10 @@ import {
   qk,
   useAuthors,
   useCategories,
+  useStockSearch,
   useTags,
 } from '@/portal/queries';
-import type { ArticleDetail, Category, Tag } from '@/portal/types';
+import type { ArticleDetail, Category, StockRef, Tag } from '@/portal/types';
 import type { Draft, DraftKey } from './draft';
 
 const SECTORS = [
@@ -56,6 +57,140 @@ type Change = <K extends DraftKey>(key: K, value: Draft[K]) => void;
 function categoryPath(c: Category, all: Category[]): string {
   const parent = c.parentId ? all.find((x) => x.id === c.parentId) : null;
   return parent ? `${parent.name} › ${c.name}` : c.name;
+}
+
+/** Listed companies the story is about; the first one is the main one. */
+function StockInput({
+  value,
+  onChange,
+  disabled,
+}: {
+  value: StockRef[];
+  onChange: (stocks: StockRef[]) => void;
+  disabled: boolean;
+}) {
+  const [text, setText] = useState('');
+  const [q, setQ] = useState('');
+  const [focused, setFocused] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setQ(text.trim()), 250);
+    return () => clearTimeout(t);
+  }, [text]);
+  const search = useStockSearch(q);
+  const results = (search.data?.results ?? [])
+    .filter(
+      (r) =>
+        !value.some((v) => v.exchange === r.exchange && v.symbol === r.symbol),
+    )
+    .slice(0, 6);
+
+  function add(stock: StockRef) {
+    if (value.length >= 10) {
+      toast.error('Up to 10 stocks.');
+      return;
+    }
+    onChange([...value, stock]);
+    setText('');
+    setQ('');
+  }
+
+  return (
+    <div className="space-y-2">
+      {value.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {value.map((s, i) => (
+            <Badge
+              key={`${s.exchange}:${s.symbol}`}
+              variant={i === 0 ? 'secondary' : 'outline'}
+              className="gap-1 pr-1"
+              title={s.name ?? undefined}
+            >
+              <span className="font-mono">{s.symbol}</span>
+              {i === 0 && value.length > 1 && (
+                <span className="text-muted-foreground">· main</span>
+              )}
+              {!disabled && (
+                <button
+                  type="button"
+                  onClick={() => onChange(value.filter((_, j) => j !== i))}
+                  className="rounded-sm p-0.5 hover:bg-foreground/10"
+                  aria-label={`Remove ${s.symbol}`}
+                >
+                  <X className="size-3" />
+                </button>
+              )}
+            </Badge>
+          ))}
+        </div>
+      )}
+      {!disabled && (
+        <div className="relative">
+          <Input
+            id="stock-input"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
+            onKeyDown={(e) => {
+              if (e.key === 'Escape') {
+                setText('');
+                setQ('');
+              }
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                if (results[0]) add(results[0]);
+              }
+            }}
+            placeholder="Search NSE companies, e.g. Infosys"
+            maxLength={60}
+            autoComplete="off"
+            aria-describedby="stock-help"
+          />
+          {focused && q && (
+            <div className="absolute inset-x-0 top-full z-20 mt-1 overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-md">
+              {search.isPending ? (
+                <p className="px-3 py-2 text-sm text-muted-foreground">
+                  Searching…
+                </p>
+              ) : search.error ? (
+                <p className="px-3 py-2 text-sm text-destructive">
+                  {errorMessage(search.error)}
+                </p>
+              ) : results.length === 0 ? (
+                <p className="px-3 py-2 text-sm text-muted-foreground">
+                  No listed company matches.
+                </p>
+              ) : (
+                <ul aria-label="Matching companies">
+                  {results.map((r) => (
+                    <li key={`${r.exchange}:${r.symbol}`}>
+                      <button
+                        type="button"
+                        // Keep focus in the box so the list doesn't close first.
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => add(r)}
+                        className="flex w-full items-baseline gap-2 px-3 py-2 text-left text-sm hover:bg-accent focus-visible:bg-accent focus-visible:outline-none"
+                      >
+                        <span className="font-mono font-medium">
+                          {r.symbol}
+                        </span>
+                        <span className="truncate text-muted-foreground">
+                          {r.name}
+                        </span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+      <p id="stock-help" className="text-xs text-muted-foreground">
+        The story is listed on each company&rsquo;s news page.
+      </p>
+    </div>
+  );
 }
 
 function TagInput({
@@ -337,6 +472,14 @@ export function DetailsPanel({
                 </datalist>
               </>
             )}
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="stock-input">Related stocks</Label>
+            <StockInput
+              value={draft.stocks}
+              onChange={(v) => change('stocks', v)}
+              disabled={!editable}
+            />
           </div>
           <div className="flex items-center justify-between gap-3 rounded-lg border px-3 py-2">
             <Label

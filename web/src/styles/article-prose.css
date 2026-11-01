@@ -1,0 +1,115 @@
+/* ============================================================================
+   Article body typography, shared by the public news pages (news.css) and
+   the portal's editor and preview (portal.css), so a story reads the same in
+   both. Styles the HTML the API renders: sv-figure, sv-video, sv-callout,
+   sv-related and sv-table. Expects the area's --primary, --border, --muted,
+   --muted-foreground and --warning tokens.
+   ========================================================================== */
+.sv-prose {
+  --tw-prose-links: var(--primary);
+  font-family: var(--font-serif-sv), Georgia, "Times New Roman", serif;
+  font-size: 1.125rem;
+  line-height: 1.75;
+}
+.sv-prose :where(h2, h3, h4) {
+  font-family: var(--font-display);
+  letter-spacing: -0.01em;
+}
+.sv-prose :where(a) {
+  text-underline-offset: 3px;
+}
+.sv-prose .sv-callout {
+  margin: 1.5em 0;
+  border-left: 4px solid var(--primary);
+  border-radius: 0.625rem;
+  background: color-mix(in oklab, var(--primary) 7%, transparent);
+  padding: 0.75rem 1rem;
+}
+.sv-prose .sv-callout :where(p, ul, ol):first-child {
+  margin-top: 0;
+}
+.sv-prose .sv-callout :where(p, ul, ol):last-child {
+  margin-bottom: 0;
+}
+.sv-prose .sv-callout-info {
+  border-color: oklch(0.62 0.14 245);
+  background: color-mix(in oklab, oklch(0.62 0.14 245) 8%, transparent);
+}
+.sv-prose .sv-callout-warning {
+  border-color: var(--warning);
+  background: color-mix(in oklab, var(--warning) 9%, transparent);
+}
+.sv-prose .sv-callout-note {
+  border-color: var(--muted-foreground);
+  background: var(--muted);
+}
+.sv-prose figure {
+  margin: 1.75em 0;
+}
+.sv-prose figure img {
+  margin: 0;
+  border-radius: 0.75rem;
+}
+.sv-prose figcaption {
+  margin-top: 0.5rem;
+  font-family: var(--font-sans, system-ui, sans-serif);
+  font-size: 0.875rem;
+  color: var(--muted-foreground);
+}
+.sv-prose .sv-credit {
+  opacity: 0.75;
+}
+.sv-prose .sv-video-frame {
+  position: relative;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border-radius: 0.75rem;
+  background: #000;
+}
+.sv-prose .sv-video-frame iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+.sv-prose .sv-related {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  margin: 1.5em 0;
+  border: 1px solid var(--border);
+  border-radius: 0.75rem;
+  padding: 0.75rem 1rem;
+  font-family: var(--font-sans, system-ui, sans-serif);
+  font-size: 1rem;
+}
+.sv-prose .sv-related-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+.sv-prose .sv-table,
+.sv-prose .tableWrapper {
+  margin: 1.5em 0;
+  overflow-x: auto;
+}
+.sv-prose table {
+  margin: 0;
+  font-family: var(--font-sans, system-ui, sans-serif);
+  font-size: 0.95rem;
+}
+.sv-prose :where(th, td) {
+  position: relative;
+  border: 1px solid var(--border);
+  padding: 0.45rem 0.65rem;
+  vertical-align: top;
+}
+.sv-prose :where(th, td) > p {
+  margin: 0;
+}
+.sv-prose th {
+  background: var(--muted);
+}

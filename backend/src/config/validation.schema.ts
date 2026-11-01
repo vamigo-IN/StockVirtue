@@ -90,6 +90,8 @@ export const validationSchema = Joi.object({
   // trusted only with it). SITE_CONTACT_TO receives contact-form emails
   // (defaults to ADMIN_EMAIL). Both optional so the backend boots without it.
   SITE_ADMIN_KEY: Joi.string().allow('').default(''),
+  // Where the API asks the website to refresh news pages (blank = derived).
+  SITE_REVALIDATE_URL: Joi.string().allow('').default(''),
   SITE_CONTACT_TO: Joi.string().email().allow('').default(''),
 
   // Traffic monitoring / abuse detection. Defaults: on, 1-in-50 raw-log

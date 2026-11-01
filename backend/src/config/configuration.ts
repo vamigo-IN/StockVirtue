@@ -68,10 +68,14 @@ export interface AdminConfig {
 /// Marketing website (stockvirtue.com) integration. `adminKey` identifies the
 /// website's Next.js server, which runs the newsroom portal: only with it are
 /// the browser IP / user agent it forwards trusted (staff sessions, audit).
-/// `contactTo` receives contact-form emails.
+/// `contactTo` receives contact-form emails. `revalidateUrl` is where the API
+/// asks the website to refresh its news pages after a change (signed with
+/// `adminKey`); blank SITE_REVALIDATE_URL = the portal URL's origin +
+/// /api/revalidate.
 export interface SiteConfig {
   adminKey: string;
   contactTo: string;
+  revalidateUrl: string;
 }
 
 /// Traffic-monitoring & abuse-detection subsystem. `enabled` is a kill-switch;
@@ -215,6 +219,19 @@ function parseFeedApiKeys(raw: string): FeedApiKey[] {
   return out;
 }
 
+/** Where to ask the website to refresh news pages (see SiteConfig). */
+function siteRevalidateUrl(): string {
+  const explicit = (process.env.SITE_REVALIDATE_URL ?? '').trim();
+  if (explicit) return explicit;
+  try {
+    return new URL(
+      '/api/revalidate',
+      process.env.NEWSROOM_PORTAL_URL || 'https://stockvirtue.com/admin',
+    ).toString();
+  } catch {
+    return '';
+  }
+}
 export default (): AppConfig => ({
   nodeEnv: (process.env.NODE_ENV as NodeEnv) ?? 'development',
   host: process.env.HOST ?? '0.0.0.0',
@@ -304,6 +321,7 @@ export default (): AppConfig => ({
       process.env.SITE_CONTACT_TO ||
       process.env.ADMIN_EMAIL ||
       'admin@stockvirtue.local',
+    revalidateUrl: siteRevalidateUrl(),
   },
   monitoring: {
     enabled: (process.env.MONITORING_ENABLED ?? 'true') !== 'false',

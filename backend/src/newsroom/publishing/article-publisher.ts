@@ -3,6 +3,7 @@ import { NewsStatus, NewsVersionReason } from '@prisma/client';
 import { AuditService } from '../../audit/audit.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { recordVersion } from '../articles/article-versions';
+import { NewsCache } from '../public/news-cache';
 
 /// The delayed job may fire a moment before the scheduled second.
 const EARLY_GRACE_MS = 2_000;
@@ -20,6 +21,7 @@ export class ArticlePublisher {
   constructor(
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
+    private readonly cache: NewsCache,
   ) {}
 
   /** Every scheduled article whose time has come. */
@@ -90,7 +92,10 @@ export class ArticlePublisher {
       );
       return true;
     });
-    if (published) this.logger.log(`Published scheduled article ${id}`);
+    if (published) {
+      this.logger.log(`Published scheduled article ${id}`);
+      await this.cache.invalidate('scheduled publish');
+    }
     return published;
   }
 }

@@ -18,6 +18,7 @@ import type {
   Category,
   Dashboard,
   DirectoryEntry,
+  HomepageView,
   Invitation,
   MediaPage,
   MySession,
@@ -28,6 +29,7 @@ import type {
   StaffMe,
   StaffMember,
   StaffSessionRow,
+  StockRef,
   Tag,
   VersionDetail,
   VersionInfo,
@@ -46,6 +48,8 @@ export const qk = {
   mySessions: ['sessions', 'mine'] as const,
   allSessions: ['sessions', 'all'] as const,
   site: ['site-settings'] as const,
+  homepage: ['site-homepage'] as const,
+  stocks: (q: string) => ['stocks', q] as const,
   articles: (f: ArticleFilters) => ['articles', 'list', f] as const,
   articleCounts: (scope: string) => ['articles', 'counts', scope] as const,
   article: (id: string) => ['article', id] as const,
@@ -154,6 +158,24 @@ export const useSiteSettings = () =>
   useQuery({
     queryKey: qk.site,
     queryFn: () => api<SiteSettingsView>('staff/site/settings'),
+  });
+
+export const useHomepage = () =>
+  useQuery({
+    queryKey: qk.homepage,
+    queryFn: () => api<HomepageView>('staff/site/homepage'),
+  });
+
+/** Listed companies for "Related stocks" (served from the API's memory). */
+export const useStockSearch = (q: string) =>
+  useQuery({
+    queryKey: qk.stocks(q),
+    queryFn: () =>
+      api<{ results: StockRef[] }>(
+        `staff/stocks/search?q=${encodeURIComponent(q)}`,
+      ),
+    enabled: q.length >= 1,
+    staleTime: 5 * 60_000,
   });
 
 /** After a staff change: lists, counts and the activity feed are stale. */

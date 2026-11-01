@@ -3,6 +3,7 @@ import type {
   ArticleSeo,
   MediaAsset,
   SourceCredit,
+  StockRef,
 } from '@/portal/types';
 
 /** What the editor page lets people change, in editor-friendly shapes. */
@@ -18,6 +19,7 @@ export interface Draft {
   featuredImageCaption: string;
   sectors: string[];
   related: { id: string; title: string; slug: string }[];
+  stocks: StockRef[];
   seo: ArticleSeo;
   slug: string;
   sources: SourceCredit[];
@@ -43,6 +45,7 @@ export function toDraft(a: ArticleDetail): Draft {
     featuredImageCaption: a.featuredImageCaption ?? '',
     sectors: a.sectors,
     related: a.related.map((r) => ({ id: r.id, title: r.title, slug: r.slug })),
+    stocks: a.stocks ?? [],
     seo: a.seo ?? {},
     slug: a.slug,
     sources: a.sourceAttribution ?? [],
@@ -64,6 +67,12 @@ export function toBody(d: Draft, keys: DraftKey[]): Record<string, unknown> {
         break;
       case 'related':
         body.relatedIds = d.related.map((r) => r.id);
+        break;
+      case 'stocks':
+        body.stocks = d.stocks.map((s) => ({
+          exchange: s.exchange,
+          symbol: s.symbol,
+        }));
         break;
       case 'sources':
         body.sourceAttribution = d.sources

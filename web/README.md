@@ -1,11 +1,13 @@
 # StockVirtue — Website (stockvirtue.com)
 
-Marketing / portfolio site for the StockVirtue app, plus the **newsroom portal**
-at `/admin` (staff sign-in, team and roles, app-user moderation, website settings,
-audit log, and the editorial desk: articles, review queue, media library,
-categories and tags). Built with **Next.js (App Router) + TypeScript**, server-rendered for
-SEO. The marketing pages use hand-written CSS; the portal uses Tailwind CSS v4 +
-shadcn/ui, loaded only under `/admin`.
+Marketing / portfolio site for the StockVirtue app, the public **news site** at
+`/news`, and the **newsroom portal** at `/admin` (staff sign-in, team and roles,
+app-user moderation, website settings, audit log, and the editorial desk:
+articles, review queue, media library, categories and tags, news homepage).
+Built with **Next.js (App Router) + TypeScript**, server-rendered for SEO. The
+marketing pages use hand-written CSS; `/news` and `/admin` each use their own
+Tailwind CSS v4 stylesheet. Links between these areas are plain `<a>` tags (full
+page loads), so one area's styles never leak into another.
 
 ## Structure
 
@@ -13,6 +15,10 @@ shadcn/ui, loaded only under `/admin`.
 src/
   app/
     (site)/        public marketing + legal pages (globals.css, header/footer, code injection)
+    news/          public news site (news.css): home, stories, sections, tags, authors,
+                   stocks, latest, search, feed.xml, sitemap.xml, news-sitemap.xml
+    api/revalidate   signed hook the API calls to refresh news pages
+    api/news/view    counts a story read (forwarded to the API)
     admin/         newsroom portal (portal.css; isolated from the site chrome)
       login/ invite/   sign-in (password + emailed code) and invitation acceptance
       (portal)/        signed-in pages: dashboard, articles (+ editor, history), review,
@@ -22,10 +28,13 @@ src/
     not-found.tsx  branded 404 for unknown URLs
     sitemap.ts robots.ts manifest.ts icon.svg
   components/      Header, Footer, Icon, JsonLd, CodeInjection
+    news/          news masthead, cards, listings, share and view components
     ui/            shadcn/ui primitives (portal only: they need portal.css)
     portal/        portal shell and shared portal components
     editor/        the article editor (TipTap) and its custom blocks
   portal/          portal API client, server helpers, session cookie, types
+  news/            news API client (server-only), routes, SEO and JSON-LD, formats
+  styles/          article-prose.css: story typography shared by /news and the editor
   lib/
     site.ts        static brand/nav/content config
     settings.ts    runtime settings (fetched from the backend) + contact helper
@@ -39,6 +48,7 @@ so there are no CORS changes and no secret ever reaches the browser:
 - `GET  /site/settings`  — public site settings (read on every page, cached 60s)
 - `POST /site/contact`   — contact-form submissions (emailed by the backend)
 - `/v1/staff/...`        — the newsroom portal, via `/admin/api/...` (below)
+- `GET /v1/news/...`     — the news site's stories, sections and sitemaps
 
 The portal's browser code only calls `/admin/api/staff/...` on this server. That
 route accepts same-origin requests carrying the portal's `x-sv-portal` header,
@@ -113,3 +123,28 @@ for rate limits and the audit log. (The backend stays on `api.stockvirtue.com`.)
   then the API checks the file, strips its metadata and makes resized copies.
   The bucket needs a CORS rule allowing `PUT` and `GET` from this site's origin
   (see the backend's `.env.example`).
+- **News homepage** (`site.manage`, Super Admin and Admin): which sections
+  `/news` shows and in what order: breaking banner, featured, top stories,
+  trending, one block per chosen category, app promotion.
+
+## News site (`/news`)
+
+- Only published stories whose publish time has passed are ever shown; the API
+  enforces this in one place. Retracted stories stay readable with their notice
+  but drop out of listings, search and sitemaps.
+- Pages are cached and refresh themselves every 30 seconds. On top of that,
+  whenever something readers can see changes (publish, unpublish, an edit to a
+  live story, the homepage layout, categories), the API calls `POST
+  /api/revalidate` here, signed with `SITE_ADMIN_KEY`, and pages refresh within
+  seconds. The backend finds this hook at `SITE_REVALIDATE_URL`, which by default
+  is the portal URL's origin + `/api/revalidate`.
+- Sections: `/news/markets`, `/news/ipo`, `/news/commodities` and
+  `/news/education` are the fronts for the categories with those addresses;
+  other categories live at `/news/category/<slug>`. Listings page as
+  `…/page/2`.
+- SEO: canonical and Open Graph tags on every page, `NewsArticle` and
+  breadcrumb structured data on stories, `/news/sitemap.xml`, a Google News
+  sitemap (last 48 hours) at `/news/news-sitemap.xml`, RSS at `/news/feed.xml`,
+  and `robots.txt` lists them. Search results are `noindex`.
+- "Trending" counts each reader once a day per story from an anonymous, salted
+  hash that is never stored in the database; bots aren't counted.

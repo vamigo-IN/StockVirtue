@@ -29,3 +29,27 @@ export async function freeSlug(
   }
   return `${root.slice(0, 60)}-${Date.now().toString(36)}`;
 }
+
+/**
+ * Addresses under /news that belong to sections of the public site, so no
+ * article may take them (an article at /news/search would be unreachable).
+ */
+export const RESERVED_ARTICLE_SLUGS: ReadonlySet<string> = new Set([
+  'api',
+  'author',
+  'authors',
+  'category',
+  'commodities',
+  'education',
+  'feed',
+  'ipo',
+  'latest',
+  'markets',
+  'page',
+  'rss',
+  'search',
+  'sitemap',
+  'stocks',
+  'tag',
+  'tags',
+]);

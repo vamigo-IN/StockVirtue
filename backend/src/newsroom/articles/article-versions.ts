@@ -22,6 +22,10 @@ export const SNAPSHOT_SELECT = {
   retractionNote: true,
   tags: { select: { tagId: true } },
   related: { select: { relatedId: true }, orderBy: { position: 'asc' } },
+  stocks: {
+    select: { exchange: true, symbol: true, isPrimary: true },
+    orderBy: [{ isPrimary: 'desc' }, { symbol: 'asc' }],
+  },
 } satisfies Prisma.NewsArticleSelect;
 
 type SnapshotSource = Prisma.NewsArticleGetPayload<{
@@ -47,6 +51,8 @@ export interface ArticleSnapshot {
   retractionNote: string | null;
   tagIds: string[];
   relatedIds: string[];
+  /** Main company first. Missing in versions saved before stocks existed. */
+  stocks?: { exchange: string; symbol: string }[];
   /** Fingerprint of the fields above: identical saves record no new version. */
   hash: string;
 }
@@ -71,6 +77,7 @@ export function snapshotOf(a: SnapshotSource): ArticleSnapshot {
     retractionNote: a.retractionNote,
     tagIds: a.tags.map((t) => t.tagId).sort(),
     relatedIds: a.related.map((r) => r.relatedId),
+    stocks: a.stocks.map((s) => ({ exchange: s.exchange, symbol: s.symbol })),
   };
   const hash = createHash('sha256').update(JSON.stringify(data)).digest('hex');
   return { ...data, hash };

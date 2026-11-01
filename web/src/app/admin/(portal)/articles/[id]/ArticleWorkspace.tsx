@@ -7,6 +7,7 @@ import {
   CalendarClock,
   Check,
   CircleSlash,
+  ExternalLink,
   Eye,
   History,
   Loader2,
@@ -357,6 +358,20 @@ function Workspace({
         {article.isFeatured && <Badge variant="secondary">Featured</Badge>}
         <SaveIndicator state={save} onRetry={() => void saveNow()} />
         <div className="flex-1" />
+        {article.status === 'PUBLISHED' && (
+          <Button variant="outline" size="sm" asChild>
+            {/* The news site has its own stylesheet: open it as a new page. */}
+            <a
+              href={`/news/${article.slug}`}
+              target="_blank"
+              rel="noopener"
+              title="Open the published story"
+            >
+              <ExternalLink />{' '}
+              <span className="hidden sm:inline">View live</span>
+            </a>
+          </Button>
+        )}
         <Button variant="outline" size="sm" onClick={() => void openPreview()}>
           <Eye /> <span className="hidden sm:inline">Preview</span>
         </Button>

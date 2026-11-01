@@ -10,6 +10,7 @@ import {
   Inbox,
   KeyRound,
   LayoutDashboard,
+  LayoutTemplate,
   LogOut,
   Menu,
   ScrollText,
@@ -127,6 +128,12 @@ const NAV: { title?: string; items: NavItem[] }[] = [
   {
     title: 'Website',
     items: [
+      {
+        href: '/admin/homepage',
+        label: 'News homepage',
+        icon: LayoutTemplate,
+        permission: 'site.manage',
+      },
       {
         href: '/admin/settings',
         label: 'Site settings',

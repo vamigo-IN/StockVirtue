@@ -33,13 +33,17 @@ export function Header() {
         <nav className="nav-desktop" aria-label="Primary">
           {links.map((n) => {
             const active = pathname === n.href;
-            return (
-              <Link
-                key={n.href}
-                href={n.href}
-                className={`nav-link${active ? ' active' : ''}`}
-                aria-current={active ? 'page' : undefined}
-              >
+            const props = {
+              href: n.href,
+              className: `nav-link${active ? ' active' : ''}`,
+              'aria-current': active ? ('page' as const) : undefined,
+            };
+            return n.fullLoad ? (
+              <a key={n.href} {...props}>
+                {n.label}
+              </a>
+            ) : (
+              <Link key={n.href} {...props}>
                 {n.label}
               </Link>
             );
@@ -69,11 +73,17 @@ export function Header() {
 
       {open && (
         <nav className="mobile-menu" id="mobile-menu" aria-label="Mobile">
-          {links.map((n) => (
-            <Link key={n.href} href={n.href} onClick={() => setOpen(false)}>
-              {n.label}
-            </Link>
-          ))}
+          {links.map((n) =>
+            n.fullLoad ? (
+              <a key={n.href} href={n.href}>
+                {n.label}
+              </a>
+            ) : (
+              <Link key={n.href} href={n.href} onClick={() => setOpen(false)}>
+                {n.label}
+              </Link>
+            ),
+          )}
           <a
             className="btn btn-primary btn-block"
             href={SITE.playUrl}
