@@ -117,8 +117,21 @@ for rate limits and the audit log. (The backend stays on `api.stockvirtue.com`.)
   backend worker (`stockvirtue-worker`), so it must be running.
 - Story content is stored as structured blocks, not HTML: the API accepts only
   known blocks (headings, lists, quotes, tables, callouts, library images,
-  YouTube/Vimeo, related stories) and renders the HTML itself, so no script or
-  arbitrary embed can get into a story.
+  YouTube/Vimeo, related stories, widgets) and renders the HTML itself, so no
+  script or arbitrary embed can get into a story.
+- **Widgets** (Insert → Market or story widget): twenty types — quotes, charts,
+  movers, sectors, heatmap, commodities, currencies, IPOs, an inline ticker,
+  key takeaways, related stocks and news, explainers, risk disclaimers and promo
+  banners. A widget is stored as its type, version and settings (JSON, checked
+  by the API on every save); the editor shows it live, exactly as readers will.
+  **Saved widgets** (`widgets.*`) are set up once and embedded by reference, so
+  editing one updates every story using it; one in use can't be deleted.
+- **Market data** (`market.configure`): the instruments the site quotes (up to
+  60 active; one used by a story can be switched off but not removed), the
+  ticker (on/off, where, order, speed, direction, theme, what each price shows,
+  phones, market-closed behaviour) with a live preview, and the **data
+  licence** — live, delayed (by N minutes), end-of-day or off, for the website
+  and the app separately, plus the attribution shown with every price.
 - **Media library**: images upload from the browser straight to the R2 bucket,
   then the API checks the file, strips its metadata and makes resized copies.
   The bucket needs a CORS rule allowing `PUT` and `GET` from this site's origin
@@ -148,3 +161,20 @@ for rate limits and the audit log. (The backend stays on `api.stockvirtue.com`.)
   and `robots.txt` lists them. Search results are `noindex`.
 - "Trending" counts each reader once a day per story from an anonymous, salted
   hash that is never stored in the database; bots aren't counted.
+
+## Market data on the site
+
+- Every price carries its label (LIVE, DELAYED or END OF DAY) and the time it is
+  as of, with the data source's attribution. Lists and tickers show one stamp,
+  and any price that differs from it (a market that closed earlier) carries
+  its own.
+- Browsers get prices from `/api/market/…` here, a small cached proxy over the
+  API's public market endpoints (`/api/v1/market/…`) that adds the site key;
+  only known paths pass. The API decides what each caller may see from the data
+  licence, and quotes only stocks on the market list or in a published story.
+- Widgets refresh on their own schedule (set per widget), share one request
+  per kind of data, and pause while the tab is hidden. Changing the licence,
+  the instruments or the ticker refreshes the site within seconds through the
+  same `/api/revalidate` hook as stories.
+- The ticker runs under the `/news` masthead and, when set to "News pages and
+  the home page", in the home page's tapes.

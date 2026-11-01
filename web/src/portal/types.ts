@@ -370,6 +370,49 @@ export interface HomepageView {
   defaultLimits: Record<HomeSectionType, number>;
 }
 
+export type MarketRight = 'LIVE' | 'DELAYED' | 'EOD' | 'OFF';
+export type InstrumentKind = 'INDEX' | 'STOCK' | 'COMMODITY' | 'CURRENCY';
+
+export interface MarketInstrument {
+  id: string;
+  kind: InstrumentKind;
+  exchange: string;
+  symbol: string;
+  name: string;
+  unit: string | null;
+  position: number;
+  isEnabled: boolean;
+  inTicker: boolean;
+  quote: { ltp: number; asOf: string } | null;
+}
+
+export interface MarketSource {
+  key: string;
+  name: string;
+  webRight: MarketRight;
+  appRight: MarketRight;
+  delayMinutes: number;
+  attribution: string;
+  updatedAt: string;
+}
+
+export interface TickerSettings {
+  version: number;
+  config: import('@/market/types').TickerConfig;
+}
+
+export interface SavedWidget {
+  id: string;
+  name: string;
+  type: import('@/components/widgets/meta').WidgetType;
+  version: number;
+  config: Record<string, unknown>;
+  symbols: string[];
+  uses: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface SaveResult {
   id: string;
   version: number;

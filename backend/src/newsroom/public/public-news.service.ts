@@ -6,6 +6,7 @@ import { CompanyDirectoryService } from '../../market/company-directory.service'
 import { PrismaService } from '../../prisma/prisma.service';
 import { RedisService } from '../../redis/redis.service';
 import { ClientInfo } from '../../staff/staff-request';
+import { ArticleBlocksService } from '../content/article-blocks.service';
 import { DEFAULT_LIMITS, HomeSectionType } from '../homepage/homepage.dto';
 import { HomepageService } from '../homepage/homepage.service';
 import { MediaService } from '../media/media.service';
@@ -125,6 +126,7 @@ export class PublicNewsService {
     private readonly media: MediaService,
     private readonly homepage: HomepageService,
     private readonly directory: CompanyDirectoryService,
+    private readonly readerBlocks: ArticleBlocksService,
   ) {}
 
   private readonly image = (a: MediaAsset | null): PublicImage | null =>
@@ -679,7 +681,7 @@ export class PublicNewsService {
     const seo = (a.seo ?? {}) as ArticleSeo;
     const relatedIds = a.related.map((r) => r.relatedId);
     const ogImageId = text(seo.ogImageId);
-    const [relatedRows, ogAsset] = await Promise.all([
+    const [relatedRows, ogAsset, blocks] = await Promise.all([
       relatedIds.length
         ? this.prisma.newsArticle.findMany({
             where: { AND: [listedWhere(), { id: { in: relatedIds } }] },
@@ -689,11 +691,13 @@ export class PublicNewsService {
       ogImageId
         ? this.prisma.mediaAsset.findUnique({ where: { id: ogImageId } })
         : Promise.resolve(null),
+      this.readerBlocks.blocks(a.content, a, 'public'),
     ]);
     return {
       ...toCard(a, this.image),
       firstPublishedAt: a.firstPublishedAt,
       contentHtml: a.contentHtml,
+      blocks,
       imageCaption: a.featuredImageCaption,
       category: a.category?.isActive
         ? {

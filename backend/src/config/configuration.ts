@@ -151,6 +151,7 @@ export interface AppConfig {
   logoUrlTemplate: string;
   newsroom: NewsroomConfig;
   storage: StorageConfig;
+  marketDisplay: MarketDisplayConfig;
   queue: QueueConfig;
 }
 
@@ -175,6 +176,13 @@ export interface NewsroomConfig {
 export type StorageDriverName = 'r2' | 'none';
 
 /// Media storage (article images). Cloudflare R2 through its S3-compatible API.
+/// Prices for the website's ticker and article widgets (curated list, one
+/// subscription on the trading app's broker socket). `enabled` false = serve
+/// only the last stored prices, e.g. on a machine with no broker session.
+export interface MarketDisplayConfig {
+  enabled: boolean;
+}
+
 export interface StorageConfig {
   driver: StorageDriverName;
   r2AccountId: string;
@@ -389,6 +397,9 @@ export default (): AppConfig => ({
     portalUrl: (
       process.env.NEWSROOM_PORTAL_URL || 'https://stockvirtue.com/admin'
     ).replace(/\/+$/, ''),
+  },
+  marketDisplay: {
+    enabled: (process.env.MARKET_DISPLAY_ENABLED ?? 'true') !== 'false',
   },
   storage: {
     driver: process.env.MEDIA_STORAGE_DRIVER === 'r2' ? 'r2' : 'none',

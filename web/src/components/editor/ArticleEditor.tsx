@@ -8,6 +8,7 @@ import {
 } from '@tiptap/react';
 import {
   Bold,
+  ChartCandlestick,
   ChevronDown,
   Clapperboard,
   Code,
@@ -33,6 +34,7 @@ import {
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { MediaPicker } from '@/components/portal/MediaPicker';
+import { usePortalMe } from '@/components/portal/PortalShell';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -54,9 +56,11 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
+import { can } from '@/portal/access';
 import { LinkDialog, RelatedDialog, VideoDialog } from './EditorDialogs';
 import { articleExtensions } from './extensions';
 import { emptyTable, insertBlock } from './insert';
+import { WidgetDialog } from './WidgetDialog';
 
 function ToolButton({
   icon: Icon,
@@ -109,6 +113,8 @@ function Toolbar({
   const [videoOpen, setVideoOpen] = useState(false);
   const [relatedOpen, setRelatedOpen] = useState(false);
   const [mediaOpen, setMediaOpen] = useState(false);
+  const [widgetOpen, setWidgetOpen] = useState(false);
+  const me = usePortalMe();
   const s = useEditorState({
     editor,
     selector: ({ editor: e }) => ({
@@ -278,6 +284,9 @@ function Toolbar({
           <DropdownMenuItem onSelect={() => setRelatedOpen(true)}>
             <Newspaper /> Related article
           </DropdownMenuItem>
+          <DropdownMenuItem onSelect={() => setWidgetOpen(true)}>
+            <ChartCandlestick /> Market or story widget
+          </DropdownMenuItem>
           <DropdownMenuItem
             disabled={s.table}
             onSelect={() => insertBlock(editor, emptyTable())}
@@ -342,6 +351,23 @@ function Toolbar({
             attrs: { articleId: a.id, title: a.title, slug: a.slug },
           })
         }
+      />
+      <WidgetDialog
+        open={widgetOpen}
+        onOpenChange={setWidgetOpen}
+        allowSaved={can(me, 'widgets.read')}
+        onSave={(c) => {
+          insertBlock(editor, {
+            type: 'marketWidget',
+            attrs: {
+              widget: c.widget,
+              v: 1,
+              config: c.config,
+              widgetId: c.widgetId ?? null,
+            },
+          });
+          setWidgetOpen(false);
+        }}
       />
       <MediaPicker
         open={mediaOpen}

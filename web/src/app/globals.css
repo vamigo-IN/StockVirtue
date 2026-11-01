@@ -1866,6 +1866,10 @@ p {
   .container {
     padding: 0 18px;
   }
+  /* The ticker's "On phones: Hide" setting (portal → Market data). */
+  .tape-hide-sm {
+    display: none;
+  }
   .hero-cta .btn {
     flex: 1 1 100%;
   }

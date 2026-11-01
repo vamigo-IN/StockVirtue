@@ -6,8 +6,21 @@
  * document. So no script, style, event handler or arbitrary iframe can reach
  * a reader, whatever the editor (or a forged request) sends.
  *
- * Widget blocks (market data) arrive in Phase 6 as their own node type.
+ * Widget blocks are their own node type (`marketWidget`): structured JSON
+ * checked by the widget registry, never HTML.
  */
+import { safeHref } from './article-content-links';
+import {
+  cleanWidget,
+  DISCLAIMERS,
+  DisclaimerVariant,
+  WidgetConfig,
+  WidgetConfigError,
+  WidgetType,
+  widgetText,
+} from './widget-registry';
+
+export { safeHref };
 
 export interface PmMark {
   type: string;
@@ -44,6 +57,7 @@ const BLOCK = [
   'callout',
   'relatedArticle',
   'table',
+  'marketWidget',
 ];
 /** What may sit inside list items, callouts, quotes and table cells. */
 const FLOW = ['paragraph', 'bulletList', 'orderedList'];
@@ -66,6 +80,7 @@ const CHILDREN: Record<string, readonly string[] | 'inline' | 'none'> = {
   image: 'none',
   video: 'none',
   relatedArticle: 'none',
+  marketWidget: 'none',
 };
 
 /** Containers that must not be empty. */
@@ -101,12 +116,23 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 // eslint-disable-next-line no-control-regex
 const CONTROL = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g;
 
+/** A widget block, in document order. */
+export interface DocWidget {
+  position: number;
+  widget: WidgetType;
+  v: number;
+  config: WidgetConfig;
+  /** A saved widget it embeds by reference. */
+  widgetId?: string;
+}
+
 export interface NormalizedDoc {
   doc: PmNode;
   /** Media library images the body shows (must exist and be ready). */
   mediaIds: string[];
   /** Other articles linked as "related" blocks. */
   relatedIds: string[];
+  widgets: DocWidget[];
 }
 
 const str = (v: unknown, max: number): string =>
@@ -116,25 +142,6 @@ const int = (v: unknown, min: number, max: number, fallback: number) => {
   const n = typeof v === 'number' ? Math.round(v) : Number.NaN;
   return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : fallback;
 };
-
-/**
- * Accepts http(s) URLs, mailto: and site-relative paths. Anything else
- * (javascript:, data:, protocol-relative //host) is dropped.
- */
-export function safeHref(raw: unknown): string | null {
-  const href = str(raw, 2000);
-  if (!href) return null;
-  if (href.startsWith('/') && !href.startsWith('//')) return href;
-  if (/^mailto:[^\s@]+@[^\s@]+$/i.test(href)) return href;
-  try {
-    const url = new URL(href);
-    return url.protocol === 'http:' || url.protocol === 'https:'
-      ? url.toString()
-      : null;
-  } catch {
-    return null;
-  }
-}
 
 function cleanMarks(marks: unknown): PmMark[] | undefined {
   if (!Array.isArray(marks)) return undefined;
@@ -158,7 +165,10 @@ function cleanMarks(marks: unknown): PmMark[] | undefined {
   return out.length ? out : undefined;
 }
 
-function cleanAttrs(type: string, a: Record<string, unknown> = {}) {
+function cleanAttrs(
+  type: string,
+  a: Record<string, unknown> = {},
+): Record<string, unknown> | undefined {
   switch (type) {
     case 'heading':
       return { level: int(a.level, 2, 4, 2) };
@@ -204,6 +214,27 @@ function cleanAttrs(type: string, a: Record<string, unknown> = {}) {
       }
       return { articleId };
     }
+    case 'marketWidget': {
+      let cleaned: ReturnType<typeof cleanWidget>;
+      try {
+        cleaned = cleanWidget(a.widget, a.config);
+      } catch (err) {
+        if (err instanceof WidgetConfigError) {
+          throw new ContentError(err.message);
+        }
+        throw err;
+      }
+      const widgetId = str(a.widgetId, 64).toLowerCase();
+      if (widgetId && !UUID.test(widgetId)) {
+        throw new ContentError('That saved widget no longer exists.');
+      }
+      return {
+        widget: cleaned.widget,
+        v: cleaned.v,
+        config: cleaned.config,
+        ...(widgetId ? { widgetId } : {}),
+      };
+    }
     case 'tableCell':
     case 'tableHeader': {
       const colspan = int(a.colspan, 1, 20, 1);
@@ -227,6 +258,7 @@ export function normalizeDoc(input: unknown): NormalizedDoc {
   }
   const mediaIds = new Set<string>();
   const relatedIds = new Set<string>();
+  const widgets: DocWidget[] = [];
   let nodes = 0;
   let chars = 0;
 
@@ -274,6 +306,15 @@ export function normalizeDoc(input: unknown): NormalizedDoc {
     const attrs = cleanAttrs(type, node.attrs);
     if (type === 'image') mediaIds.add(attrs!.mediaId as string);
     if (type === 'relatedArticle') relatedIds.add(attrs!.articleId as string);
+    if (type === 'marketWidget') {
+      widgets.push({
+        position: widgets.length,
+        widget: attrs!.widget as WidgetType,
+        v: attrs!.v as number,
+        config: attrs!.config as WidgetConfig,
+        ...(attrs!.widgetId ? { widgetId: attrs!.widgetId as string } : {}),
+      });
+    }
 
     const out: PmNode = attrs ? { type, attrs } : { type };
     if (CHILDREN[type] !== 'none') {
@@ -302,6 +343,7 @@ export function normalizeDoc(input: unknown): NormalizedDoc {
     },
     mediaIds: [...mediaIds],
     relatedIds: [...relatedIds],
+    widgets,
   };
 }
 
@@ -441,6 +483,11 @@ function renderNode(node: PmNode, ctx: RenderContext): string {
       if (!rel) return '';
       return `<aside class="sv-related"><span class="sv-related-label">Related</span><a href="${escapeHtml(`${ctx.articleBase}/${rel.slug}`)}">${escapeHtml(rel.title)}</a></aside>`;
     }
+    case 'marketWidget':
+      return widgetHtml(
+        attr(a.widget) as WidgetType,
+        (a.config ?? {}) as WidgetConfig,
+      );
     case 'table':
       return `<div class="sv-table"><table><tbody>${kids()}</tbody></table></div>`;
     case 'tableRow':
@@ -459,9 +506,88 @@ function renderNode(node: PmNode, ctx: RenderContext): string {
   }
 }
 
+/**
+ * A widget as plain HTML. Content widgets render in full; market widgets
+ * render a note, because their numbers are fetched live by the website and
+ * the app (see renderBlocks).
+ */
+function widgetHtml(type: WidgetType, c: WidgetConfig): string {
+  const t = (v: unknown) => escapeHtml(typeof v === 'string' ? v : '');
+  const paras = (v: unknown) =>
+    (typeof v === 'string' ? v : '')
+      .split(/\n+/)
+      .filter((p) => p.trim())
+      .map((p) => `<p>${escapeHtml(p.trim())}</p>`)
+      .join('');
+  switch (type) {
+    case 'key_takeaways':
+      return `<aside class="sv-widget sv-takeaways"><p class="sv-widget-title">${t(c.title)}</p><ul>${(
+        c.items as string[]
+      )
+        .map((i) => `<li>${escapeHtml(i)}</li>`)
+        .join('')}</ul></aside>`;
+    case 'educational': {
+      const link =
+        typeof c.link === 'string'
+          ? `<p>${linkOpen(c.link)}Learn more</a></p>`
+          : '';
+      return `<aside class="sv-widget sv-explainer"><p class="sv-widget-kicker">Explainer</p><p class="sv-widget-title">${t(c.term)}</p>${paras(c.body)}${link}</aside>`;
+    }
+    case 'risk_disclaimer':
+      return `<aside class="sv-widget sv-disclaimer" role="note"><p>${escapeHtml(
+        DISCLAIMERS[c.variant as DisclaimerVariant] ?? DISCLAIMERS.general,
+      )}</p></aside>`;
+    case 'promo_banner':
+      return `<aside class="sv-widget sv-promo"><p class="sv-widget-title">${t(c.headline)}</p>${paras(c.body)}<p>${linkOpen(String(c.ctaUrl))}${t(c.ctaLabel)}</a></p></aside>`;
+    case 'related_news':
+      return '';
+    default:
+      return `<aside class="sv-widget sv-widget-live" data-sv-widget="${escapeHtml(type)}"><p>Live market data: see this story on stockvirtue.com.</p></aside>`;
+  }
+}
+
 /** HTML for readers, built only from a normalized document. */
 export function renderHtml(doc: PmNode, ctx: RenderContext): string {
   return renderNode(doc, ctx);
+}
+
+/** A story as the website and app draw it: HTML runs, and widgets between. */
+export type ContentBlock =
+  | { type: 'html'; html: string }
+  | {
+      type: 'widget';
+      widget: WidgetType;
+      v: number;
+      config: WidgetConfig;
+      widgetId?: string;
+    };
+
+/**
+ * Splits a normalized document at its widgets (top-level only), so live
+ * widgets can be drawn by the reader's app while everything else stays the
+ * server-rendered, sanitised HTML.
+ */
+export function renderBlocks(doc: PmNode, ctx: RenderContext): ContentBlock[] {
+  const blocks: ContentBlock[] = [];
+  let html = '';
+  for (const node of doc.content ?? []) {
+    if (node.type !== 'marketWidget') {
+      html += renderNode(node, ctx);
+      continue;
+    }
+    if (html) blocks.push({ type: 'html', html });
+    html = '';
+    const a = node.attrs ?? {};
+    blocks.push({
+      type: 'widget',
+      widget: a.widget as WidgetType,
+      v: Number(a.v) || 1,
+      config: (a.config ?? {}) as WidgetConfig,
+      ...(typeof a.widgetId === 'string' ? { widgetId: a.widgetId } : {}),
+    });
+  }
+  if (html) blocks.push({ type: 'html', html });
+  return blocks;
 }
 
 const BLOCK_BREAK = new Set([
@@ -484,6 +610,12 @@ export function plainText(doc: PmNode): string {
     else if (n.type === 'image' || n.type === 'video') {
       const caption = attr(n.attrs?.caption);
       if (caption) out.push(caption);
+    } else if (n.type === 'marketWidget') {
+      const words = widgetText(
+        attr(n.attrs?.widget) as WidgetType,
+        (n.attrs?.config ?? {}) as WidgetConfig,
+      );
+      if (words) out.push(`${words}\n`);
     } else if (n.type === 'tableHeader' || n.type === 'tableCell') {
       (n.content ?? []).forEach(walk);
       out.push(' ');

@@ -104,9 +104,11 @@ function NavLink({
 export function NewsFooter({
   settings,
   categories,
+  marketAttribution,
 }: {
   settings: SiteSettings;
   categories: NewsCategoryNode[];
+  marketAttribution?: string;
 }) {
   const social = [
     { label: 'X / Twitter', href: settings.social.twitter },
@@ -189,6 +191,12 @@ export function NewsFooter({
         <Container className="flex flex-col gap-2 py-5 text-xs text-ink-muted sm:flex-row sm:justify-between">
           <span>
             © {year} {SITE.company}
+            {marketAttribution && (
+              <>
+                {' · '}Market data: {marketAttribution}. Each price shows
+                whether it is live, delayed or end-of-day.
+              </>
+            )}
           </span>
           <span>
             {SITE.name} is an educational trading simulator, not a broker.

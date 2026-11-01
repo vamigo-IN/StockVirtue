@@ -47,6 +47,8 @@ export type CardRow = Prisma.NewsArticleGetPayload<{
 export const DETAIL_SELECT = {
   ...CARD_SELECT,
   firstPublishedAt: true,
+  content: true,
+  categoryId: true,
   contentHtml: true,
   featuredImageCaption: true,
   sectors: true,

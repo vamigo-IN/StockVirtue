@@ -27,6 +27,12 @@ function safeEqual(a: string, b: string): boolean {
   return ba.length === bb.length && timingSafeEqual(ba, bb);
 }
 
+/** Whether a request comes from the website's own server (site key). */
+export function fromSite(req: Request, siteAdminKey: string): boolean {
+  const key = req.header('x-site-admin-key') ?? '';
+  return !!siteAdminKey && safeEqual(key, siteAdminKey);
+}
+
 /**
  * The real reader behind a request. The newsroom portal calls the API from the
  * website's Next.js server, so `req.ip` is that server; it forwards the
@@ -35,8 +41,7 @@ function safeEqual(a: string, b: string): boolean {
  * server-to-server key — anyone else could forge them.
  */
 export function clientInfo(req: Request, siteAdminKey: string): ClientInfo {
-  const key = req.header('x-site-admin-key') ?? '';
-  const fromPortal = !!siteAdminKey && safeEqual(key, siteAdminKey);
+  const fromPortal = fromSite(req, siteAdminKey);
   const fwdIp = fromPortal ? req.header('x-client-ip') : undefined;
   const fwdUa = fromPortal ? req.header('x-client-user-agent') : undefined;
   return {

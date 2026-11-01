@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  ChartCandlestick,
   ClipboardCheck,
   ExternalLink,
   FileText,
@@ -11,6 +12,7 @@ import {
   KeyRound,
   LayoutDashboard,
   LayoutTemplate,
+  Library,
   LogOut,
   Menu,
   ScrollText,
@@ -95,6 +97,12 @@ const NAV: { title?: string; items: NavItem[] }[] = [
         permission: 'media.upload',
       },
       {
+        href: '/admin/widgets',
+        label: 'Saved widgets',
+        icon: Library,
+        permission: 'widgets.read',
+      },
+      {
         href: '/admin/taxonomy',
         label: 'Categories & tags',
         icon: FolderTree,
@@ -133,6 +141,12 @@ const NAV: { title?: string; items: NavItem[] }[] = [
         label: 'News homepage',
         icon: LayoutTemplate,
         permission: 'site.manage',
+      },
+      {
+        href: '/admin/market',
+        label: 'Market data',
+        icon: ChartCandlestick,
+        permission: 'market.configure',
       },
       {
         href: '/admin/settings',

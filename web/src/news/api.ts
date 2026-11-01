@@ -36,20 +36,19 @@ async function get<T>(path: string): Promise<T> {
 
 /**
  * `next build` pre-renders a few news pages (the homepage, section fronts,
- * feeds). If the API can't be reached then, they start empty and fill in at
- * their first refresh, rather than failing a deploy of the whole website.
+ * feeds). If the API can't serve them then (down, or still on a release
+ * without these routes), they start empty and fill in at their first
+ * refresh, rather than failing a deploy of the whole website.
  */
 async function emptyAtBuild<T>(p: Promise<T>, empty: T): Promise<T> {
   try {
     return await p;
   } catch (err) {
-    if (
-      process.env.NEXT_PHASE === 'phase-production-build' &&
-      !(err instanceof NewsNotFound)
-    ) {
-      return empty;
-    }
-    throw err;
+    if (process.env.NEXT_PHASE !== 'phase-production-build') throw err;
+    console.warn(
+      `News API unavailable during the build (${(err as Error).message}); this page starts empty.`,
+    );
+    return empty;
   }
 }
 

@@ -9,6 +9,8 @@ import { ArticleWorkflowService } from './articles/article-workflow.service';
 import { ArticlesController } from './articles/articles.controller';
 import { ArticlesService } from './articles/articles.service';
 import { StockSearchController } from './articles/stock-search.controller';
+import { ArticleBlocksService } from './content/article-blocks.service';
+import { WidgetValidation } from './content/widget-validation.service';
 import { HomepageController } from './homepage/homepage.controller';
 import { HomepageService } from './homepage/homepage.service';
 import { MediaController } from './media/media.controller';
@@ -56,7 +58,9 @@ import { TaxonomyService } from './taxonomy/taxonomy.service';
     SiteRevalidator,
     HomepageService,
     PublicNewsService,
+    WidgetValidation,
+    ArticleBlocksService,
   ],
-  exports: [ArticlesService, NewsCache],
+  exports: [ArticlesService, NewsCache, SiteRevalidator, WidgetValidation],
 })
 export class NewsroomModule {}

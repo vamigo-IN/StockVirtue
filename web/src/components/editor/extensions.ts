@@ -5,7 +5,9 @@ import { TableCell, TableHeader, TableKit } from '@tiptap/extension-table';
 import { CharacterCount, Placeholder } from '@tiptap/extensions';
 import { ReactNodeViewRenderer } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
+import { WIDGET_TYPES } from '@/components/widgets/meta';
 import { CalloutView, FigureView, RelatedView, VideoView } from './node-views';
+import { WidgetNodeView } from './WidgetNodeView';
 
 /**
  * The editor's document model. It matches the server's content allowlist
@@ -167,6 +169,71 @@ const RelatedArticle = Node.create({
 });
 
 /**
+ * A market or story widget: settings only (never HTML), drawn live in the
+ * editor by the same components readers get. Its HTML form exists for copy
+ * and paste inside the editor; the API validates every widget on save.
+ */
+const MarketWidget = Node.create({
+  name: 'marketWidget',
+  group: 'block',
+  atom: true,
+  draggable: true,
+  addAttributes() {
+    return {
+      widget: { default: null },
+      v: { default: 1 },
+      config: { default: {} },
+      widgetId: { default: null },
+    };
+  },
+  parseHTML() {
+    return [
+      {
+        tag: 'div[data-sv-widget-node]',
+        getAttrs: (el) => {
+          const widget = el.getAttribute('data-widget') ?? '';
+          if (!(WIDGET_TYPES as readonly string[]).includes(widget)) {
+            return false;
+          }
+          let config: unknown;
+          try {
+            config = JSON.parse(el.getAttribute('data-config') ?? '{}');
+          } catch {
+            return false;
+          }
+          if (!config || typeof config !== 'object' || Array.isArray(config)) {
+            return false;
+          }
+          return {
+            widget,
+            v: Number(el.getAttribute('data-v')) || 1,
+            config,
+            widgetId: el.getAttribute('data-widget-id') || null,
+          };
+        },
+      },
+    ];
+  },
+  renderHTML({ node }) {
+    return [
+      'div',
+      {
+        'data-sv-widget-node': '',
+        'data-widget': node.attrs.widget as string,
+        'data-v': String(node.attrs.v),
+        'data-config': JSON.stringify(node.attrs.config ?? {}),
+        ...(node.attrs.widgetId
+          ? { 'data-widget-id': node.attrs.widgetId as string }
+          : {}),
+      },
+    ];
+  },
+  addNodeView() {
+    return ReactNodeViewRenderer(WidgetNodeView);
+  },
+});
+
+/**
  * Quotes, list items and table cells hold text and lists only, exactly as
  * the server allows; images, videos and tables belong at the top level.
  */
@@ -215,5 +282,6 @@ export function articleExtensions() {
     Callout,
     Video,
     RelatedArticle,
+    MarketWidget,
   ];
 }

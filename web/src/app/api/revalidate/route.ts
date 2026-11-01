@@ -12,7 +12,7 @@ export const dynamic = 'force-dynamic';
 
 const MAX_SKEW_MS = 5 * 60_000;
 /** Tags this hook may refresh; anything else in the body is ignored. */
-const ALLOWED_TAGS = new Set(['news']);
+const ALLOWED_TAGS = new Set(['news', 'market']);
 
 function reply(status: number, message: string) {
   return NextResponse.json(

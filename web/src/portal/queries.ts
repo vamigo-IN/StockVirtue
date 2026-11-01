@@ -20,6 +20,10 @@ import type {
   DirectoryEntry,
   HomepageView,
   Invitation,
+  MarketInstrument,
+  MarketSource,
+  SavedWidget,
+  TickerSettings,
   MediaPage,
   MySession,
   MyWork,
@@ -49,6 +53,10 @@ export const qk = {
   allSessions: ['sessions', 'all'] as const,
   site: ['site-settings'] as const,
   homepage: ['site-homepage'] as const,
+  marketInstruments: ['market', 'instruments'] as const,
+  marketSource: ['market', 'source'] as const,
+  ticker: ['market', 'ticker'] as const,
+  savedWidgets: ['saved-widgets'] as const,
   stocks: (q: string) => ['stocks', q] as const,
   articles: (f: ArticleFilters) => ['articles', 'list', f] as const,
   articleCounts: (scope: string) => ['articles', 'counts', scope] as const,
@@ -164,6 +172,32 @@ export const useHomepage = () =>
   useQuery({
     queryKey: qk.homepage,
     queryFn: () => api<HomepageView>('staff/site/homepage'),
+  });
+
+export const useMarketInstruments = () =>
+  useQuery({
+    queryKey: qk.marketInstruments,
+    queryFn: () => api<MarketInstrument[]>('staff/market/instruments'),
+    staleTime: 60_000,
+  });
+
+export const useMarketSource = () =>
+  useQuery({
+    queryKey: qk.marketSource,
+    queryFn: () => api<MarketSource>('staff/market/source'),
+  });
+
+export const useTickerSettings = () =>
+  useQuery({
+    queryKey: qk.ticker,
+    queryFn: () => api<TickerSettings>('staff/market/ticker'),
+  });
+
+export const useSavedWidgets = (enabled = true) =>
+  useQuery({
+    queryKey: qk.savedWidgets,
+    queryFn: () => api<SavedWidget[]>('staff/widgets'),
+    enabled,
   });
 
 /** Listed companies for "Related stocks" (served from the API's memory). */

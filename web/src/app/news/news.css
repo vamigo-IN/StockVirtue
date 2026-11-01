@@ -6,6 +6,7 @@
    ========================================================================== */
 @import "tailwindcss";
 @import "../../styles/article-prose.css";
+@import "../../styles/widgets.css";
 @plugin "@tailwindcss/typography";
 
 /* Only scan the news site's own code for class names. */
@@ -124,22 +125,7 @@
   }
 }
 
-@keyframes sv-pulse {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.35;
-  }
-}
-.sv-live-dot {
-  animation: sv-pulse 1.6s ease-in-out infinite;
-}
 @media (prefers-reduced-motion: reduce) {
-  .sv-live-dot {
-    animation: none;
-  }
   .headline-link {
     transition: none;
   }

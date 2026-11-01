@@ -7,6 +7,7 @@
 @import "tw-animate-css";
 /* Article body typography, shared with the public news pages. */
 @import "../../styles/article-prose.css";
+@import "../../styles/widgets.css";
 @plugin "@tailwindcss/typography";
 
 /* Only scan the portal's own code for class names. */

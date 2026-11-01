@@ -1122,6 +1122,7 @@ model NewsArticle {
   related       NewsRelatedArticle[] @relation("RelatedFrom")
   relatedBy     NewsRelatedArticle[] @relation("RelatedTo")
   dailyStats    NewsDailyStat[]
+  widgets       NewsWidgetInstance[]
 
   /// Full-text search document. A STORED generated column (headline weight A,
   /// standfirst + summary B, body text C) that Postgres keeps up to date; the
@@ -1310,4 +1311,131 @@ model SiteConfig {
   updatedAt   DateTime @updatedAt
 
   @@map("site_config")
+}
+
+// ─── Market display: the ticker and article widgets ─────────────────────────
+//
+// Separate from trading: these tables only decide which instruments the
+// website and app may show, under which data licence, and remember the last
+// price shown. Prices themselves come from the API's existing broker feed.
+
+enum MarketDataRight {
+  LIVE
+  DELAYED
+  EOD
+  OFF
+}
+
+enum MarketInstrumentKind {
+  INDEX
+  STOCK
+  COMMODITY
+  CURRENCY
+}
+
+/// A market-data provider and what we may show from it, per channel. The
+/// website and the app are licensed separately: DELAYED shows prices from
+/// `delayMinutes` ago, EOD the last close, OFF nothing.
+model MarketDataSource {
+  key          String          @id
+  name         String
+  webRight     MarketDataRight @default(LIVE)
+  appRight     MarketDataRight @default(LIVE)
+  delayMinutes Int             @default(15)
+  attribution  String          @default("")
+  updatedById  String?         @db.Uuid
+  updatedAt    DateTime        @updatedAt
+
+  instruments MarketInstrument[]
+
+  @@map("market_data_sources")
+}
+
+/// The curated instruments the ticker and market widgets may show. Capped in
+/// code, so the public market API can never become an open price feed.
+model MarketInstrument {
+  id        String               @id @default(uuid()) @db.Uuid
+  sourceKey String               @default("angel-one")
+  kind      MarketInstrumentKind
+  exchange  String
+  /// Scrip-master lookup key: NIFTY, NIFTY IT, RELIANCE, GOLD, USDINR.
+  symbol    String
+  name      String
+  /// Quote unit for commodities and currencies ("10 g").
+  unit      String?
+  position  Int                  @default(0)
+  isEnabled Boolean              @default(true)
+  inTicker  Boolean              @default(false)
+  createdAt DateTime             @default(now())
+  updatedAt DateTime             @updatedAt
+
+  source MarketDataSource @relation(fields: [sourceKey], references: [key])
+  quote  MarketQuote?
+
+  @@unique([exchange, symbol])
+  @@index([isEnabled, position])
+  @@map("market_instruments")
+}
+
+/// Last known price of a curated instrument, so it survives restarts and can
+/// still be shown, as end-of-day, while the live feed is down.
+model MarketQuote {
+  instrumentId String   @id @db.Uuid
+  ltp          Float
+  open         Float
+  high         Float
+  low          Float
+  prevClose    Float
+  change       Float
+  changePct    Float
+  volume       Float    @default(0)
+  /// When the exchange last moved the price.
+  asOf         DateTime
+  updatedAt    DateTime @updatedAt
+
+  instrument MarketInstrument @relation(fields: [instrumentId], references: [id], onDelete: Cascade)
+
+  @@map("market_quotes")
+}
+
+/// A saved, reusable widget. Articles embed it by reference, so editing it
+/// updates every story that uses it.
+model MarketWidget {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String
+  type        String
+  version     Int
+  config      Json
+  /// EX:SYMBOL references the widget quotes, for the public quote allowlist.
+  symbols     String[] @default([])
+  createdById String?  @db.Uuid
+  updatedById String?  @db.Uuid
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  instances NewsWidgetInstance[]
+
+  @@index([type])
+  @@index([symbols], type: Gin)
+  @@map("market_widgets")
+}
+
+/// The widgets in each article, rebuilt on every save: usage counts for saved
+/// widgets, and the stocks published stories are allowed to quote.
+model NewsWidgetInstance {
+  id        String   @id @default(uuid()) @db.Uuid
+  articleId String   @db.Uuid
+  position  Int
+  type      String
+  version   Int
+  widgetId  String?  @db.Uuid
+  symbols   String[] @default([])
+
+  article NewsArticle   @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  widget  MarketWidget? @relation(fields: [widgetId], references: [id], onDelete: SetNull)
+
+  @@index([articleId])
+  @@index([widgetId])
+  @@index([symbols], type: Gin)
+  @@map("news_widget_instances")
 }

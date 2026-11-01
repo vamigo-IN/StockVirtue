@@ -134,6 +134,7 @@ export const validationSchema = Joi.object({
   STAFF_INVITE_TTL_HOURS: Joi.number().min(1).max(720).default(72),
   NEWSROOM_PORTAL_URL: Joi.string().allow('').default(''),
   // Media storage: Cloudflare R2. Driver "none" (default) disables uploads.
+  MARKET_DISPLAY_ENABLED: Joi.string().valid('true', 'false').default('true'),
   MEDIA_STORAGE_DRIVER: Joi.string().valid('r2', 'none').default('none'),
   R2_ACCOUNT_ID: Joi.string().allow('').default(''),
   R2_ACCESS_KEY_ID: Joi.string().allow('').default(''),

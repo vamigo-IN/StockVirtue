@@ -1,0 +1,45 @@
+/* ============================================================================
+   Market widgets and the ticker: motion shared by the news site (news.css)
+   and the portal's editor previews (portal.css). Everything stops under
+   prefers-reduced-motion.
+   ========================================================================== */
+@keyframes sv-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+.sv-live-dot {
+  animation: sv-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes sv-marquee {
+  from {
+    transform: translateX(0);
+  }
+  to {
+    transform: translateX(-50%);
+  }
+}
+.sv-marquee {
+  display: flex;
+  width: max-content;
+  animation: sv-marquee var(--sv-marquee-duration, 60s) linear infinite;
+}
+.sv-marquee[data-direction='right'] {
+  animation-direction: reverse;
+}
+.sv-marquee-host:hover .sv-marquee,
+.sv-marquee-host:focus-within .sv-marquee {
+  animation-play-state: paused;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sv-live-dot,
+  .sv-marquee {
+    animation: none;
+  }
+}

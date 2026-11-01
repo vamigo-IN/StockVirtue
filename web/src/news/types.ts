@@ -70,9 +70,15 @@ export interface SearchResults extends NewsPage {
   query: string;
 }
 
+/** A story's body as drawn: sanitised HTML runs and live widgets. */
+export type ReaderBlock =
+  | { type: 'html'; html: string }
+  | import('@/components/widgets/meta').WidgetBlock;
+
 export interface NewsArticle extends Omit<NewsCard, 'category' | 'author'> {
   firstPublishedAt: string | null;
   contentHtml: string;
+  blocks?: ReaderBlock[];
   imageCaption: string | null;
   category: {
     slug: string;

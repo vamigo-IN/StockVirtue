@@ -2,6 +2,7 @@ import { AlertTriangle, Bot, PenLine } from 'lucide-react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { ArticleBody } from '@/components/news/ArticleBody';
 import { ArticleCard, Kicker } from '@/components/news/ArticleCard';
 import {
   AppPromo,
@@ -138,10 +139,14 @@ export default async function ArticlePage({ params }: Props) {
         <Container>
           <div className="mx-auto max-w-3xl">
             {/* Built and sanitised by the API from the stored story. */}
-            <div
-              className="sv-prose prose prose-neutral mt-8 max-w-none"
-              dangerouslySetInnerHTML={{ __html: a.contentHtml }}
-            />
+            {a.blocks?.length ? (
+              <ArticleBody blocks={a.blocks} />
+            ) : (
+              <div
+                className="sv-prose prose prose-neutral mt-8 max-w-none"
+                dangerouslySetInnerHTML={{ __html: a.contentHtml }}
+              />
+            )}
 
             {a.correctionNote && (
               <aside className="mt-10 rounded-lg border border-border bg-paper p-4">

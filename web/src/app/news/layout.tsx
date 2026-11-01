@@ -2,10 +2,12 @@ import type { Metadata } from 'next';
 import './news.css';
 import { RawHtml } from '@/components/CodeInjection';
 import { JsonLd } from '@/components/JsonLd';
+import { MarketTicker } from '@/components/news/MarketTicker';
 import { NewsFooter, NewsHeader } from '@/components/news/NewsChrome';
 import { articleSerif } from '@/lib/fonts';
 import { getSettings } from '@/lib/settings';
 import { SITE } from '@/lib/site';
+import { getTicker } from '@/market/server';
 import { getCategories } from '@/news/api';
 import { NEWS_NAME } from '@/news/seo';
 
@@ -28,9 +30,10 @@ export default async function NewsLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const [settings, categories] = await Promise.all([
+  const [settings, categories, ticker] = await Promise.all([
     getSettings(),
     getCategories(),
+    getTicker(),
   ]);
   return (
     <div
@@ -43,10 +46,15 @@ export default async function NewsLayout({
         categories={categories}
         playUrl={settings.playStoreUrl || SITE.playUrl}
       />
+      <MarketTicker initial={ticker} />
       <main id="main" className="flex-1">
         {children}
       </main>
-      <NewsFooter settings={settings} categories={categories} />
+      <NewsFooter
+        settings={settings}
+        categories={categories}
+        marketAttribution={ticker?.attribution}
+      />
       <RawHtml html={settings.bodyEndCode} />
     </div>
   );

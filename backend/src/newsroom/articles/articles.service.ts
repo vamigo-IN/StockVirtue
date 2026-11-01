@@ -18,7 +18,13 @@ import { ScripMasterService } from '../../market/scrip-master.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ClientInfo, StaffPrincipal } from '../../staff/staff-request';
 import {
+  ARTICLE_BASE,
+  ArticleBlocksService,
+  ReaderBlock,
+} from '../content/article-blocks.service';
+import {
   ContentError,
+  DocWidget,
   normalizeDoc,
   PmNode,
   plainText,
@@ -26,6 +32,7 @@ import {
   renderHtml,
   safeHref,
 } from '../content/article-content';
+import { WidgetValidation } from '../content/widget-validation.service';
 import { MediaService } from '../media/media.service';
 import { NewsCache } from '../public/news-cache';
 import { freeSlug, RESERVED_ARTICLE_SLUGS, slugify } from '../slug';
@@ -40,7 +47,7 @@ export const STALE_VERSION =
 /// A background save records a version at most this often.
 const AUTOSAVE_VERSION_EVERY_MS = 10 * 60_000;
 
-export const ARTICLE_BASE = '/news';
+export { ARTICLE_BASE };
 
 const ACCESS_SELECT = {
   id: true,
@@ -127,6 +134,8 @@ export class ArticlesService {
     private readonly scripMaster: ScripMasterService,
     private readonly directory: CompanyDirectoryService,
     private readonly cache: NewsCache,
+    private readonly widgets: WidgetValidation,
+    private readonly readerBlocks: ArticleBlocksService,
   ) {}
 
   // ── Reading ─────────────────────────────────────────────────────────
@@ -224,7 +233,9 @@ export class ArticlesService {
     if (!a) throw new NotFoundException('Article not found.');
     const can = capabilities(a, actor);
     if (!can.read) throw new NotFoundException('Article not found.');
-    return this.detailView(a, can);
+    // The preview draws widgets live, from the same blocks readers get.
+    const blocks = await this.readerBlocks.blocks(a.content, a, 'staff');
+    return this.detailView(a, can, blocks);
   }
 
   async versions(actor: StaffPrincipal, id: string) {
@@ -360,6 +371,7 @@ export class ArticlesService {
     }
 
     const data: Prisma.NewsArticleUncheckedUpdateManyInput = {};
+    let widgets: DocWidget[] | undefined;
     if (dto.title !== undefined) data.title = dto.title.trim();
     if (dto.subtitle !== undefined) data.subtitle = dto.subtitle.trim() || null;
     if (dto.summary !== undefined) data.summary = dto.summary.trim();
@@ -369,6 +381,7 @@ export class ArticlesService {
       data.contentHtml = r.html;
       data.contentText = r.text;
       data.readingMinutes = r.minutes;
+      widgets = r.widgets;
     }
     if (dto.categoryId !== undefined) {
       if (dto.categoryId) await this.assertCategory(dto.categoryId);
@@ -504,6 +517,7 @@ export class ArticlesService {
           })),
         });
       }
+      if (widgets !== undefined) await this.indexWidgets(tx, id, widgets);
       let recorded = false;
       if (dto.autosave) {
         const last = await tx.newsVersion.findFirst({
@@ -654,6 +668,7 @@ export class ArticlesService {
           position,
         })),
       });
+      await this.indexWidgets(tx, id, r.widgets);
       // Versions saved before stocks existed leave them as they are.
       if (snap.stocks) {
         await tx.newsArticleStock.deleteMany({ where: { articleId: id } });
@@ -778,6 +793,7 @@ export class ArticlesService {
         throw new BadRequestException(err.message);
       throw err;
     }
+    await this.widgets.check(normalized.widgets);
     const media = await this.media.renderMap(normalized.mediaIds);
     const relatedRows = normalized.relatedIds.length
       ? await this.prisma.newsArticle.findMany({
@@ -818,7 +834,36 @@ export class ArticlesService {
       articleBase: ARTICLE_BASE,
     });
     const text = plainText(normalized.doc);
-    return { doc: normalized.doc, html, text, minutes: readingMinutes(text) };
+    return {
+      doc: normalized.doc,
+      html,
+      text,
+      minutes: readingMinutes(text),
+      widgets: normalized.widgets,
+    };
+  }
+
+  /**
+   * Rebuilds the article's widget index: which saved widgets it uses, and
+   * which stocks its widgets quote (the public quote allowlist reads this).
+   */
+  private async indexWidgets(
+    tx: Prisma.TransactionClient,
+    articleId: string,
+    widgets: DocWidget[],
+  ) {
+    await tx.newsWidgetInstance.deleteMany({ where: { articleId } });
+    if (widgets.length === 0) return;
+    await tx.newsWidgetInstance.createMany({
+      data: widgets.map((w) => ({
+        articleId,
+        position: w.position,
+        type: w.widget,
+        version: w.v,
+        widgetId: w.widgetId ?? null,
+        symbols: this.widgets.symbolsOf(w),
+      })),
+    });
   }
 
   private async cleanSeo(
@@ -912,7 +957,11 @@ export class ArticlesService {
     return new Map(rows.map((r) => [r.id, r]));
   }
 
-  private detailView(a: DetailRow, can: ArticleCapabilities) {
+  private detailView(
+    a: DetailRow,
+    can: ArticleCapabilities,
+    blocks: ReaderBlock[],
+  ) {
     const featured = a.featuredImage ? this.media.view(a.featuredImage) : null;
     return {
       id: a.id,
@@ -922,6 +971,7 @@ export class ArticlesService {
       summary: a.summary,
       content: a.content,
       contentHtml: a.contentHtml,
+      blocks,
       readingMinutes: a.readingMinutes,
       status: a.status,
       version: a.version,

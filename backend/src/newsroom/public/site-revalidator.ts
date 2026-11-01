@@ -33,22 +33,29 @@ export class SiteRevalidator implements OnModuleDestroy {
   private readonly logger = new Logger(SiteRevalidator.name);
   private timer: NodeJS.Timeout | null = null;
   private readonly reasons = new Set<string>();
+  private readonly tags = new Set<string>();
 
   constructor(private readonly config: ConfigService<AppConfig, true>) {}
 
-  /** Queue a refresh of every news page. */
-  schedule(reason: string): void {
+  /**
+   * Queue a refresh of the website's pages that use these cache tags: "news"
+   * (stories and listings) or "market" (ticker and market widgets).
+   */
+  schedule(reason: string, tags: readonly string[] = ['news']): void {
     const { adminKey, revalidateUrl } = this.config.get('site', {
       infer: true,
     });
     if (!adminKey || !revalidateUrl) return;
     this.reasons.add(reason);
+    for (const tag of tags) this.tags.add(tag);
     if (this.timer) return;
     this.timer = setTimeout(() => {
       this.timer = null;
       const reasons = [...this.reasons];
+      const tagList = [...this.tags];
       this.reasons.clear();
-      void this.send(reasons, 0);
+      this.tags.clear();
+      void this.send(reasons, tagList, 0);
     }, DEBOUNCE_MS);
     this.timer.unref();
   }
@@ -57,14 +64,15 @@ export class SiteRevalidator implements OnModuleDestroy {
     if (this.timer) clearTimeout(this.timer);
   }
 
-  private async send(reasons: string[], attempt: number): Promise<void> {
+  private async send(
+    reasons: string[],
+    tags: string[],
+    attempt: number,
+  ): Promise<void> {
     const { adminKey, revalidateUrl } = this.config.get('site', {
       infer: true,
     });
-    const body = JSON.stringify({
-      tags: ['news'],
-      reasons: reasons.slice(0, 20),
-    });
+    const body = JSON.stringify({ tags, reasons: reasons.slice(0, 20) });
     const timestamp = String(Date.now());
     try {
       const res = await fetch(revalidateUrl, {
@@ -90,7 +98,10 @@ export class SiteRevalidator implements OnModuleDestroy {
         );
         return;
       }
-      setTimeout(() => void this.send(reasons, attempt + 1), delay).unref();
+      setTimeout(
+        () => void this.send(reasons, tags, attempt + 1),
+        delay,
+      ).unref();
     }
   }
 }
