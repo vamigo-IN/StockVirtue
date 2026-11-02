@@ -187,7 +187,9 @@ function StockInput({
         </div>
       )}
       <p id="stock-help" className="text-xs text-muted-foreground">
-        The story is listed on each company&rsquo;s news page.
+        The story is listed on each company&rsquo;s news page, and app readers
+        with these stocks in a watchlist or their portfolio get an alert when
+        it goes live.
       </p>
     </div>
   );
@@ -711,8 +713,16 @@ export function DetailsPanel({
               />
             </div>
             <div className="flex items-center justify-between gap-3">
-              <Label htmlFor="flag-breaking" className="font-normal">
+              <Label
+                htmlFor="flag-breaking"
+                className="flex-col items-start gap-0.5 font-normal"
+              >
                 Breaking news
+                <span className="text-xs text-muted-foreground">
+                  Tops /news for 24 hours. Within 3 hours of first
+                  publication it also goes to every app reader with breaking
+                  alerts on.
+                </span>
               </Label>
               <Switch
                 id="flag-breaking"

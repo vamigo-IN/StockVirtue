@@ -392,7 +392,10 @@ export class MarketDataService {
     };
   }
 
-  /** IPOs from the exchange's public pages; listing prices need LIVE rights. */
+  /**
+   * IPOs from the exchange's public pages. Listing prices need LIVE rights,
+   * and so does the gain since listing, which is worked out from the price.
+   */
   async ipos(channel: Channel) {
     const { right } = await this.rights(channel);
     const board = await this.cache.get('ipos', 600, () => this.ipo.getBoard());
@@ -404,6 +407,7 @@ export class MarketDataService {
         ...l,
         ltp: null,
         dayChangePct: null,
+        gainPct: null,
       })),
     };
   }

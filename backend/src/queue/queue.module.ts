@@ -12,6 +12,8 @@ export const QUEUES = {
   ingest: 'newsroom-ingest',
   /** AI assistant requests. */
   ai: 'newsroom-ai',
+  /** Breaking-news and followed-stock pushes (a 30-second sweep). */
+  push: 'newsroom-push',
 } as const;
 
 /**

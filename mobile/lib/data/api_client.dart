@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -37,31 +39,54 @@ final apiClientProvider = Provider<ApiClient>((ref) {
     ));
   }
 
-  // Attach the access token to every request when we have one.
+  // Attach the access token to every request when we have one, refreshing
+  // it first when it is about to expire: public calls (news, market data)
+  // never answer 401, so without this they'd quietly go out anonymous.
   dio.interceptors.add(
     InterceptorsWrapper(
       onRequest: (options, handler) async {
-        final tokens = await ref.read(authStorageProvider).read();
+        final storage = ref.read(authStorageProvider);
+        final tokens = await storage.read();
         if (tokens != null && !options.headers.containsKey('Authorization')) {
-          options.headers['Authorization'] = 'Bearer ${tokens.accessToken}';
+          var access = tokens.accessToken;
+          if (_expiresSoon(access)) {
+            try {
+              access = (await _sharedRefresh(dio, storage, tokens)).accessToken;
+            } catch (_) {
+              // Authenticated calls will 401 and go through onError below.
+            }
+          }
+          options.headers['Authorization'] = 'Bearer $access';
         }
         handler.next(options);
       },
       onError: (error, handler) async {
-        // 401 → try refresh once, then retry the original request.
-        if (error.response?.statusCode == 401) {
+        // 401 → refresh once (shared with any other request doing the same),
+        // then retry the original request once.
+        final retried = error.requestOptions.extra['svRetried'] == true;
+        if (error.response?.statusCode == 401 && !retried) {
           final storage = ref.read(authStorageProvider);
           final current = await storage.read();
           if (current != null) {
+            final AuthTokens fresh;
             try {
-              final refreshed = await _refresh(dio, current.refreshToken);
-              await storage.write(refreshed);
-              final clone = error.requestOptions
-                ..headers['Authorization'] = 'Bearer ${refreshed.accessToken}';
-              final response = await dio.fetch(clone);
-              return handler.resolve(response);
+              // Another request may already have refreshed: just retry.
+              final sent = error.requestOptions.headers['Authorization'];
+              fresh = sent == 'Bearer ${current.accessToken}'
+                  ? await _sharedRefresh(dio, storage, current)
+                  : current;
             } catch (_) {
               await storage.clear();
+              return handler.next(error);
+            }
+            final clone = error.requestOptions
+              ..headers['Authorization'] = 'Bearer ${fresh.accessToken}'
+              ..extra['svRetried'] = true;
+            try {
+              return handler.resolve(await dio.fetch(clone));
+            } on DioException catch (e) {
+              // The retry's own failure; the session itself is fine.
+              return handler.next(e);
             }
           }
         }
@@ -81,6 +106,45 @@ Future<AuthTokens> _refresh(Dio dio, String refreshToken) async {
     options: Options(headers: {'Authorization': null}),
   );
   return AuthTokens.fromJson(res.data!);
+}
+
+/// The refresh in progress, shared by every caller: refresh tokens are
+/// single-use on the server, so two refreshes at once would sign the reader
+/// out.
+Future<AuthTokens>? _refreshing;
+
+Future<AuthTokens> _sharedRefresh(
+  Dio dio,
+  AuthStorage storage,
+  AuthTokens current,
+) {
+  return _refreshing ??= () async {
+    try {
+      final fresh = await _refresh(dio, current.refreshToken);
+      await storage.write(fresh);
+      return fresh;
+    } finally {
+      _refreshing = null;
+    }
+  }();
+}
+
+/// Whether an access token (a JWT) expires within the next minute. A token
+/// that can't be read is left to the server to judge.
+bool _expiresSoon(String jwt) {
+  try {
+    final parts = jwt.split('.');
+    if (parts.length != 3) return false;
+    final payload = jsonDecode(
+      utf8.decode(base64Url.decode(base64Url.normalize(parts[1]))),
+    );
+    final exp = payload is Map ? payload['exp'] : null;
+    if (exp is! num) return false;
+    final expiresAt = DateTime.fromMillisecondsSinceEpoch(exp.toInt() * 1000);
+    return expiresAt.isBefore(DateTime.now().add(const Duration(minutes: 1)));
+  } catch (_) {
+    return false;
+  }
 }
 
 /// Public access-token refresh, used outside the Dio 401 path (e.g. the

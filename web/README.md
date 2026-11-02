@@ -229,3 +229,37 @@ for rate limits and the audit log. (The backend stays on `api.stockvirtue.com`.)
   incoming item or in the editor for a person, and every story still goes
   through review.
 
+## The app: native reader, saved stories and news alerts
+
+- The app (1.3.0 and later) shows the same stories as `/news`, from
+  `/api/v1/news`. A story opens in a native reader: the API sends the stored
+  document itself (`?format=app`), already checked against the newsroom's
+  allowlist, with pictures, related stories and widgets resolved, and the app
+  draws it with its own components. Widget types or versions the installed
+  app doesn't know show a "View on stockvirtue.com" card, as do body blocks
+  added later. Until the newsroom has published anything (or against an older
+  API) the app's home "Markets news" falls back to the headline feed.
+- Related-story links inside a story only ever name stories readers can see,
+  on the website and in the app; staff previews still show the rest.
+- Market widgets in the app are served under the **App (news stories)**
+  licence on the Market data page (the app proves itself with the reader's
+  sign-in). Those answers are private to the reader, and their limits are per
+  reader rather than per address, because many phones share a mobile
+  carrier's address. `/api/v1/market/indices` lists the curated indices.
+- Saved stories belong to the reader's account (`POST`/`DELETE
+  /api/v1/news/:id/bookmark`, `GET /api/v1/news/bookmarks`), so the website
+  can offer the same list once readers sign in there.
+- News alerts: the worker checks every 30 seconds for stories that went live
+  at least 30 seconds ago (time to take back a mistake). A breaking story
+  first published in the last three hours goes to every reader who keeps
+  "Breaking news" on; a story tagged with listed companies, first published in
+  the last six hours, goes to readers with those companies in a watchlist or
+  their portfolio who keep "Stocks you follow" on. Each reader gets a story
+  once, at most five news alerts a day, on the app's "News alerts" channel;
+  tapping one opens the story. A story taken down before its alert goes out
+  is skipped, and one republished after a correction never alerts again. Each
+  alert is recorded in `notification_campaigns` with readers, devices reached,
+  failures and opens; push needs `FCM_PROJECT_ID` and `FCM_SERVICE_ACCOUNT` in
+  the worker's environment, and without them each alert is recorded as
+  skipped with the reason.
+

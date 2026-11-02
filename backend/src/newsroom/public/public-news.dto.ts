@@ -11,7 +11,7 @@ import {
 } from 'class-validator';
 import { SLUG_RE } from '../slug';
 
-class PageQueryDto {
+export class PageQueryDto {
   @IsOptional()
   @Type(() => Number)
   @IsInt()
@@ -71,4 +71,10 @@ export class StockQueryDto extends PageQueryDto {
   @IsOptional()
   @IsIn(['NSE', 'BSE'])
   exchange?: 'NSE' | 'BSE';
+}
+
+export class ArticleQueryDto {
+  @IsOptional()
+  @IsIn(['web', 'app'])
+  format?: 'web' | 'app';
 }

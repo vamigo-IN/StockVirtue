@@ -30,6 +30,7 @@ import {
 import type { Request } from 'express';
 import { MarketInstrumentKind } from '@prisma/client';
 import { enforceRateLimit } from '../common/rate-limit';
+import { optionalAppUser } from '../auth/optional-app-user';
 import { AppConfig } from '../config/configuration';
 import {
   instrumentRef,
@@ -137,12 +138,21 @@ function ref(raw: string): string {
   }
 }
 
+/** A request's licence, and whether the answer is the caller's own. */
+interface Audience {
+  channel: Channel;
+  /** The signed-in app user, for the app channel. */
+  userId: string | null;
+}
+
 /**
  * Public market data for the website and app: the curated snapshot and
- * ticker, quotes, movers, sectors, heatmaps, charts, IPOs and saved widgets.
- * The website's server (site key) gets the website licence; anyone else
- * gets the stricter of the website and app licences, and per-IP limits on
- * the calls a cache can't absorb.
+ * ticker, indices, quotes, movers, sectors, heatmaps, charts, IPOs and saved
+ * widgets. The website's server (site key) gets the website licence, the
+ * signed-in app (its access token) the app licence, and anyone else the
+ * stricter of the two. Calls a cache can't absorb have limits: per user for
+ * the app (many phones share a mobile carrier's address), per IP otherwise.
+ * App answers are marked private, so no shared cache hands them to others.
  */
 @SkipThrottle()
 @Controller({ path: 'market', version: '1' })
@@ -163,6 +173,23 @@ export class MarketPublicController {
   @Header('Cache-Control', LIVE_CACHE)
   ticker(@Req() req: Request) {
     return this.data.ticker(this.channel(req));
+  }
+
+  /** The curated indices from the snapshot. */
+  @Get('indices')
+  @Header('Cache-Control', LIVE_CACHE)
+  async indices(@Req() req: Request) {
+    const snap = await this.data.snapshot(this.channel(req));
+    return {
+      right: snap.right,
+      delayMinutes: snap.delayMinutes,
+      attribution: snap.attribution,
+      sessions: snap.sessions,
+      generatedAt: snap.generatedAt,
+      indices: snap.instruments.filter(
+        (i) => i.kind === MarketInstrumentKind.INDEX,
+      ),
+    };
   }
 
   @Get('quotes')
@@ -218,18 +245,59 @@ export class MarketPublicController {
     return this.config.get('site', { infer: true }).adminKey;
   }
 
-  /** The website's server proves itself with the site key. */
   private channel(req: Request): Channel {
-    return fromSite(req, this.siteKey()) ? 'web' : 'public';
+    return this.audience(req).channel;
+  }
+
+  /**
+   * The website's server proves itself with the site key, the app with a
+   * signed-in user's access token. Answers depend on which, so they vary on
+   * both headers, and the app's are private to the caller.
+   */
+  private audience(req: Request): Audience {
+    const known = (req as Request & { svMarketAudience?: Audience })
+      .svMarketAudience;
+    if (known) return known;
+    let audience: Audience = { channel: 'public', userId: null };
+    if (fromSite(req, this.siteKey())) {
+      audience = { channel: 'web', userId: null };
+    } else {
+      const userId = optionalAppUser(
+        req,
+        this.config.get('jwt', { infer: true }).accessSecret,
+      );
+      if (userId) audience = { channel: 'app', userId };
+    }
+    (req as Request & { svMarketAudience?: Audience }).svMarketAudience =
+      audience;
+    const res = req.res;
+    if (res) {
+      res.vary('Authorization');
+      res.vary('X-Site-Admin-Key');
+      // Licensed to the caller (the website's server or a signed-in app):
+      // never for a shared cache, which may ignore Vary on custom headers.
+      if (audience.channel !== 'public') {
+        const cc = String(res.getHeader('Cache-Control') ?? '');
+        res.setHeader(
+          'Cache-Control',
+          cc ? cc.replace(/\bpublic\b/, 'private') : 'private, no-cache',
+        );
+      }
+    }
+    return audience;
   }
 
   private async limit(req: Request, what: string, perMinute: number) {
-    if (this.channel(req) === 'web') return;
-    const ip = clientInfo(req, this.siteKey()).ip ?? 'unknown';
+    const { channel, userId } = this.audience(req);
+    if (channel === 'web') return;
+    const who =
+      channel === 'app' && userId
+        ? `u:${userId}`
+        : (clientInfo(req, this.siteKey()).ip ?? 'unknown');
     try {
       await enforceRateLimit(
         this.redis.client,
-        `rl:market:${what}:${ip}`,
+        `rl:market:${what}:${who}`,
         perMinute,
         60,
       );

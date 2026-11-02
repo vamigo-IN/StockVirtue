@@ -114,12 +114,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
       _error = null;
     });
     try {
+      // Signed in: the AuthGate routes onward. Cancelled or failed: it
+      // throws, and the reason shows here.
       await ref.read(authControllerProvider.notifier).signInWithGoogle();
-      if (!mounted) return;
-      final result = ref.read(authControllerProvider);
-      if (result.hasError) {
-        setState(() => _error = friendlyAuthError(result.error));
-      }
     } catch (e) {
       if (mounted) setState(() => _error = friendlyAuthError(e));
     } finally {

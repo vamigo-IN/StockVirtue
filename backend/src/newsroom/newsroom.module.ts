@@ -19,6 +19,9 @@ import { NewsCache } from './public/news-cache';
 import { PublicNewsController } from './public/public-news.controller';
 import { PublicNewsService } from './public/public-news.service';
 import { SiteRevalidator } from './public/site-revalidator';
+import { NewsAlertsService } from './readers/news-alerts.service';
+import { NewsBookmarksService } from './readers/news-bookmarks.service';
+import { NewsReaderController } from './readers/news-reader.controller';
 import { PublishingQueue } from './publishing/publishing.queue';
 import { TaxonomyController } from './taxonomy/taxonomy.controller';
 import { TaxonomyService } from './taxonomy/taxonomy.service';
@@ -45,6 +48,8 @@ import { TaxonomyService } from './taxonomy/taxonomy.service';
     MediaController,
     StockSearchController,
     HomepageController,
+    // Before PublicNewsController: /news/bookmarks is not an article address.
+    NewsReaderController,
     PublicNewsController,
   ],
   providers: [
@@ -60,6 +65,8 @@ import { TaxonomyService } from './taxonomy/taxonomy.service';
     PublicNewsService,
     WidgetValidation,
     ArticleBlocksService,
+    NewsBookmarksService,
+    NewsAlertsService,
   ],
   exports: [ArticlesService, NewsCache, SiteRevalidator, WidgetValidation],
 })

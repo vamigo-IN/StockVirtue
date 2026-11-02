@@ -354,6 +354,8 @@ model User {
   /// Present only for newsroom staff (see StaffProfile).
   staffProfile    StaffProfile?
   roles           UserRole[]
+  newsBookmarks   NewsBookmark[]
+  newsAlerts      NewsAlertPreference?
 
   @@index([phone])
   @@index([referredById])
@@ -1130,6 +1132,8 @@ model NewsArticle {
   sourceItems   NewsSourceItem[]     @relation("ItemArticle")
   repeatedBy    NewsSourceItem[]     @relation("ItemDuplicateOfArticle")
   aiJobs        AiJob[]
+  bookmarks     NewsBookmark[]
+  pushCampaigns NotificationCampaign[]
 
   /// Full-text search document. A STORED generated column (headline weight A,
   /// standfirst + summary B, body text C) that Postgres keeps up to date; the
@@ -1303,6 +1307,87 @@ model NewsDailyStat {
   @@id([articleId, day])
   @@index([day])
   @@map("news_daily_stats")
+}
+
+// ─── Newsroom: readers (bookmarks, news alerts) ─────────────────────────────
+
+/// A story a reader saved. One list per account, shared by the app and the
+/// website.
+model NewsBookmark {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String
+  articleId String   @db.Uuid
+  createdAt DateTime @default(now())
+
+  user    User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  article NewsArticle @relation(fields: [articleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, articleId])
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([articleId])
+  @@map("news_bookmarks")
+}
+
+/// Which news pushes a reader wants. No row means the defaults: both on.
+model NewsAlertPreference {
+  userId         String   @id
+  /// Breaking news.
+  breaking       Boolean  @default(true)
+  /// Stories about stocks in the reader's watchlists or portfolio.
+  followedStocks Boolean  @default(true)
+  updatedAt      DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("news_alert_preferences")
+}
+
+enum NotificationCampaignKind {
+  BREAKING
+  FOLLOWED_STOCKS
+}
+
+enum NotificationCampaignStatus {
+  QUEUED
+  SENDING
+  SENT
+  /// Nothing to send: no audience, push not set up, or the story came down.
+  SKIPPED
+  FAILED
+}
+
+/// One push about a story to one audience: breaking news to every reader who
+/// wants it, or a story to the readers who follow its stocks. `dedupeKey`
+/// keeps it to one of each kind per story.
+model NotificationCampaign {
+  id          String                     @id @default(uuid()) @db.Uuid
+  kind        NotificationCampaignKind
+  status      NotificationCampaignStatus @default(QUEUED)
+  dedupeKey   String?                    @unique
+  articleId   String?                    @db.Uuid
+  title       String
+  body        String
+  /// Who it is for, e.g. { stocks: ["NSE:INFY"] } for followed-stock pushes.
+  audience    Json                       @default("{}")
+  scheduledAt DateTime                   @default(now())
+  startedAt   DateTime?
+  sentAt      DateTime?
+  /// Readers sent to; device sends accepted and refused; taps.
+  recipients  Int                        @default(0)
+  delivered   Int                        @default(0)
+  failed      Int                        @default(0)
+  opens       Int                        @default(0)
+  /// Why nothing was sent (SKIPPED), or what went wrong (FAILED).
+  note        String?
+  createdAt   DateTime                   @default(now())
+  updatedAt   DateTime                   @updatedAt
+
+  article NewsArticle? @relation(fields: [articleId], references: [id], onDelete: SetNull)
+
+  @@index([status, scheduledAt])
+  @@index([articleId])
+  @@index([createdAt(sort: Desc)])
+  @@map("notification_campaigns")
 }
 
 // ─── Website configuration ──────────────────────────────────────────────────

@@ -6,7 +6,10 @@ import { CompanyDirectoryService } from '../../market/company-directory.service'
 import { PrismaService } from '../../prisma/prisma.service';
 import { RedisService } from '../../redis/redis.service';
 import { ClientInfo } from '../../staff/staff-request';
-import { ArticleBlocksService } from '../content/article-blocks.service';
+import {
+  APP_DOC_VERSION,
+  ArticleBlocksService,
+} from '../content/article-blocks.service';
 import { DEFAULT_LIMITS, HomeSectionType } from '../homepage/homepage.dto';
 import { HomepageService } from '../homepage/homepage.service';
 import { MediaService } from '../media/media.service';
@@ -19,6 +22,7 @@ import {
   PublicCard,
   PublicImage,
   inOrder,
+  istDay,
   listedWhere,
   publicSocials,
   publicWhere,
@@ -50,12 +54,7 @@ export interface Page<T> {
   totalPages: number;
 }
 
-/** A calendar day in India, YYYY-MM-DD. */
-export function istDay(at = new Date(), offsetDays = 0): string {
-  return new Date(at.getTime() + 330 * 60_000 + offsetDays * 86_400_000)
-    .toISOString()
-    .slice(0, 10);
-}
+export { istDay };
 
 function pageSize(limit?: number) {
   return Math.min(Math.max(limit ?? PAGE_SIZE, 1), MAX_PAGE_SIZE);
@@ -101,6 +100,19 @@ function publicSources(raw: Prisma.JsonValue) {
       },
     ];
   });
+}
+
+/// Who a story is shaped for: the website (HTML blocks) or the app's native reader.
+export type ArticleFormat = 'web' | 'app';
+
+/**
+ * Related-story cards built into the stored HTML when it was saved. They are
+ * dropped from the fallback copy, because the story they name may not be out
+ * (or may have been taken down) — readers only see related stories that are
+ * listed now.
+ */
+export function withoutRelatedCards(html: string): string {
+  return html.replace(/<aside class="sv-related">[\s\S]*?<\/aside>/g, '');
 }
 
 interface ArticleSeo {
@@ -334,15 +346,20 @@ export class PublicNewsService {
     );
   }
 
-  /** One story, by its address. Retracted stories stay readable (noindex). */
-  article(slug: string) {
-    return this.cache.get(`article:${slug}`, async () => {
+  /**
+   * One story, by its address. Retracted stories stay readable (noindex).
+   * The website gets the body as HTML blocks; the app gets the document
+   * itself for its native reader.
+   */
+  article(slug: string, format: ArticleFormat = 'web') {
+    const key = format === 'app' ? `article:${slug}:app` : `article:${slug}`;
+    return this.cache.get(key, async () => {
       const a = await this.prisma.newsArticle.findFirst({
         where: { AND: [publicWhere(), { slug }] },
         select: DETAIL_SELECT,
       });
       if (!a) throw new NotFoundException('Article not found.');
-      return this.detailView(a);
+      return this.detailView(a, format);
     });
   }
 
@@ -516,16 +533,19 @@ export class PublicNewsService {
 
   /**
    * Counts a page view once per reader, story and day. The reader is a
-   * salted hash of IP and browser that lives in Redis for a day and a half;
-   * nothing about the reader is stored in the database.
+   * salted hash of IP and browser — or, for the signed-in app, of the
+   * account, since many phones share one address and one user agent — that
+   * lives in Redis for a day and a half; nothing about the reader is stored
+   * in the database.
    */
-  async recordView(id: string, client: ClientInfo) {
+  async recordView(id: string, client: ClientInfo, appUserId?: string | null) {
     const ip = client.ip ?? 'unknown';
     const ua = client.userAgent ?? '';
+    const who = appUserId ? `u:${appUserId}` : `${ip}|${ua}`;
     try {
       await enforceRateLimit(
         this.redis.client,
-        `rl:news:view:${ip}`,
+        appUserId ? `rl:news:view:u:${appUserId}` : `rl:news:view:${ip}`,
         VIEWS_PER_MINUTE,
         60,
         'Too many requests. Try again in a minute.',
@@ -544,7 +564,7 @@ export class PublicNewsService {
     try {
       const salt = await this.daySalt(day);
       const reader = createHash('sha256')
-        .update(`${salt}|${ip}|${ua}|${id}`)
+        .update(`${salt}|${who}|${id}`)
         .digest('hex');
       const first = await this.redis.client.set(
         `news:view:${day}:${reader}`,
@@ -565,12 +585,14 @@ export class PublicNewsService {
     return { counted: true };
   }
 
-  /** Per-IP search limit, so the full-text query can't be hammered. */
-  async limitSearch(client: ClientInfo) {
+  /** Per-reader search limit (per IP, or per app account), so the full-text query can't be hammered. */
+  async limitSearch(client: ClientInfo, appUserId?: string | null) {
     try {
       await enforceRateLimit(
         this.redis.client,
-        `rl:news:search:${client.ip ?? 'unknown'}`,
+        appUserId
+          ? `rl:news:search:u:${appUserId}`
+          : `rl:news:search:${client.ip ?? 'unknown'}`,
         SEARCHES_PER_MINUTE,
         60,
         'Too many searches. Try again in a minute.',
@@ -677,11 +699,11 @@ export class PublicNewsService {
     return (await this.redis.client.get(key)) ?? day;
   }
 
-  private async detailView(a: DetailRow) {
+  private async detailView(a: DetailRow, format: ArticleFormat) {
     const seo = (a.seo ?? {}) as ArticleSeo;
     const relatedIds = a.related.map((r) => r.relatedId);
     const ogImageId = text(seo.ogImageId);
-    const [relatedRows, ogAsset, blocks] = await Promise.all([
+    const [relatedRows, ogAsset, body] = await Promise.all([
       relatedIds.length
         ? this.prisma.newsArticle.findMany({
             where: { AND: [listedWhere(), { id: { in: relatedIds } }] },
@@ -691,13 +713,23 @@ export class PublicNewsService {
       ogImageId
         ? this.prisma.mediaAsset.findUnique({ where: { id: ogImageId } })
         : Promise.resolve(null),
-      this.readerBlocks.blocks(a.content, a, 'public'),
+      format === 'app'
+        ? this.readerBlocks
+            .appDoc(a.content, a)
+            .then((doc) => ({ doc, docVersion: APP_DOC_VERSION }))
+        : this.readerBlocks.reader(a.content, a, 'public').then((r) =>
+            r
+              ? { contentHtml: r.html, blocks: r.blocks }
+              : {
+                  contentHtml: withoutRelatedCards(a.contentHtml),
+                  blocks: [],
+                },
+          ),
     ]);
     return {
       ...toCard(a, this.image),
       firstPublishedAt: a.firstPublishedAt,
-      contentHtml: a.contentHtml,
-      blocks,
+      ...body,
       imageCaption: a.featuredImageCaption,
       category: a.category?.isActive
         ? {

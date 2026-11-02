@@ -8,14 +8,17 @@ import '../../../data/models/tick.dart';
 import '../../../widgets/price_flash.dart';
 import '../../../widgets/ui/market_widgets.dart';
 import '../../market/market_repository.dart';
+import '../../market/screens/indices_screen.dart';
 import '../../symbol/screens/symbol_detail_screen.dart';
 import '../../ticks/ticks_providers.dart';
 import '../home_providers.dart';
 
-const _cardWidth = 164.0;
+const _cardWidth = 150.0;
+const _stripHeight = 74.0;
 
-/// Home index tiles: full index name, live value and the day's move in
-/// points with the percentage beside it ("+123.45 (+0.50%)").
+/// The index tiles at the top of home, just under the search bar: index
+/// name, live value and the day's move in points with the percentage beside
+/// it ("+123.45 (+0.50%)"), ending in a tile for the full indices page.
 class IndicesStrip extends ConsumerWidget {
   const IndicesStrip({super.key});
 
@@ -23,7 +26,7 @@ class IndicesStrip extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final indices = ref.watch(homeIndicesProvider);
     return SizedBox(
-      height: 96,
+      height: _stripHeight,
       child: indices.when(
         loading: () => const _SkeletonStrip(),
         error: (_, _) => const _StripMessage('Indices unavailable right now'),
@@ -32,10 +35,47 @@ class IndicesStrip extends ConsumerWidget {
             : ListView.separated(
                 padding: const EdgeInsets.symmetric(horizontal: AppSpace.md),
                 scrollDirection: Axis.horizontal,
-                itemCount: quotes.length,
-                separatorBuilder: (_, _) => const SizedBox(width: 10),
-                itemBuilder: (_, i) => _IndexCard(quote: quotes[i]),
+                itemCount: quotes.length + 1,
+                separatorBuilder: (_, _) => const SizedBox(width: 8),
+                itemBuilder: (_, i) => i < quotes.length
+                    ? _IndexCard(quote: quotes[i])
+                    : const _AllIndicesTile(),
               ),
+      ),
+    );
+  }
+}
+
+/// The strip's last tile: every index, on its own page.
+class _AllIndicesTile extends StatelessWidget {
+  const _AllIndicesTile();
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return SizedBox(
+      width: 92,
+      child: AppCard(
+        radius: AppRadius.md,
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        onTap: () => Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => const IndicesScreen()),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.grid_view_rounded, size: 18, color: scheme.primary),
+            const SizedBox(height: 6),
+            Text(
+              'All indices',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    color: scheme.primary,
+                    fontWeight: FontWeight.w700,
+                  ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -64,7 +104,7 @@ class _IndexCard extends ConsumerWidget {
       width: _cardWidth,
       child: AppCard(
         radius: AppRadius.md,
-        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+        padding: const EdgeInsets.fromLTRB(12, 9, 12, 9),
         onTap: () => Navigator.of(context).push(
           MaterialPageRoute(
             builder: (_) => SymbolDetailScreen(
@@ -83,7 +123,7 @@ class _IndexCard extends ConsumerWidget {
               companyNameFor(quote.symbol),
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: t.labelLarge?.copyWith(
+              style: t.labelMedium?.copyWith(
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
                 fontWeight: FontWeight.w600,
               ),
@@ -93,9 +133,9 @@ class _IndexCard extends ConsumerWidget {
               child: Text(
                 ltp != null ? formatInrPlain(ltp) : '—',
                 maxLines: 1,
-                style: t.titleMedium?.copyWith(
+                style: t.titleSmall?.copyWith(
                   fontWeight: FontWeight.w800,
-                  letterSpacing: -0.3,
+                  letterSpacing: -0.2,
                   fontFeatures: const [FontFeature.tabularFigures()],
                 ),
               ),
@@ -103,7 +143,11 @@ class _IndexCard extends ConsumerWidget {
             FittedBox(
               fit: BoxFit.scaleDown,
               alignment: Alignment.centerLeft,
-              child: DayChange(change: change, percent: changePct),
+              child: DayChange(
+                change: change,
+                percent: changePct,
+                style: t.labelSmall,
+              ),
             ),
           ],
         ),
@@ -123,7 +167,7 @@ class _SkeletonStrip extends StatelessWidget {
       scrollDirection: Axis.horizontal,
       physics: const NeverScrollableScrollPhysics(),
       itemCount: 4,
-      separatorBuilder: (_, _) => const SizedBox(width: 10),
+      separatorBuilder: (_, _) => const SizedBox(width: 8),
       itemBuilder: (_, _) => Container(
         width: _cardWidth,
         decoration: BoxDecoration(

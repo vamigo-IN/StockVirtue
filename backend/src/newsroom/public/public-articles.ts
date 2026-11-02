@@ -19,6 +19,13 @@ export function listedWhere(now = new Date()): Prisma.NewsArticleWhereInput {
   return { ...publicWhere(now), retractedAt: null };
 }
 
+/** A calendar day in India, YYYY-MM-DD. */
+export function istDay(at = new Date(), offsetDays = 0): string {
+  return new Date(at.getTime() + 330 * 60_000 + offsetDays * 86_400_000)
+    .toISOString()
+    .slice(0, 10);
+}
+
 /** listedWhere for raw SQL over `news_articles a` (search). Keep in step. */
 export const LISTED_SQL = Prisma.sql`a.status = 'PUBLISHED' AND a."publishedAt" <= now() AND a."retractedAt" IS NULL`;
 

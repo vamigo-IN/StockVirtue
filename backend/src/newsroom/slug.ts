@@ -31,25 +31,34 @@ export async function freeSlug(
 }
 
 /**
- * Addresses under /news that belong to sections of the public site, so no
- * article may take them (an article at /news/search would be unreachable).
+ * Addresses under /news that belong to sections of the public site or to
+ * the news API (/api/v1/news/breaking, /bookmarks …), so no article may take
+ * them (an article at /news/search would be unreachable).
  */
 export const RESERVED_ARTICLE_SLUGS: ReadonlySet<string> = new Set([
   'api',
   'author',
   'authors',
+  'bookmarks',
+  'breaking',
+  'categories',
   'category',
   'commodities',
   'education',
+  'featured',
   'feed',
+  'home',
   'ipo',
   'latest',
   'markets',
+  'me',
   'page',
+  'push',
   'rss',
   'search',
   'sitemap',
   'stocks',
   'tag',
   'tags',
+  'trending',
 ]);

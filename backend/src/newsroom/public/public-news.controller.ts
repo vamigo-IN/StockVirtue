@@ -13,10 +13,12 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { SkipThrottle } from '@nestjs/throttler';
 import type { Request } from 'express';
+import { optionalAppUser } from '../../auth/optional-app-user';
 import { AppConfig } from '../../config/configuration';
 import { clientInfo } from '../../staff/staff-request';
 import { SLUG_RE } from '../slug';
 import {
+  ArticleQueryDto,
   LimitQueryDto,
   PublicListQueryDto,
   SearchQueryDto,
@@ -82,7 +84,10 @@ export class PublicNewsController {
   @Get('search')
   @Header('Cache-Control', CACHE_HEADER)
   async search(@Query() q: SearchQueryDto, @Req() req: Request) {
-    await this.news.limitSearch(clientInfo(req, this.siteKey()));
+    await this.news.limitSearch(
+      clientInfo(req, this.siteKey()),
+      this.appUser(req),
+    );
     return this.news.search(q.q, q.page, q.limit);
   }
 
@@ -102,24 +107,39 @@ export class PublicNewsController {
     return this.news.stock(upper, q.exchange ?? 'NSE', q.page, q.limit);
   }
 
-  /** One page view. 202 whether or not it counted (repeats and bots don't). */
+  /**
+   * One page view. 202 whether or not it counted (repeats and bots don't).
+   * Signed-in app readers count as themselves, not as their address.
+   */
   @Post(':id/view')
   @HttpCode(202)
   async view(@Param('id', ParseUUIDPipe) id: string, @Req() req: Request) {
-    await this.news.recordView(id, clientInfo(req, this.siteKey()));
+    await this.news.recordView(
+      id,
+      clientInfo(req, this.siteKey()),
+      this.appUser(req),
+    );
     return { ok: true };
   }
 
+  /** `?format=app` returns the document for the app's native reader instead of HTML. */
   @Get(':slug')
   @Header('Cache-Control', CACHE_HEADER)
-  article(@Param('slug') slug: string) {
+  article(@Param('slug') slug: string, @Query() q: ArticleQueryDto) {
     if (slug.length > 90 || !SLUG_RE.test(slug)) {
       throw new NotFoundException('Article not found.');
     }
-    return this.news.article(slug);
+    return this.news.article(slug, q.format ?? 'web');
   }
 
   private siteKey() {
     return this.config.get('site', { infer: true }).adminKey;
+  }
+
+  private appUser(req: Request) {
+    return optionalAppUser(
+      req,
+      this.config.get('jwt', { infer: true }).accessSecret,
+    );
   }
 }

@@ -10,7 +10,6 @@ import '../../bookmarks/bookmarks_storage.dart';
 import '../../bookmarks/widgets/bookmarks_rail.dart';
 import '../../ipo/ipo_repository.dart';
 import '../../ipo/widgets/ipo_home_section.dart';
-import '../../market/screens/indices_screen.dart';
 import '../../market/screens/stock_search_screen.dart';
 import '../../news/news_repository.dart';
 import '../../news/widgets/news_section.dart';
@@ -139,20 +138,13 @@ class _HomeTabState extends ConsumerState<HomeTab> {
           padding: const EdgeInsets.only(bottom: AppSpace.xxl),
           physics: const AlwaysScrollableScrollPhysics(),
           children: [
-            HomeAppBar(user: widget.user),
-            const SizedBox(height: AppSpace.xs),
+            // Markets at a glance, right under the search bar.
+            HomeAppBar(user: widget.user, bottom: const IndicesStrip()),
+            const SizedBox(height: AppSpace.md),
             const PortfolioHeroCard(),
-            const SizedBox(height: AppSpace.sm),
+            const SizedBox(height: AppSpace.xs),
             const MarketStatusCard(),
-            SectionHeader(
-              title: 'Indices',
-              actionLabel: 'See all',
-              onAction: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const IndicesScreen()),
-              ),
-            ),
-            const IndicesStrip(),
-            const SizedBox(height: AppSpace.lg),
+            const SizedBox(height: AppSpace.md),
             const QuickActions(),
             SectionHeader(
               title: 'Most traded',
