@@ -1,7 +1,8 @@
 /**
- * Grants a newsroom role to an existing StockVirtue account. Used on the
- * server to create the first Super Admin (and to recover access if every
- * Super Admin is locked out); everyone else is invited from the portal.
+ * Grants a newsroom role to an existing StockVirtue account, from the server.
+ * Super Admins are normally added in the admin console (Newsroom page); this
+ * is the fallback when the console can't be used. Everyone else is invited
+ * from the portal.
  *
  *   node dist/cli/grant-staff-role.js --email you@example.com --role SUPER_ADMIN [--name "Your Name"]
  *

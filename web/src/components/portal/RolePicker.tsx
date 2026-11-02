@@ -7,12 +7,13 @@ import { sortRoles } from '@/portal/roles';
 import type { RoleInfo, StaffMe } from '@/portal/types';
 
 /**
- * Same rule the API enforces: only a Super Admin hands out Super Admin, and
- * nobody can grant (or take away) a role with permissions they don't hold.
+ * Same rule the API enforces: Super Admin is granted and removed only in the
+ * StockVirtue admin console, and nobody can grant (or take away) a role with
+ * permissions they don't hold.
  */
 export function canGrantRole(me: StaffMe, role: RoleInfo): boolean {
-  if (me.isSuperAdmin) return true;
   if (role.key === 'SUPER_ADMIN') return false;
+  if (me.isSuperAdmin) return true;
   return role.permissions.every((p) => me.permissions.includes(p));
 }
 
@@ -72,7 +73,7 @@ export function RolePicker({
                     ? role.description ||
                       `${role.permissions.length} permissions`
                     : role.key === 'SUPER_ADMIN'
-                      ? 'Only a Super Admin can grant or remove this role.'
+                      ? 'Granted and removed in the StockVirtue admin console.'
                       : "Includes permissions you don't have, so you can't change it."}
                 </span>
               </span>

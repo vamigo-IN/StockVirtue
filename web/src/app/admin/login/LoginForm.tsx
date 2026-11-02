@@ -1,6 +1,7 @@
 'use client';
 
 import { AlertCircle, CheckCircle2, Info, Loader2 } from 'lucide-react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { z } from 'zod';
@@ -29,11 +30,14 @@ export function LoginForm({
   next,
   reason,
   signedOut,
+  passwordReset,
   email: presetEmail,
 }: {
   next: string;
   reason?: string;
   signedOut: boolean;
+  /** Arrived from a completed password reset. */
+  passwordReset: boolean;
   email?: string;
 }) {
   const router = useRouter();
@@ -83,19 +87,24 @@ export function LoginForm({
     }
   }
 
-  const notice = signedOut
-    ? { tone: 'ok' as const, text: "You've signed out." }
-    : isSessionEnd(reason) && reason !== 'staff_session_required'
-      ? {
-          tone:
-            reason === 'staff_session_idle' ||
-            reason === 'staff_session_expired' ||
-            reason === 'staff_session_revoked'
-              ? ('info' as const)
-              : ('error' as const),
-          text: SESSION_END_MESSAGES[reason],
-        }
-      : null;
+  const notice = passwordReset
+    ? {
+        tone: 'ok' as const,
+        text: 'Password changed. Sign in with your new password.',
+      }
+    : signedOut
+      ? { tone: 'ok' as const, text: "You've signed out." }
+      : isSessionEnd(reason) && reason !== 'staff_session_required'
+        ? {
+            tone:
+              reason === 'staff_session_idle' ||
+              reason === 'staff_session_expired' ||
+              reason === 'staff_session_revoked'
+                ? ('info' as const)
+                : ('error' as const),
+            text: SESSION_END_MESSAGES[reason],
+          }
+        : null;
 
   return (
     <Card>
@@ -157,9 +166,13 @@ export function LoginForm({
             {busy && <Loader2 className="animate-spin" />}
             {busy ? 'Checking…' : 'Continue'}
           </Button>
-          <p className="text-center text-xs text-muted-foreground">
-            Forgot your password? Reset it from the StockVirtue app&apos;s
-            sign-in screen.
+          <p className="text-center text-sm">
+            <Link
+              href={`/admin/login/forgot${email.trim() ? `?email=${encodeURIComponent(email.trim())}` : ''}`}
+              className="text-muted-foreground underline-offset-4 hover:underline"
+            >
+              Forgot your password?
+            </Link>
           </p>
         </form>
       </CardContent>
