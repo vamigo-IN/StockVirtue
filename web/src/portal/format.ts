@@ -166,6 +166,8 @@ const AUDIT_LABELS: Record<string, string> = {
   'media.upload': 'Uploaded an image',
   'media.update': 'Edited image details',
   'media.delete': 'Deleted an image',
+  'media.storage.update': 'Changed media storage',
+  'media.storage.disconnect': 'Removed the Cloudflare R2 connection',
   'news.source.create': 'Added a news source',
   'news.source.update': 'Edited a news source',
   'news.source.delete': 'Deleted a news source',

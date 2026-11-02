@@ -1,5 +1,6 @@
 import { BullModule } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
+import { SecretBoxService } from '../common/secret-box';
 import { MarketModule } from '../market/market.module';
 import { QueueModule, QUEUES } from '../queue/queue.module';
 import { StaffModule } from '../staff/staff.module';
@@ -15,6 +16,8 @@ import { HomepageController } from './homepage/homepage.controller';
 import { HomepageService } from './homepage/homepage.service';
 import { MediaController } from './media/media.controller';
 import { MediaService } from './media/media.service';
+import { MediaStorageController } from './media/media-storage.controller';
+import { MediaStorageService } from './media/media-storage.service';
 import { NewsCache } from './public/news-cache';
 import { PublicNewsController } from './public/public-news.controller';
 import { PublicNewsService } from './public/public-news.service';
@@ -46,6 +49,7 @@ import { TaxonomyService } from './taxonomy/taxonomy.service';
     ArticleCollabController,
     TaxonomyController,
     MediaController,
+    MediaStorageController,
     StockSearchController,
     HomepageController,
     // Before PublicNewsController: /news/bookmarks is not an article address.
@@ -58,6 +62,8 @@ import { TaxonomyService } from './taxonomy/taxonomy.service';
     ArticleCollabService,
     TaxonomyService,
     MediaService,
+    MediaStorageService,
+    SecretBoxService,
     PublishingQueue,
     NewsCache,
     SiteRevalidator,

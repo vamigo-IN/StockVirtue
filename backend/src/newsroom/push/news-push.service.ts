@@ -662,9 +662,7 @@ export class NewsPushService {
 
   /** A mid-sized copy of the story's picture, if it is served over https. */
   private pushImage(a: MediaAsset | null): string | undefined {
-    if (!a || a.status !== MediaStatus.READY || !this.storage.enabled) {
-      return undefined;
-    }
+    if (!a || a.status !== MediaStatus.READY) return undefined;
     const variants = Object.values(
       (a.variants ?? {}) as Record<string, { key: string; width: number }>,
     ).sort((x, y) => x.width - y.width);

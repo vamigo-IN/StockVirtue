@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { resolve } from 'node:path';
 
 export type NodeEnv = 'development' | 'test' | 'production';
 
@@ -179,9 +180,6 @@ export interface NewsroomConfig {
   ingestPrivateHosts: string[];
 }
 
-export type StorageDriverName = 'r2' | 'none';
-
-/// Media storage (article images). Cloudflare R2 through its S3-compatible API.
 /// Prices for the website's ticker and article widgets (curated list, one
 /// subscription on the trading app's broker socket). `enabled` false = serve
 /// only the last stored prices, e.g. on a machine with no broker session.
@@ -189,18 +187,18 @@ export interface MarketDisplayConfig {
   enabled: boolean;
 }
 
+/// Media files (article images). The Cloudflare R2 connection is entered in
+/// the portal (Media storage), not here; until one is in use, uploads are
+/// kept on this server's disk. Either way the API serves them at /media/...
 export interface StorageConfig {
-  driver: StorageDriverName;
-  r2AccountId: string;
-  r2AccessKeyId: string;
-  r2SecretAccessKey: string;
-  r2Bucket: string;
-  /// Optional S3-compatible endpoint instead of R2's (e.g. MinIO for local
-  /// testing). Blank = https://<account>.r2.cloudflarestorage.com.
-  r2Endpoint: string;
-  /// CDN base that serves the bucket, e.g. https://media.stockvirtue.com
+  /// Folder for files kept on this server. MEDIA_LOCAL_DIR; relative paths
+  /// are inside backend/, and the default is backend/uploads.
+  localDir: string;
+  /// Public address of /media, e.g. https://api.stockvirtue.com/media
   publicBaseUrl: string;
   maxUploadBytes: number;
+  /// The retired R2_* / MEDIA_STORAGE_DRIVER variables are still set.
+  legacyEnv: boolean;
 }
 
 /// Background jobs (BullMQ on the existing Redis).
@@ -413,15 +411,20 @@ export default (): AppConfig => ({
     enabled: (process.env.MARKET_DISPLAY_ENABLED ?? 'true') !== 'false',
   },
   storage: {
-    driver: process.env.MEDIA_STORAGE_DRIVER === 'r2' ? 'r2' : 'none',
-    r2AccountId: process.env.R2_ACCOUNT_ID ?? '',
-    r2AccessKeyId: process.env.R2_ACCESS_KEY_ID ?? '',
-    r2SecretAccessKey: process.env.R2_SECRET_ACCESS_KEY ?? '',
-    r2Bucket: process.env.R2_BUCKET ?? '',
-    r2Endpoint: (process.env.R2_ENDPOINT ?? '').replace(/\/+$/, ''),
-    publicBaseUrl: (process.env.MEDIA_PUBLIC_BASE_URL ?? '').replace(
-      /\/+$/,
-      '',
+    // Resolved from this file, not the working directory, so the API and the
+    // worker find the same folder however pm2 starts them.
+    localDir: resolve(
+      __dirname,
+      '../..',
+      process.env.MEDIA_LOCAL_DIR || 'uploads',
+    ),
+    publicBaseUrl: `${(
+      process.env.API_PUBLIC_URL || 'https://api.stockvirtue.com'
+    )
+      .replace(/\/+$/, '')
+      .replace(/\/api$/, '')}/media`,
+    legacyEnv: !!(
+      process.env.MEDIA_STORAGE_DRIVER === 'r2' || process.env.R2_BUCKET
     ),
     maxUploadBytes:
       Math.max(1, parseInt(process.env.MEDIA_MAX_UPLOAD_MB ?? '10', 10)) *

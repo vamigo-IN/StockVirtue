@@ -15,7 +15,8 @@ import {
  *  - swaps the httpOnly session cookie for the API's x-staff-session header
  *    and keeps the raw token out of every response body;
  *  - forwards nothing but /api/v1/staff/... and never the browser's headers.
- * Permissions are enforced by the API itself on every call.
+ * Permissions are enforced by the API itself on every call. Image bytes for
+ * uploads kept on our server (no Cloudflare R2) pass through unchanged.
  */
 export const dynamic = 'force-dynamic';
 
@@ -24,6 +25,11 @@ type Ctx = { params: Promise<{ path: string[] }> };
 const SEGMENT = /^[A-Za-z0-9_-]{1,100}$/;
 /** The largest portal request is site settings with three 50 KB code blocks. */
 const MAX_BODY_BYTES = 256 * 1024;
+/** An image's bytes, for an upload kept on our server. */
+const UPLOAD_ROUTE = /^staff\/media\/[0-9a-f-]{36}\/content$/;
+/** The API enforces the real limit (MEDIA_MAX_UPLOAD_MB, at most 100). */
+const MAX_UPLOAD_BYTES = 100 * 1024 * 1024;
+const IMAGE_TYPE = /^image\/(jpeg|png|webp|gif|avif)$/;
 
 function fail(status: number, message: string) {
   return NextResponse.json(
@@ -85,23 +91,48 @@ async function handle(req: NextRequest, ctx: Ctx) {
   }
   const route = path.join('/');
   const token = req.cookies.get(STAFF_COOKIE)?.value;
+  const upload = req.method === 'PUT' && UPLOAD_ROUTE.test(route);
   const hasBody = req.method !== 'GET' && req.method !== 'DELETE';
-  if (Number(req.headers.get('content-length') ?? 0) > MAX_BODY_BYTES) {
-    return fail(413, 'That request is too large.');
-  }
-  const body = hasBody ? await req.text() : undefined;
-  if (body && body.length > MAX_BODY_BYTES) {
-    return fail(413, 'That request is too large.');
+  const headers = backendHeaders(
+    token,
+    clientFromHeaders(req.headers),
+    hasBody && !upload,
+  );
+  let body: string | ArrayBuffer | undefined;
+  if (upload) {
+    const declared = Number(req.headers.get('content-length'));
+    if (!Number.isFinite(declared) || declared <= 0) {
+      return fail(411, 'Send the file with its size.');
+    }
+    if (declared > MAX_UPLOAD_BYTES)
+      return fail(413, 'That file is too large.');
+    const type = (req.headers.get('content-type') ?? '').toLowerCase();
+    if (!IMAGE_TYPE.test(type)) {
+      return fail(415, 'Upload a JPEG, PNG, WebP, GIF or AVIF image.');
+    }
+    body = await req.arrayBuffer();
+    if (body.byteLength > MAX_UPLOAD_BYTES) {
+      return fail(413, 'That file is too large.');
+    }
+    headers['content-type'] = type;
+  } else {
+    if (Number(req.headers.get('content-length') ?? 0) > MAX_BODY_BYTES) {
+      return fail(413, 'That request is too large.');
+    }
+    body = hasBody ? await req.text() : undefined;
+    if (body && body.length > MAX_BODY_BYTES) {
+      return fail(413, 'That request is too large.');
+    }
   }
 
   let upstream: Response;
   try {
     upstream = await fetch(`${API_V1}/${route}${req.nextUrl.search}`, {
       method: req.method,
-      headers: backendHeaders(token, clientFromHeaders(req.headers), hasBody),
+      headers,
       body: body || undefined,
       cache: 'no-store',
-      signal: AbortSignal.timeout(20_000),
+      signal: AbortSignal.timeout(upload ? 120_000 : 20_000),
     });
   } catch {
     return fail(

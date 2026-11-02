@@ -1048,11 +1048,21 @@ enum MediaStatus {
   DELETED
 }
 
-/// An uploaded image or file in object storage. PENDING until the upload is
-/// confirmed and checked; only READY assets can be used in articles.
+/// Where a media file's bytes are kept.
+enum MediaStore {
+  /// Cloudflare R2, connected in the portal (Media storage).
+  R2
+  /// This server's disk (MEDIA_LOCAL_DIR): uploads made while R2 isn't in use.
+  LOCAL
+}
+
+/// An uploaded image or file. PENDING until the upload is confirmed and
+/// checked; only READY assets can be used in articles.
 model MediaAsset {
   id           String      @id @default(uuid()) @db.Uuid
   storageKey   String      @unique
+  /// Fixed at upload: files never move between stores on their own.
+  store        MediaStore  @default(LOCAL)
   originalName String?
   mimeType     String
   bytes        Int
@@ -1073,6 +1083,31 @@ model MediaAsset {
 
   @@index([status, createdAt])
   @@map("media_assets")
+}
+
+/// One row (id "default"): the Cloudflare R2 connection for media files,
+/// entered in the portal (Media storage). Until one is in use, uploads are
+/// kept on this server's disk.
+model MediaStorageSettings {
+  id              String    @id @default("default")
+  accountId       String    @default("")
+  /// S3 API address. Blank = https://<accountId>.r2.cloudflarestorage.com.
+  endpoint        String    @default("")
+  bucket          String    @default("")
+  accessKeyId     String    @default("")
+  /// Sealed secret access key (common/secret-box.ts). Never returned to any client.
+  secretAccessKey String?
+  /// New uploads go to R2. Off = they stay on this server; files already in
+  /// R2 keep loading through the saved connection either way.
+  uploadToR2      Boolean   @default(false)
+  lastCheckAt     DateTime?
+  lastCheckOk     Boolean?
+  /// Steps of the last connection check, as the portal shows them.
+  lastCheck       Json?
+  updatedBy       String?
+  updatedAt       DateTime  @updatedAt
+
+  @@map("media_storage_settings")
 }
 
 model NewsArticle {

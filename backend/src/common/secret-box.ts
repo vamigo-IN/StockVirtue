@@ -10,7 +10,7 @@ import {
 import { AppConfig } from '../config/configuration';
 
 /** What a sealed value protects; bound into the ciphertext so one can't stand in for another. */
-export type SecretPurpose = 'news-source' | 'ai-provider';
+export type SecretPurpose = 'news-source' | 'ai-provider' | 'media-storage';
 
 const VERSION = 'sb1';
 
@@ -27,7 +27,7 @@ export class SecretUnreadableError extends Error {
 
 /**
  * AES-256-GCM sealing for credentials kept in the database (news-source API
- * keys, AI provider keys). Sealed values read
+ * keys, AI provider keys, the R2 secret key). Sealed values read
  * "sb1:<key id>:<iv>:<tag>:<ciphertext>": the key id tells a key change
  * (NEWSROOM_SECRETS_KEY or JWT_ACCESS_SECRET rotated) apart from corruption,
  * so the portal can ask for the secret again instead of failing.

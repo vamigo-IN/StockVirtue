@@ -231,10 +231,14 @@ export interface ArticlePage {
 
 export type ArticleCounts = Record<ArticleStatus, number> & { total: number };
 
+/** Where a media file is kept. */
+export type MediaStoreName = 'R2' | 'LOCAL';
+
 export interface MediaAsset {
   id: string;
   url: string | null;
   thumbUrl: string | null;
+  store: MediaStoreName;
   mimeType: string;
   bytes: number;
   width: number | null;
@@ -251,8 +255,51 @@ export interface MediaAsset {
 export interface MediaPage {
   items: MediaAsset[];
   nextCursor: string | null;
-  enabled: boolean;
+  /** Where new uploads go right now. */
+  store: MediaStoreName;
   maxBytes: number;
+}
+
+export interface StorageCheckStep {
+  key: 'connect' | 'write' | 'read' | 'cors' | 'delete';
+  label: string;
+  /** null = not run, because an earlier step failed. */
+  ok: boolean | null;
+  detail?: string;
+}
+
+export interface StorageCheck {
+  ok: boolean;
+  steps: StorageCheckStep[];
+  checkedAt: string;
+}
+
+export interface MediaStorageView {
+  uploadsTo: MediaStoreName;
+  r2: {
+    accountId: string;
+    endpoint: string;
+    bucket: string;
+    accessKeyId: string;
+    hasSecret: boolean;
+    uploadToR2: boolean;
+    connected: boolean;
+    problem: string | null;
+  };
+  lastCheck: { at: string; ok: boolean; steps: StorageCheckStep[] } | null;
+  server: {
+    dir: string;
+    writable: boolean;
+    freeBytes: number | null;
+    problem: string | null;
+  };
+  images: { r2: number; server: number };
+  /** Where the portal uploads from: the bucket's CORS rule must allow it. */
+  uploadOrigin: string;
+  publicBaseUrl: string;
+  maxUploadBytes: number;
+  updatedAt: string | null;
+  updatedBy: string | null;
 }
 
 export interface ArticleSeo {

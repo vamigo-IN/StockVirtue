@@ -141,14 +141,12 @@ export const validationSchema = Joi.object({
   INGEST_PRIVATE_HOSTS: Joi.string().allow('').default(''),
   // Website ticker and widget prices from the API's broker feed.
   MARKET_DISPLAY_ENABLED: Joi.string().valid('true', 'false').default('true'),
-  // Media storage: Cloudflare R2. Driver "none" (default) disables uploads.
-  MEDIA_STORAGE_DRIVER: Joi.string().valid('r2', 'none').default('none'),
-  R2_ACCOUNT_ID: Joi.string().allow('').default(''),
-  R2_ACCESS_KEY_ID: Joi.string().allow('').default(''),
-  R2_SECRET_ACCESS_KEY: Joi.string().allow('').default(''),
-  R2_BUCKET: Joi.string().allow('').default(''),
-  R2_ENDPOINT: Joi.string().allow('').default(''),
-  MEDIA_PUBLIC_BASE_URL: Joi.string().allow('').default(''),
+  // Media files. The Cloudflare R2 connection is entered in the portal; until
+  // then uploads are kept in MEDIA_LOCAL_DIR (blank = backend/uploads). The
+  // API serves both at API_PUBLIC_URL/media (blank = https://api.stockvirtue.com).
+  // The old R2_* / MEDIA_STORAGE_DRIVER variables are ignored if still set.
+  MEDIA_LOCAL_DIR: Joi.string().allow('').default(''),
+  API_PUBLIC_URL: Joi.string().allow('').default(''),
   MEDIA_MAX_UPLOAD_MB: Joi.number().min(1).max(100).default(10),
   QUEUE_PREFIX: Joi.string().allow('').default('sv'),
 });

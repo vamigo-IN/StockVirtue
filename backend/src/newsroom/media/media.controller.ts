@@ -3,11 +3,13 @@ import {
   Controller,
   Delete,
   Get,
+  Headers,
   HttpCode,
   Param,
   ParseUUIDPipe,
   Patch,
   Post,
+  Put,
   Query,
   Req,
 } from '@nestjs/common';
@@ -37,6 +39,25 @@ export class MediaController {
   @Post('uploads')
   start(@CurrentStaff() actor: StaffPrincipal, @Body() dto: StartUploadDto) {
     return this.media.startUpload(actor, dto);
+  }
+
+  /** The file itself, for uploads kept on this server (raw image body). */
+  @StaffOnly('media.upload')
+  @Put(':id/content')
+  @HttpCode(200)
+  content(
+    @CurrentStaff() actor: StaffPrincipal,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: Request,
+    @Headers('content-length') length?: string,
+  ) {
+    const declared = Number(length);
+    return this.media.receive(
+      actor,
+      id,
+      req,
+      length && Number.isFinite(declared) ? declared : null,
+    );
   }
 
   @StaffOnly('media.upload')

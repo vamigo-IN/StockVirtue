@@ -39,6 +39,10 @@ export const PERMISSIONS = [
   // Media and widgets
   { key: 'media.upload', description: 'Upload images and files' },
   { key: 'media.manage', description: "Edit or delete anyone's media" },
+  {
+    key: 'media.storage',
+    description: 'Connect media storage (Cloudflare R2)',
+  },
   { key: 'widgets.read', description: 'View saved market widgets' },
   { key: 'widgets.create', description: 'Create market widgets' },
   { key: 'widgets.update', description: 'Edit market widgets' },
@@ -141,6 +145,7 @@ const EDITING: PermissionKey[] = [
 /** Permissions only a Super Admin holds by default. */
 const SUPER_ADMIN_ONLY: PermissionKey[] = [
   'settings.code_injection',
+  'media.storage',
   'security.manage',
   'roles.manage',
 ];

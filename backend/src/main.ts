@@ -14,6 +14,8 @@ import compression from 'compression';
 import { AppModule } from './app.module';
 import { AppConfig } from './config/configuration';
 import { AllExceptionsFilter } from './common/all-exceptions.filter';
+import { mediaFiles } from './storage/media-files';
+import { StorageService } from './storage/storage.service';
 
 // Render server-side dates/logs in IST (UTC+5:30) — the timezone this app's
 // users and operators work in. Set before anything formats a date so the Nest
@@ -42,6 +44,11 @@ async function bootstrap() {
       `REDIS_PASSWORD is empty while REDIS_HOST="${redisCfg.host}" is non-loopback — Redis is unauthenticated. Set a password.`,
     );
   }
+
+  // Article images (/media/...) from this server's disk or Cloudflare R2.
+  // Ahead of helmet and compression: media-files.ts sets its own headers
+  // (public, cacheable, shown on other sites), and images don't compress.
+  app.use('/media', mediaFiles(app.get(StorageService)));
 
   // Helmet's default Content-Security-Policy blocks third-party scripts
   // and inline styles, which would break the admin dashboard's Tailwind
