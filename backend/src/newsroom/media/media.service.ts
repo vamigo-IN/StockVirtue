@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import type { Readable } from 'node:stream';
 import {
   BadRequestException,
   ConflictException,
@@ -6,13 +7,15 @@ import {
   Injectable,
   Logger,
   NotFoundException,
-  ServiceUnavailableException,
+  PayloadTooLargeException,
 } from '@nestjs/common';
-import { MediaAsset, MediaStatus, Prisma } from '@prisma/client';
+import { MediaAsset, MediaStatus, MediaStore, Prisma } from '@prisma/client';
 import sharp from 'sharp';
 import { AuditService } from '../../audit/audit.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ClientInfo, StaffPrincipal } from '../../staff/staff-request';
+import { TooLargeError } from '../../storage/local-store';
+import { incomingKey } from '../../storage/media-keys';
 import { StorageService } from '../../storage/storage.service';
 import { has } from '../articles/article-access';
 import { RenderMedia } from '../content/article-content';
@@ -44,10 +47,12 @@ const ASSET_INCLUDE = {
 type AssetRow = Prisma.MediaAssetGetPayload<{ include: typeof ASSET_INCLUDE }>;
 
 /**
- * The newsroom media library. Browsers upload straight to object storage with
- * a short-lived signed URL; on "complete" the server checks the file really is
- * an image (by its bytes, not its name), re-encodes it so camera metadata such
- * as GPS location is gone, and makes smaller copies for responsive pages.
+ * The newsroom media library. An upload goes to Cloudflare R2 (straight from
+ * the browser with a short-lived signed URL) when R2 is connected, otherwise
+ * to this server through the portal; either way it waits under an "incoming"
+ * key. On "complete" the server checks the file really is an image (by its
+ * bytes, not its name), re-encodes it so camera metadata such as GPS location
+ * is gone, and stores it with smaller copies for responsive pages.
  */
 @Injectable()
 export class MediaService {
@@ -63,13 +68,12 @@ export class MediaService {
   view(a: AssetRow | MediaAsset) {
     const variants = (a.variants ?? {}) as unknown as Variants;
     const small = variants.w480?.key ?? variants.w1200?.key ?? a.storageKey;
-    const url = this.storage.enabled
-      ? this.storage.publicUrl(a.storageKey)
-      : null;
+    const ready = a.status === MediaStatus.READY;
     return {
       id: a.id,
-      url,
-      thumbUrl: this.storage.enabled ? this.storage.publicUrl(small) : null,
+      url: ready ? this.storage.publicUrl(a.storageKey) : null,
+      thumbUrl: ready ? this.storage.publicUrl(small) : null,
+      store: a.store,
       mimeType: a.mimeType,
       bytes: a.bytes,
       width: a.width,
@@ -84,11 +88,9 @@ export class MediaService {
     };
   }
 
-  /** An image as readers get it; null when it isn't ready or storage is off. */
+  /** An image as readers get it; null when it isn't ready. */
   publicImage(a: MediaAsset | null | undefined): PublicImage | null {
-    if (!a || a.status !== MediaStatus.READY || !this.storage.enabled) {
-      return null;
-    }
+    if (!a || a.status !== MediaStatus.READY) return null;
     return {
       url: this.storage.publicUrl(a.storageKey),
       width: a.width,
@@ -128,21 +130,17 @@ export class MediaService {
     return {
       items,
       nextCursor: more ? items[items.length - 1].id : null,
-      enabled: this.storage.enabled,
+      /** Where new uploads go right now. */
+      store: await this.storage.uploadStore(),
       maxBytes: this.storage.maxUploadBytes,
     };
   }
 
-  /** Step 1: a signed URL the browser uploads the file to. */
+  /** Step 1: where the browser sends the file (R2 or this server). */
   async startUpload(
     actor: StaffPrincipal,
     dto: { filename: string; contentType: string; bytes: number },
   ) {
-    if (!this.storage.enabled) {
-      throw new ServiceUnavailableException(
-        "Media uploads aren't set up yet. Ask an admin to configure Cloudflare R2.",
-      );
-    }
     const kind = KIND_BY_MIME[dto.contentType.toLowerCase()];
     if (!kind) {
       throw new BadRequestException(
@@ -154,9 +152,11 @@ export class MediaService {
         `Images can be up to ${Math.round(this.storage.maxUploadBytes / 1048576)} MB.`,
       );
     }
+    const store = await this.storage.uploadStore();
     const asset = await this.prisma.mediaAsset.create({
       data: {
         storageKey: this.storage.newKey('media', IMAGE_EXT[kind]),
+        store,
         originalName: dto.filename.slice(0, 200),
         mimeType: IMAGE_MIME[kind],
         bytes: dto.bytes,
@@ -165,11 +165,45 @@ export class MediaService {
       },
       include: ASSET_INCLUDE,
     });
-    const upload = await this.storage.presignUpload(
-      asset.storageKey,
+    const upload = await this.storage.uploadTarget(
+      store,
+      asset.id,
       IMAGE_MIME[kind],
     );
     return { asset: this.view(asset), upload };
+  }
+
+  /** Step 1b, uploads kept on this server: the file's bytes, via the portal. */
+  async receive(
+    actor: StaffPrincipal,
+    id: string,
+    body: Readable,
+    declaredBytes: number | null,
+  ) {
+    const asset = await this.find(id);
+    if (asset.status !== MediaStatus.PENDING) {
+      throw new ConflictException(
+        'This upload is already finished or was cancelled.',
+      );
+    }
+    if (asset.store !== MediaStore.LOCAL) {
+      throw new BadRequestException(
+        'This upload goes straight to Cloudflare R2. Upload the image again.',
+      );
+    }
+    this.assertMayChange(actor, asset);
+    const max = this.storage.maxUploadBytes;
+    const tooLarge = () =>
+      new PayloadTooLargeException(
+        `Images can be up to ${Math.round(max / 1048576)} MB.`,
+      );
+    if (declaredBytes !== null && declaredBytes > max) throw tooLarge();
+    try {
+      return { bytes: await this.storage.receive(id, body, max) };
+    } catch (err) {
+      if (err instanceof TooLargeError) throw tooLarge();
+      throw err;
+    }
   }
 
   /** Step 2: verify, clean and resize the uploaded file. */
@@ -182,7 +216,8 @@ export class MediaService {
       );
     }
     this.assertMayChange(actor, asset);
-    const head = await this.storage.head(asset.storageKey);
+    const incoming = incomingKey(asset.id);
+    const head = await this.storage.head(asset.store, incoming);
     if (!head) {
       throw new BadRequestException(
         "The file didn't arrive. Try the upload again.",
@@ -194,7 +229,7 @@ export class MediaService {
         `Images can be up to ${Math.round(this.storage.maxUploadBytes / 1048576)} MB.`,
       );
     }
-    const original = await this.storage.getBytes(asset.storageKey);
+    const original = await this.storage.getBytes(asset.store, incoming);
     const kind = sniffImage(original);
     if (!kind) {
       await this.discard(asset);
@@ -212,22 +247,27 @@ export class MediaService {
         "That image couldn't be read. It may be damaged or too large.",
       );
     }
-    await this.storage.putBytes(
-      asset.storageKey,
+    // Named for what the file really is, whatever the browser called it, so
+    // /media serves it with the right type.
+    const base = asset.storageKey.replace(/\.[a-z0-9]+$/i, '');
+    const storageKey = `${base}.${IMAGE_EXT[kind]}`;
+    await this.storage.put(
+      asset.store,
+      storageKey,
       processed.data,
       IMAGE_MIME[kind],
     );
     const variants: Variants = {};
-    const base = asset.storageKey.replace(/\.[a-z0-9]+$/i, '');
     for (const v of processed.variants) {
       const key = `${base}-w${v.width}.webp`;
-      await this.storage.putBytes(key, v.data, 'image/webp');
+      await this.storage.put(asset.store, key, v.data, 'image/webp');
       variants[`w${v.target}`] = { key, width: v.width, height: v.height };
     }
     const updated = await this.prisma.$transaction(async (tx) => {
       const row = await tx.mediaAsset.update({
         where: { id },
         data: {
+          storageKey,
           status: MediaStatus.READY,
           mimeType: IMAGE_MIME[kind],
           bytes: processed.data.length,
@@ -256,6 +296,11 @@ export class MediaService {
       );
       return row;
     });
+    await this.storage
+      .delete(asset.store, incoming)
+      .catch((err: Error) =>
+        this.logger.warn(`Couldn't delete ${incoming}: ${err.message}`),
+      );
     return this.view(updated);
   }
 
@@ -471,10 +516,11 @@ export class MediaService {
       ...Object.values((asset.variants ?? {}) as unknown as Variants).map(
         (v) => v.key,
       ),
+      incomingKey(asset.id),
     ];
     for (const key of keys) {
       try {
-        await this.storage.delete(key);
+        await this.storage.delete(asset.store, key);
       } catch (err) {
         this.logger.warn(`Couldn't delete ${key}: ${(err as Error).message}`);
       }

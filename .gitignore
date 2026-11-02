@@ -23,6 +23,8 @@
 # ── node / nest ────────────────────────────────────────────────
 node_modules/
 dist/
+# Media uploads kept on the server's disk (MEDIA_LOCAL_DIR default).
+backend/uploads/
 build/
 coverage/
 .nyc_output/

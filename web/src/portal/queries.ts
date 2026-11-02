@@ -31,6 +31,7 @@ import type {
   SavedWidget,
   TickerSettings,
   MediaPage,
+  MediaStorageView,
   MySession,
   MyWork,
   NewsSourceView,
@@ -64,6 +65,7 @@ export const qk = {
   mySessions: ['sessions', 'mine'] as const,
   allSessions: ['sessions', 'all'] as const,
   site: ['site-settings'] as const,
+  mediaStorage: ['media-storage'] as const,
   homepage: ['site-homepage'] as const,
   marketInstruments: ['market', 'instruments'] as const,
   marketSource: ['market', 'source'] as const,
@@ -213,6 +215,12 @@ export const useSiteSettings = () =>
   useQuery({
     queryKey: qk.site,
     queryFn: () => api<SiteSettingsView>('staff/site/settings'),
+  });
+
+export const useMediaStorage = () =>
+  useQuery({
+    queryKey: qk.mediaStorage,
+    queryFn: () => api<MediaStorageView>('staff/media-storage'),
   });
 
 export const useHomepage = () =>

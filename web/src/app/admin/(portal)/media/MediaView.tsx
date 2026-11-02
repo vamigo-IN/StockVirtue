@@ -13,7 +13,6 @@ import {
 } from '@/components/portal/common';
 import { uploadFiles } from '@/components/portal/MediaPicker';
 import { usePortalMe } from '@/components/portal/PortalShell';
-import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -77,7 +76,8 @@ function Details({
           <SheetDescription>
             {asset.width}×{asset.height} · {formatBytes(asset.bytes)} · uploaded
             by {asset.uploadedBy?.displayName ?? 'someone'} on{' '}
-            {formatDateTime(asset.createdAt)}
+            {formatDateTime(asset.createdAt)} · stored{' '}
+            {asset.store === 'R2' ? 'in Cloudflare R2' : 'on this server'}
           </SheetDescription>
         </SheetHeader>
         <div className="flex-1 space-y-4 overflow-y-auto p-4">
@@ -183,7 +183,6 @@ export function MediaView() {
   const media = useMedia(q);
   const items = media.data?.pages.flatMap((p) => p.items) ?? [];
   const first = media.data?.pages[0];
-  const enabled = first?.enabled ?? true;
 
   async function onFiles(list: FileList | File[] | null) {
     const files = Array.from(list ?? []);
@@ -205,13 +204,19 @@ export function MediaView() {
     <>
       <PageHeader
         title="Media library"
-        description="Images for stories. Each upload is checked, cleaned of location and camera details, and resized for fast pages."
+        description={
+          <>
+            Images for stories. Each upload is checked, cleaned of location and
+            camera details, and resized for fast pages.
+            {first &&
+              (first.store === 'R2'
+                ? ' New uploads go to Cloudflare R2.'
+                : ' New uploads are kept on this server.')}
+          </>
+        }
         actions={
           <>
-            <Button
-              onClick={() => fileInput.current?.click()}
-              disabled={!enabled}
-            >
+            <Button onClick={() => fileInput.current?.click()}>
               <Upload /> Upload images
             </Button>
             <input
@@ -228,15 +233,6 @@ export function MediaView() {
           </>
         }
       />
-      {!enabled && (
-        <Alert className="mb-4">
-          <ImageIcon />
-          <AlertDescription>
-            Media uploads aren&apos;t set up yet. Ask an admin to configure
-            Cloudflare R2 (MEDIA_STORAGE_DRIVER=r2 and the R2 keys).
-          </AlertDescription>
-        </Alert>
-      )}
       <div className="relative mb-4 max-w-sm">
         <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
         <Input
@@ -249,7 +245,6 @@ export function MediaView() {
       </div>
       <div
         onDragOver={(e) => {
-          if (!enabled) return;
           e.preventDefault();
           setDragging(true);
         }}
@@ -257,7 +252,7 @@ export function MediaView() {
         onDrop={(e) => {
           e.preventDefault();
           setDragging(false);
-          if (enabled) void onFiles(e.dataTransfer.files);
+          void onFiles(e.dataTransfer.files);
         }}
         className={cn(
           'rounded-xl transition-colors',
@@ -276,7 +271,7 @@ export function MediaView() {
             icon={ImageIcon}
             title={q ? 'No images match that search' : 'No images yet'}
           >
-            {enabled && !q && 'Drop images here or use Upload images.'}
+            {!q && 'Drop images here or use Upload images.'}
           </EmptyState>
         ) : (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">

@@ -1,62 +1,115 @@
 import { randomUUID } from 'node:crypto';
-import {
-  DeleteObjectCommand,
-  GetObjectCommand,
-  HeadObjectCommand,
-  PutObjectCommand,
-  S3Client,
-} from '@aws-sdk/client-s3';
-import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import type { Readable } from 'node:stream';
 import {
   Injectable,
   Logger,
+  OnModuleInit,
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { MediaStorageSettings, MediaStore } from '@prisma/client';
+import { SecretBoxService, SecretUnreadableError } from '../common/secret-box';
 import { AppConfig, StorageConfig } from '../config/configuration';
+import { PrismaService } from '../prisma/prisma.service';
+import { LocalStore } from './local-store';
+import { incomingKey } from './media-keys';
+import { R2Connection, R2Store } from './r2-store';
 
-export interface PresignedUpload {
-  method: 'PUT';
-  url: string;
-  /** Headers the uploader must send exactly as given (they are signed). */
-  headers: Record<string, string>;
-  expiresAt: Date;
-}
+export const MEDIA_STORAGE_ID = 'default';
+
+/// Short on purpose: the URL is a bearer credential for one upload.
+const UPLOAD_TTL_SEC = 300;
+/// How long a process trusts its copy of the saved connection. A save applies
+/// at once in the process that made it; others catch up within this.
+const SETTINGS_TTL_MS = 30_000;
 
 export interface StoredObject {
   bytes: number;
-  contentType: string | null;
 }
 
-/// Short on purpose: the URL is a bearer credential for one upload.
-const DEFAULT_UPLOAD_TTL_SEC = 300;
-/// Keys are unique per file, so the CDN may cache them forever.
-const IMMUTABLE = 'public, max-age=31536000, immutable';
+/** How the browser sends an upload's bytes. */
+export type UploadTarget =
+  | {
+      /** Straight to the bucket with a signed link (needs its CORS rule). */
+      target: 'r2';
+      method: 'PUT';
+      url: string;
+      /** Headers the uploader must send exactly as given (they are signed). */
+      headers: Record<string, string>;
+      expiresAt: Date;
+    }
+  | {
+      /** To this server through the portal: PUT staff/media/:id/content. */
+      target: 'server';
+      method: 'PUT';
+      headers: Record<string, string>;
+    };
+
+export interface SavedConnection {
+  row: MediaStorageSettings | null;
+  /** The saved R2 bucket, ready to use; null when there is none. */
+  r2: R2Store | null;
+  /** Why a saved connection can't be used (e.g. its secret is unreadable). */
+  problem: string | null;
+}
+
+/** The connection when every value it needs is filled in, else null. */
+export function completeConnection(
+  c: Partial<R2Connection>,
+): R2Connection | null {
+  const conn = {
+    accountId: c.accountId ?? '',
+    endpoint: c.endpoint ?? '',
+    bucket: c.bucket ?? '',
+    accessKeyId: c.accessKeyId ?? '',
+    secretAccessKey: c.secretAccessKey ?? '',
+  };
+  const ok =
+    (conn.accountId || conn.endpoint) &&
+    conn.bucket &&
+    conn.accessKeyId &&
+    conn.secretAccessKey;
+  return ok ? conn : null;
+}
 
 /**
- * Media files in Cloudflare R2 through its S3-compatible API. Browsers upload
- * straight to the bucket with a short-lived signed PUT, so file bytes never
- * pass through the API server; files are then served from the CDN at
- * MEDIA_PUBLIC_BASE_URL. With storage unconfigured the API still boots and
- * upload calls answer "not set up yet".
+ * Where media files live. Each file stays in the store it was uploaded to:
+ * Cloudflare R2 while a connection saved in the portal is switched on for
+ * uploads, otherwise this server's disk. Both are served by our own /media
+ * route (media-files.ts), so links look alike and never expire.
  */
 @Injectable()
-export class StorageService {
+export class StorageService implements OnModuleInit {
   private readonly logger = new Logger(StorageService.name);
   private readonly cfg: StorageConfig;
-  private readonly client: S3Client | null;
+  readonly local: LocalStore;
+  private cached: { at: number; value: Promise<SavedConnection> } | null = null;
+  private client: { fingerprint: string; store: R2Store } | null = null;
 
-  constructor(config: ConfigService<AppConfig, true>) {
+  constructor(
+    config: ConfigService<AppConfig, true>,
+    private readonly prisma: PrismaService,
+    private readonly secrets: SecretBoxService,
+  ) {
     this.cfg = config.get('storage', { infer: true });
-    this.client = this.createClient();
+    this.local = new LocalStore(this.cfg.localDir);
   }
 
-  get enabled(): boolean {
-    return this.client !== null;
+  onModuleInit(): void {
+    if (this.cfg.legacyEnv) {
+      this.logger.warn(
+        `R2_* and MEDIA_STORAGE_DRIVER are no longer read: connect Cloudflare R2 in the newsroom portal (Media storage). Until then uploads are kept in ${this.local.root}.`,
+      );
+    }
   }
 
   get maxUploadBytes(): number {
     return this.cfg.maxUploadBytes;
+  }
+
+  /** Public address of /media, e.g. https://api.stockvirtue.com/media */
+  get publicBaseUrl(): string {
+    return this.cfg.publicBaseUrl;
   }
 
   /** "media/2026/11/<uuid>.webp" — unguessable, date-bucketed. */
@@ -67,129 +120,138 @@ export class StorageService {
     return `${prefix}/${now.getUTCFullYear()}/${month}/${randomUUID()}${ext ? `.${ext}` : ''}`;
   }
 
-  async presignUpload(
-    key: string,
-    contentType: string,
-    ttlSeconds = DEFAULT_UPLOAD_TTL_SEC,
-  ): Promise<PresignedUpload> {
-    const client = this.requireClient();
-    const command = new PutObjectCommand({
-      Bucket: this.cfg.r2Bucket,
-      Key: key,
-      ContentType: contentType,
-    });
-    const url = await getSignedUrl(client, command, { expiresIn: ttlSeconds });
-    return {
-      method: 'PUT',
-      url,
-      headers: { 'Content-Type': contentType },
-      expiresAt: new Date(Date.now() + ttlSeconds * 1000),
-    };
-  }
-
-  /** Size and type of an uploaded object, or null when it isn't there. */
-  async head(key: string): Promise<StoredObject | null> {
-    const client = this.requireClient();
-    try {
-      const res = await client.send(
-        new HeadObjectCommand({ Bucket: this.cfg.r2Bucket, Key: key }),
-      );
-      return {
-        bytes: res.ContentLength ?? 0,
-        contentType: res.ContentType ?? null,
-      };
-    } catch (err) {
-      const status = (err as { $metadata?: { httpStatusCode?: number } })
-        .$metadata?.httpStatusCode;
-      if (status === 404) return null;
-      throw err;
-    }
-  }
-
-  /** Whole object as bytes (callers bound the size with head() first). */
-  async getBytes(key: string): Promise<Buffer> {
-    const client = this.requireClient();
-    const res = await client.send(
-      new GetObjectCommand({ Bucket: this.cfg.r2Bucket, Key: key }),
-    );
-    if (!res.Body) return Buffer.alloc(0);
-    return Buffer.from(await res.Body.transformToByteArray());
-  }
-
-  /** Server-side write, e.g. a cleaned or resized image. */
-  async putBytes(key: string, body: Buffer, contentType: string) {
-    const client = this.requireClient();
-    await client.send(
-      new PutObjectCommand({
-        Bucket: this.cfg.r2Bucket,
-        Key: key,
-        Body: body,
-        ContentType: contentType,
-        CacheControl: IMMUTABLE,
-      }),
-    );
-  }
-
-  async delete(key: string): Promise<void> {
-    const client = this.requireClient();
-    await client.send(
-      new DeleteObjectCommand({ Bucket: this.cfg.r2Bucket, Key: key }),
-    );
-  }
-
-  /** Public CDN URL for a stored object. */
+  /** "media/2026/11/x.jpg" → <public base>/2026/11/x.jpg */
   publicUrl(key: string): string {
-    const path = key.split('/').map(encodeURIComponent).join('/');
+    const path = key
+      .replace(/^media\//, '')
+      .split('/')
+      .map(encodeURIComponent)
+      .join('/');
     return `${this.cfg.publicBaseUrl}/${path}`;
   }
 
-  private requireClient(): S3Client {
-    if (!this.client) {
-      throw new ServiceUnavailableException(
-        "Media uploads aren't set up yet. Ask an admin to configure Cloudflare R2.",
-      );
+  /** The saved connection, cached briefly. */
+  connection(): Promise<SavedConnection> {
+    const now = Date.now();
+    if (!this.cached || now - this.cached.at > SETTINGS_TTL_MS) {
+      const value = this.load();
+      this.cached = { at: now, value };
+      // A failed read must not stick for the whole TTL.
+      value.catch(() => {
+        if (this.cached?.value === value) this.cached = null;
+      });
     }
-    return this.client;
+    return this.cached.value;
   }
 
-  private createClient(): S3Client | null {
-    const c = this.cfg;
-    if (c.driver !== 'r2') {
-      this.logger.log('Media storage disabled (MEDIA_STORAGE_DRIVER=none).');
-      return null;
+  /** Forget the cached connection (after a save in this process). */
+  invalidate(): void {
+    this.cached = null;
+  }
+
+  /** Where a new upload goes: R2 when it is connected and switched on. */
+  async uploadStore(): Promise<MediaStore> {
+    const c = await this.connection();
+    return c.r2 && c.row?.uploadToR2 ? MediaStore.R2 : MediaStore.LOCAL;
+  }
+
+  async uploadTarget(
+    store: MediaStore,
+    assetId: string,
+    contentType: string,
+  ): Promise<UploadTarget> {
+    const headers = { 'Content-Type': contentType };
+    if (store === MediaStore.LOCAL) {
+      return { target: 'server', method: 'PUT', headers };
     }
-    const missing = (
-      [
-        ['R2_ACCOUNT_ID', c.r2Endpoint || c.r2AccountId],
-        ['R2_ACCESS_KEY_ID', c.r2AccessKeyId],
-        ['R2_SECRET_ACCESS_KEY', c.r2SecretAccessKey],
-        ['R2_BUCKET', c.r2Bucket],
-        ['MEDIA_PUBLIC_BASE_URL', c.publicBaseUrl],
-      ] as const
-    )
-      .filter(([, v]) => !v)
-      .map(([k]) => k);
-    if (missing.length > 0) {
-      this.logger.warn(
-        `MEDIA_STORAGE_DRIVER=r2 but ${missing.join(', ')} not set — media uploads disabled.`,
+    const r2 = await this.r2();
+    const url = await r2.presignPut(
+      incomingKey(assetId),
+      contentType,
+      UPLOAD_TTL_SEC,
+    );
+    return {
+      target: 'r2',
+      method: 'PUT',
+      url,
+      headers,
+      expiresAt: new Date(Date.now() + UPLOAD_TTL_SEC * 1000),
+    };
+  }
+
+  /** A server upload's bytes, written while they arrive (LOCAL only). */
+  receive(assetId: string, body: Readable, maxBytes: number): Promise<number> {
+    return this.local.putStream(incomingKey(assetId), body, maxBytes);
+  }
+
+  async head(store: MediaStore, key: string): Promise<StoredObject | null> {
+    if (store === MediaStore.LOCAL) {
+      const f = await this.local.stat(key);
+      return f && { bytes: f.bytes };
+    }
+    const h = await (await this.r2()).head(key);
+    return h && { bytes: h.bytes };
+  }
+
+  async getBytes(store: MediaStore, key: string): Promise<Buffer> {
+    if (store === MediaStore.LOCAL) return this.local.getBytes(key);
+    return (await this.r2()).getBytes(key);
+  }
+
+  async put(
+    store: MediaStore,
+    key: string,
+    body: Buffer,
+    contentType: string,
+  ): Promise<void> {
+    if (store === MediaStore.LOCAL) return this.local.put(key, body);
+    await (await this.r2()).put(key, body, contentType);
+  }
+
+  async delete(store: MediaStore, key: string): Promise<void> {
+    if (store === MediaStore.LOCAL) return this.local.delete(key);
+    await (await this.r2()).delete(key);
+  }
+
+  private async r2(): Promise<R2Store> {
+    const c = await this.connection();
+    if (!c.r2) {
+      throw new ServiceUnavailableException(
+        c.problem ??
+          "Cloudflare R2 isn't connected. Connect it again in Media storage.",
       );
-      return null;
     }
-    return new S3Client({
-      region: 'auto',
-      endpoint:
-        c.r2Endpoint || `https://${c.r2AccountId}.r2.cloudflarestorage.com`,
-      // Other S3-compatible stores (MinIO) address buckets by path.
-      forcePathStyle: !!c.r2Endpoint,
-      // SDK v3 otherwise signs a checksum of the (empty) body into presigned
-      // PUT URLs, so the browser's real upload fails with BadDigest.
-      // Cloudflare's R2 docs ask for exactly these two settings.
-      requestChecksumCalculation: 'WHEN_REQUIRED',
-      responseChecksumValidation: 'WHEN_REQUIRED',
-      credentials: {
-        accessKeyId: c.r2AccessKeyId,
-        secretAccessKey: c.r2SecretAccessKey,
-      },
+    return c.r2;
+  }
+
+  private async load(): Promise<SavedConnection> {
+    const row = await this.prisma.mediaStorageSettings.findUnique({
+      where: { id: MEDIA_STORAGE_ID },
     });
+    if (!row?.secretAccessKey) return { row, r2: null, problem: null };
+    let secret: string;
+    try {
+      secret = this.secrets.open(row.secretAccessKey, 'media-storage');
+    } catch (err) {
+      const why =
+        err instanceof SecretUnreadableError
+          ? err.message
+          : 'The saved secret key can’t be read. Enter it again.';
+      return { row, r2: null, problem: `Cloudflare R2: ${why}` };
+    }
+    const conn = completeConnection({ ...row, secretAccessKey: secret });
+    if (!conn) return { row, r2: null, problem: null };
+    // Reuse the client (and its open connections) until the settings change.
+    const fingerprint = [
+      conn.endpoint,
+      conn.accountId,
+      conn.bucket,
+      conn.accessKeyId,
+      row.secretAccessKey,
+    ].join('|');
+    if (this.client?.fingerprint !== fingerprint) {
+      this.client = { fingerprint, store: new R2Store(conn) };
+    }
+    return { row, r2: this.client.store, problem: null };
   }
 }

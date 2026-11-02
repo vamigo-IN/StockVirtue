@@ -1,10 +1,9 @@
 'use client';
 
 import { useQueryClient } from '@tanstack/react-query';
-import { ImageIcon, Loader2, Search, Upload } from 'lucide-react';
+import { Loader2, Search, Upload } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
-import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -71,7 +70,6 @@ export function MediaPicker({
   const fileInput = useRef<HTMLInputElement>(null);
   const items = media.data?.pages.flatMap((p) => p.items) ?? [];
   const first = media.data?.pages[0];
-  const enabled = first?.enabled ?? true;
 
   async function onFiles(list: FileList | File[] | null) {
     const files = Array.from(list ?? []);
@@ -108,15 +106,6 @@ export function MediaPicker({
             Location and camera details are removed on upload.
           </DialogDescription>
         </DialogHeader>
-        {!enabled && (
-          <Alert>
-            <ImageIcon />
-            <AlertDescription>
-              Media uploads aren&apos;t set up yet. Ask an admin to configure
-              Cloudflare R2.
-            </AlertDescription>
-          </Alert>
-        )}
         <div className="flex gap-2">
           <div className="relative flex-1">
             <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
@@ -128,11 +117,7 @@ export function MediaPicker({
               aria-label="Search images"
             />
           </div>
-          <Button
-            type="button"
-            onClick={() => fileInput.current?.click()}
-            disabled={!enabled}
-          >
+          <Button type="button" onClick={() => fileInput.current?.click()}>
             <Upload /> Upload
           </Button>
           <input
@@ -149,7 +134,6 @@ export function MediaPicker({
         </div>
         <div
           onDragOver={(e) => {
-            if (!enabled) return;
             e.preventDefault();
             setDragging(true);
           }}
@@ -157,7 +141,7 @@ export function MediaPicker({
           onDrop={(e) => {
             e.preventDefault();
             setDragging(false);
-            if (enabled) void onFiles(e.dataTransfer.files);
+            void onFiles(e.dataTransfer.files);
           }}
           className={cn(
             'max-h-[55vh] min-h-48 overflow-y-auto rounded-lg border border-dashed p-3 transition-colors',

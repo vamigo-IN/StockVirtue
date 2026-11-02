@@ -22,7 +22,8 @@ src/
     admin/         newsroom portal (portal.css; isolated from the site chrome)
       login/ invite/   sign-in (password + emailed code) and invitation acceptance
       (portal)/        signed-in pages: dashboard, articles (+ editor, history), review,
-                       my-work, media, taxonomy, staff, roles, users, settings, audit, security
+                       my-work, media, storage, taxonomy, staff, roles, users, settings,
+                       audit, security
       api/[...path]/   the portal's backend-for-frontend (see below)
     layout.tsx     root <html><body> + global SEO metadata (no stylesheet)
     not-found.tsx  branded 404 for unknown URLs
@@ -132,10 +133,18 @@ for rate limits and the audit log. (The backend stays on `api.stockvirtue.com`.)
   phones, market-closed behaviour) with a live preview, and the **data
   licence** — live, delayed (by N minutes), end-of-day or off, for the website
   and the app separately, plus the attribution shown with every price.
-- **Media library**: images upload from the browser straight to the R2 bucket,
-  then the API checks the file, strips its metadata and makes resized copies.
-  The bucket needs a CORS rule allowing `PUT` and `GET` from this site's origin
-  (see the backend's `.env.example`).
+- **Media library**: with Cloudflare R2 connected, images upload from the
+  browser straight to the bucket; otherwise they go to the API server through
+  the portal (`PUT staff/media/:id/content`, passed through unchanged). The API
+  then checks the file, strips its metadata, makes resized copies and serves
+  every image at `api.stockvirtue.com/media/...`.
+- **Media storage** (`media.storage`, Super Admin): connect Cloudflare R2
+  (account ID, bucket, access key; the secret is stored encrypted) and run the
+  connection check: sign in, write a file, read it back, ask the bucket whether
+  this site may upload (CORS), delete the file. The page shows the CORS policy
+  to paste into the bucket. Until R2 is connected and switched on, uploads are
+  kept on the API server's disk. Files never move between stores, and a
+  connection that R2 images still load through can't be removed.
 - **News homepage** (`site.manage`, Super Admin and Admin): which sections
   `/news` shows and in what order: breaking banner, featured, top stories,
   trending, one block per chosen category, app promotion.

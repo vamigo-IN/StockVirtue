@@ -6,6 +6,8 @@ export class ApiError extends Error {
     readonly status: number,
     message: string,
     readonly code?: string,
+    /** The API's whole answer, for pages that show more than the message. */
+    readonly body?: unknown,
   ) {
     super(message);
     this.name = 'ApiError';
@@ -87,13 +89,51 @@ export async function api<T>(
       "Couldn't reach the newsroom. Check your connection and try again.",
     );
   }
+  return finish<T>(res, opts.signInFlow);
+}
+
+async function finish<T>(res: Response, signInFlow?: boolean): Promise<T> {
   const data: unknown = await res.json().catch(() => null);
   if (!res.ok) {
     const { message, code } = readError(data, res.status);
-    if (isSessionEnd(code) && !opts.signInFlow) endSession(code);
-    throw new ApiError(res.status, message, code);
+    if (isSessionEnd(code) && !signInFlow) endSession(code);
+    throw new ApiError(res.status, message, code, data);
   }
   return data as T;
+}
+
+/** Sends a file's raw bytes to a portal route (images kept on our server). */
+export async function apiUpload<T>(
+  path: string,
+  file: Blob,
+  contentType: string,
+): Promise<T> {
+  let res: Response;
+  try {
+    res = await fetch(`/admin/api/${path}`, {
+      method: 'PUT',
+      headers: { 'x-sv-portal': '1', 'content-type': contentType },
+      body: file,
+      cache: 'no-store',
+      credentials: 'same-origin',
+    });
+  } catch {
+    throw new ApiError(
+      0,
+      "The upload didn't go through. Check your connection and try again.",
+    );
+  }
+  // nginx answers an oversized body itself, before it reaches the portal.
+  if (
+    res.status === 413 &&
+    !res.headers.get('content-type')?.includes('json')
+  ) {
+    throw new ApiError(
+      413,
+      'The server refused a file this large. An admin can raise its upload limit (nginx client_max_body_size).',
+    );
+  }
+  return finish<T>(res);
 }
 
 export function errorMessage(err: unknown): string {
