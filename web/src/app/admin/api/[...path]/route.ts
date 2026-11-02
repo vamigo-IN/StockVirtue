@@ -100,6 +100,19 @@ async function handle(req: NextRequest, ctx: Ctx) {
   );
   let body: string | ArrayBuffer | undefined;
   if (upload) {
+    // No session, no reason to take the file in.
+    if (!token) {
+      return NextResponse.json(
+        {
+          statusCode: 401,
+          message: {
+            message: 'Sign in to the newsroom to continue.',
+            code: 'staff_session_required',
+          },
+        },
+        { status: 401, headers: { 'cache-control': 'no-store' } },
+      );
+    }
     const declared = Number(req.headers.get('content-length'));
     if (!Number.isFinite(declared) || declared <= 0) {
       return fail(411, 'Send the file with its size.');
@@ -111,8 +124,8 @@ async function handle(req: NextRequest, ctx: Ctx) {
       return fail(415, 'Upload a JPEG, PNG, WebP, GIF or AVIF image.');
     }
     body = await req.arrayBuffer();
-    if (body.byteLength > MAX_UPLOAD_BYTES) {
-      return fail(413, 'That file is too large.');
+    if (body.byteLength !== declared) {
+      return fail(400, 'The upload was cut short. Try again.');
     }
     headers['content-type'] = type;
   } else {

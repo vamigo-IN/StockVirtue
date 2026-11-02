@@ -24,11 +24,23 @@ function fileHeaders(res: Response, type: string) {
 }
 
 function notFound(res: Response) {
+  res.removeHeader('ETag');
+  res.removeHeader('Last-Modified');
   res
     .status(404)
     .setHeader('Cache-Control', 'public, max-age=60')
     .type('text/plain')
     .send('Not found');
+}
+
+/** R2 is set up but can't be used (e.g. its saved key is unreadable). */
+function unavailable(res: Response) {
+  res
+    .status(503)
+    .setHeader('Cache-Control', 'no-store')
+    .setHeader('Retry-After', '300')
+    .type('text/plain')
+    .send('This image is unavailable right now.');
 }
 
 /**
@@ -80,18 +92,27 @@ async function serve(
       res.sendFile(
         key,
         { root: storage.local.root, cacheControl: false, dotfiles: 'deny' },
-        (err) => {
-          // A reader leaving mid-file is no error; a file deleted since the
-          // check above is simply gone.
-          if (err && !res.headersSent) notFound(res);
+        (err?: Error & { status?: number }) => {
+          // A reader leaving mid-file is no error. A failed precondition or
+          // an impossible range keeps its own status and is never cached.
+          if (err && !res.headersSent) {
+            if (!err.status || err.status === 404) notFound(res);
+            else {
+              res.removeHeader('ETag');
+              res.removeHeader('Last-Modified');
+              res.removeHeader('Content-Type');
+              res.status(err.status).setHeader('Cache-Control', 'no-store');
+              res.end();
+            }
+          }
           done();
         },
       );
     });
   }
 
-  const r2 = (await storage.connection()).r2;
-  if (!r2) return notFound(res);
+  const { r2, problem } = await storage.connection();
+  if (!r2) return problem ? unavailable(res) : notFound(res);
   if (req.method === 'HEAD') {
     const head = await r2.head(key);
     if (!head) return notFound(res);

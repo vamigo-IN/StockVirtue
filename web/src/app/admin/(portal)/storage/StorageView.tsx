@@ -291,6 +291,8 @@ export function StorageView() {
   }
 
   const saved = view.r2.connected || view.r2.hasSecret || !!view.r2.bucket;
+  // Images in R2 load from the saved bucket, so it can't change under them.
+  const locked = view.images.r2 > 0;
   const status = view.r2.problem
     ? {
         label: 'Needs attention',
@@ -396,6 +398,7 @@ export function StorageView() {
                 id="accountId"
                 value={form.accountId}
                 onChange={(e) => set('accountId', e.target.value)}
+                disabled={locked}
                 placeholder="32 characters, e.g. 4f1c…9b2e"
                 autoComplete="off"
                 spellCheck={false}
@@ -411,6 +414,7 @@ export function StorageView() {
                 id="bucket"
                 value={form.bucket}
                 onChange={(e) => set('bucket', e.target.value)}
+                disabled={locked}
                 placeholder="stockvirtue-media"
                 autoComplete="off"
                 spellCheck={false}
@@ -451,6 +455,7 @@ export function StorageView() {
                   id="endpoint"
                   value={form.endpoint}
                   onChange={(e) => set('endpoint', e.target.value)}
+                  disabled={locked}
                   placeholder="https://<account id>.eu.r2.cloudflarestorage.com"
                   autoComplete="off"
                   spellCheck={false}
@@ -460,7 +465,7 @@ export function StorageView() {
                   https://&lt;account id&gt;.r2.cloudflarestorage.com.
                 </p>
               </div>
-            ) : (
+            ) : locked ? null : (
               <button
                 type="button"
                 onClick={() => setAdvanced(true)}
@@ -470,6 +475,12 @@ export function StorageView() {
               </button>
             )}
           </fieldset>
+          {locked && (
+            <p className="text-xs text-muted-foreground">
+              Images are stored in this bucket, so its account, endpoint and
+              name stay as they are. You can still replace the access keys.
+            </p>
+          )}
 
           <div className="flex items-start gap-3 rounded-lg border p-4">
             <Switch
@@ -550,6 +561,12 @@ export function StorageView() {
           <Button variant="outline" size="sm" onClick={() => void copyPolicy()}>
             <Copy /> Copy policy
           </Button>
+          <p className="text-xs text-muted-foreground">
+            Optional: under the bucket&apos;s object lifecycle rules, delete
+            objects with the prefix <code className="font-mono">incoming/</code>{' '}
+            after 1 day. That clears uploads that were started but never
+            finished.
+          </p>
         </CardContent>
       </Card>
 

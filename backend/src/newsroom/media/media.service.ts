@@ -4,6 +4,8 @@ import {
   BadRequestException,
   ConflictException,
   ForbiddenException,
+  HttpException,
+  HttpStatus,
   Injectable,
   Logger,
   NotFoundException,
@@ -33,6 +35,9 @@ import {
 const VARIANT_WIDTHS = [480, 1200] as const;
 /// ~60 megapixels: far beyond any news photo, and stops decompression bombs.
 const MAX_PIXELS = 60_000_000;
+/// Uploads kept on this server must leave this much disk free (the API and
+/// the trading engine share it).
+const MIN_FREE_BYTES = 1024 ** 3;
 
 interface Variant {
   key: string;
@@ -198,6 +203,13 @@ export class MediaService {
         `Images can be up to ${Math.round(max / 1048576)} MB.`,
       );
     if (declaredBytes !== null && declaredBytes > max) throw tooLarge();
+    const free = await this.storage.local.freeBytes();
+    if (free !== null && free - (declaredBytes ?? max) < MIN_FREE_BYTES) {
+      throw new HttpException(
+        "This server is nearly out of disk space, so it can't keep more uploads. Free some space, or connect Cloudflare R2 under Media storage.",
+        HttpStatus.INSUFFICIENT_STORAGE,
+      );
+    }
     try {
       return { bytes: await this.storage.receive(id, body, max) };
     } catch (err) {
@@ -223,13 +235,25 @@ export class MediaService {
         "The file didn't arrive. Try the upload again.",
       );
     }
-    if (head.bytes > this.storage.maxUploadBytes) {
+    const max = this.storage.maxUploadBytes;
+    const limit = `Images can be up to ${Math.round(max / 1048576)} MB.`;
+    if (head.bytes === 0) {
       await this.discard(asset);
-      throw new BadRequestException(
-        `Images can be up to ${Math.round(this.storage.maxUploadBytes / 1048576)} MB.`,
-      );
+      throw new BadRequestException('That file is empty. Upload it again.');
     }
-    const original = await this.storage.getBytes(asset.store, incoming);
+    if (head.bytes > max) {
+      await this.discard(asset);
+      throw new BadRequestException(limit);
+    }
+    let original: Buffer;
+    try {
+      // Bounded again: the file can be swapped after the size check.
+      original = await this.storage.getBytes(asset.store, incoming, max);
+    } catch (err) {
+      if (!(err instanceof TooLargeError)) throw err;
+      await this.discard(asset);
+      throw new BadRequestException(limit);
+    }
     const kind = sniffImage(original);
     if (!kind) {
       await this.discard(asset);
@@ -263,39 +287,63 @@ export class MediaService {
       await this.storage.put(asset.store, key, v.data, 'image/webp');
       variants[`w${v.target}`] = { key, width: v.width, height: v.height };
     }
-    const updated = await this.prisma.$transaction(async (tx) => {
-      const row = await tx.mediaAsset.update({
-        where: { id },
-        data: {
-          storageKey,
-          status: MediaStatus.READY,
-          mimeType: IMAGE_MIME[kind],
-          bytes: processed.data.length,
-          width: processed.width,
-          height: processed.height,
-          sha256: createHash('sha256').update(processed.data).digest('hex'),
-          variants: variants as unknown as Prisma.InputJsonValue,
-        },
-        include: ASSET_INCLUDE,
-      });
-      await this.audit.record(
-        {
-          actor: { userId: actor.userId, email: actor.email },
-          action: 'media.upload',
-          entityType: 'MediaAsset',
-          entityId: id,
-          after: {
-            name: asset.originalName,
+    let updated: AssetRow;
+    try {
+      updated = await this.prisma.$transaction(async (tx) => {
+        // Only a still-pending upload becomes ready: one deleted meanwhile
+        // must stay deleted.
+        const { count } = await tx.mediaAsset.updateMany({
+          where: { id, status: MediaStatus.PENDING },
+          data: {
+            storageKey,
+            status: MediaStatus.READY,
             mimeType: IMAGE_MIME[kind],
+            bytes: processed.data.length,
             width: processed.width,
             height: processed.height,
+            sha256: createHash('sha256').update(processed.data).digest('hex'),
+            variants: variants as unknown as Prisma.InputJsonValue,
           },
-          ...client,
-        },
-        tx,
-      );
-      return row;
-    });
+        });
+        const row = await tx.mediaAsset.findUniqueOrThrow({
+          where: { id },
+          include: ASSET_INCLUDE,
+        });
+        if (count === 0) {
+          // Finished by a second request for the same upload: same files.
+          if (row.status === MediaStatus.READY) return row;
+          throw new ConflictException(
+            'This upload was cancelled while it was being processed.',
+          );
+        }
+        await this.audit.record(
+          {
+            actor: { userId: actor.userId, email: actor.email },
+            action: 'media.upload',
+            entityType: 'MediaAsset',
+            entityId: id,
+            after: {
+              name: asset.originalName,
+              mimeType: IMAGE_MIME[kind],
+              width: processed.width,
+              height: processed.height,
+            },
+            ...client,
+          },
+          tx,
+        );
+        return row;
+      });
+    } catch (err) {
+      if (err instanceof ConflictException) {
+        // The files just written belong to nothing now.
+        const keys = [storageKey, ...Object.values(variants).map((v) => v.key)];
+        for (const key of keys) {
+          await this.storage.delete(asset.store, key).catch(() => undefined);
+        }
+      }
+      throw err;
+    }
     await this.storage
       .delete(asset.store, incoming)
       .catch((err: Error) =>

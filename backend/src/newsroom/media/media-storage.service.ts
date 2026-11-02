@@ -17,7 +17,12 @@ import { AppConfig } from '../../config/configuration';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ClientInfo, StaffPrincipal } from '../../staff/staff-request';
 import { incomingKey } from '../../storage/media-keys';
-import { R2Connection, R2Store, s3Status } from '../../storage/r2-store';
+import {
+  R2Connection,
+  r2Endpoint,
+  R2Store,
+  s3Status,
+} from '../../storage/r2-store';
 import {
   completeConnection,
   MEDIA_STORAGE_ID,
@@ -251,14 +256,21 @@ export class MediaStorageService {
     const row = await this.row();
     const draft = this.draft(row, input);
     const conn = completeConnection(draft);
-    if (!conn) {
-      if (input.uploadToR2) {
-        throw new BadRequestException(this.incomplete(draft));
-      }
+    if (!conn && input.uploadToR2) {
+      throw new BadRequestException(this.incomplete(draft));
+    }
+    // A different account, endpoint or bucket (or none at all) is a new place.
+    const moved =
+      !!row?.bucket &&
+      (!conn ||
+        draft.bucket !== row.bucket ||
+        r2Endpoint(draft) !== r2Endpoint(row));
+    if (moved && draft.changed) {
+      // Images in R2 load from the saved bucket: it can't change under them.
       const inR2 = await this.imagesInR2();
-      if (inR2 > 0 && draft.changed) {
+      if (inR2 > 0) {
         throw new ConflictException(
-          `${inR2} image${inR2 === 1 ? ' is' : 's are'} stored in R2 and load through this connection. Complete it, or keep the saved one.`,
+          `${inR2} image${inR2 === 1 ? ' is' : 's are'} stored in the bucket "${row.bucket}" and load from it, so its account, endpoint and bucket can't change. You can still replace the access keys.`,
         );
       }
     }
@@ -300,6 +312,8 @@ export class MediaStorageService {
           : {}),
       updatedBy: actor.displayName,
     };
+    // Unfinished uploads went to the old bucket; they can't complete now.
+    if (moved && draft.changed) await this.dropPendingR2();
     await this.prisma.$transaction(async (tx) => {
       await tx.mediaStorageSettings.upsert({
         where: { id: MEDIA_STORAGE_ID },
@@ -534,7 +548,9 @@ export class MediaStorageService {
         ))
       ) {
         await attempt('read', async (signal) => {
-          const back = (await store.getBytes(probe, signal)).toString('utf8');
+          const back = (await store.getBytes(probe, { signal })).toString(
+            'utf8',
+          );
           if (back !== text) throw new Error('mismatch');
         });
         await attempt('cors', (signal) => this.corsPreflight(store, signal));

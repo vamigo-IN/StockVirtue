@@ -11,7 +11,7 @@ import { MediaStorageSettings, MediaStore } from '@prisma/client';
 import { SecretBoxService, SecretUnreadableError } from '../common/secret-box';
 import { AppConfig, StorageConfig } from '../config/configuration';
 import { PrismaService } from '../prisma/prisma.service';
-import { LocalStore } from './local-store';
+import { LocalStore, TooLargeError } from './local-store';
 import { incomingKey } from './media-keys';
 import { R2Connection, R2Store } from './r2-store';
 
@@ -193,9 +193,20 @@ export class StorageService implements OnModuleInit {
     return h && { bytes: h.bytes };
   }
 
-  async getBytes(store: MediaStore, key: string): Promise<Buffer> {
-    if (store === MediaStore.LOCAL) return this.local.getBytes(key);
-    return (await this.r2()).getBytes(key);
+  /** Bytes of a stored file; over maxBytes throws TooLargeError. */
+  async getBytes(
+    store: MediaStore,
+    key: string,
+    maxBytes?: number,
+  ): Promise<Buffer> {
+    const bytes =
+      store === MediaStore.LOCAL
+        ? await this.local.getBytes(key)
+        : await (await this.r2()).getBytes(key, { maxBytes });
+    if (maxBytes !== undefined && bytes.length > maxBytes) {
+      throw new TooLargeError();
+    }
+    return bytes;
   }
 
   async put(
