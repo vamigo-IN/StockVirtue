@@ -4,6 +4,7 @@ import {
   access,
   constants,
   mkdir,
+  readdir,
   readFile,
   rename,
   rm,
@@ -118,6 +119,42 @@ export class LocalStore {
 
   async delete(key: string): Promise<void> {
     await rm(this.path(key), { force: true });
+  }
+
+  /** Deletes files directly in a folder (e.g. "incoming") older than a date. */
+  async sweep(folder: string, olderThan: Date): Promise<number> {
+    const dir = resolve(this.root, folder);
+    if (!dir.startsWith(this.root + sep) || !/^[a-z0-9-]+$/.test(folder)) {
+      throw new Error(`Refused folder "${folder}".`);
+    }
+    let names: string[];
+    try {
+      names = await readdir(dir);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return 0;
+      throw err;
+    }
+    let removed = 0;
+    for (const name of names) {
+      const file = resolve(dir, name);
+      const s = await stat(file).catch(() => null);
+      if (s?.isFile() && s.mtime < olderThan) {
+        await rm(file, { force: true });
+        removed++;
+      }
+    }
+    return removed;
+  }
+
+  /** Space left for this process, or null where the OS won't say. */
+  async freeBytes(): Promise<number | null> {
+    try {
+      await mkdir(this.root, { recursive: true });
+      const fs = await statfs(this.root);
+      return Number(fs.bavail) * Number(fs.bsize);
+    } catch {
+      return null;
+    }
   }
 
   /** Whether files can be written here, and the space left. */

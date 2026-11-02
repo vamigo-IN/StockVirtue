@@ -104,11 +104,22 @@ export class R2Store {
     }
   }
 
-  /** Whole object as bytes (callers bound the size with head() first). */
-  async getBytes(key: string, signal?: AbortSignal): Promise<Buffer> {
+  /**
+   * Whole object as bytes. With maxBytes, at most one byte more is fetched
+   * (a range), so an object swapped for a huge one can't fill the memory.
+   */
+  async getBytes(
+    key: string,
+    opts: { maxBytes?: number; signal?: AbortSignal } = {},
+  ): Promise<Buffer> {
     const res = await this.client.send(
-      new GetObjectCommand({ Bucket: this.bucket, Key: key }),
-      { abortSignal: signal },
+      new GetObjectCommand({
+        Bucket: this.bucket,
+        Key: key,
+        Range:
+          opts.maxBytes !== undefined ? `bytes=0-${opts.maxBytes}` : undefined,
+      }),
+      { abortSignal: opts.signal },
     );
     if (!res.Body) return Buffer.alloc(0);
     return Buffer.from(await res.Body.transformToByteArray());

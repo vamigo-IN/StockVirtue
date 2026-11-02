@@ -1,6 +1,6 @@
 import { InjectQueue, Processor, WorkerHost } from '@nestjs/bullmq';
 import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
-import { MediaStatus, StaffChallengeStatus } from '@prisma/client';
+import { MediaStatus, MediaStore, StaffChallengeStatus } from '@prisma/client';
 import { Job, Queue } from 'bullmq';
 import { PrismaService } from '../prisma/prisma.service';
 import { QUEUES } from '../queue/queue.module';
@@ -83,14 +83,11 @@ export class MaintenanceProcessor extends WorkerHost {
 
   /** Uploads started but never completed: their bytes go, the row is closed. */
   async cleanupUploads(now: Date): Promise<number> {
+    const cutoff = new Date(now.getTime() - ABANDONED_UPLOAD_HOURS * 3_600_000);
     const stale = await this.prisma.mediaAsset.findMany({
-      where: {
-        status: MediaStatus.PENDING,
-        createdAt: {
-          lt: new Date(now.getTime() - ABANDONED_UPLOAD_HOURS * 3_600_000),
-        },
-      },
+      where: { status: MediaStatus.PENDING, createdAt: { lt: cutoff } },
       select: { id: true, store: true },
+      orderBy: { createdAt: 'asc' },
       take: 500,
     });
     let removed = 0;
@@ -98,11 +95,16 @@ export class MaintenanceProcessor extends WorkerHost {
       try {
         await this.storage.delete(a.store, incomingKey(a.id));
       } catch (err) {
-        // Kept PENDING, so the next run tries again.
-        this.logger.warn(
-          `Couldn't remove upload ${a.id}: ${(err as Error).message}`,
-        );
-        continue;
+        // With no R2 connection at all the file can't be reached (an R2
+        // lifecycle rule clears it); otherwise the next run tries again.
+        const unreachable =
+          a.store === MediaStore.R2 && !(await this.storage.connection()).r2;
+        if (!unreachable) {
+          this.logger.warn(
+            `Couldn't remove upload ${a.id}: ${(err as Error).message}`,
+          );
+          continue;
+        }
       }
       await this.prisma.mediaAsset.update({
         where: { id: a.id },
@@ -110,6 +112,9 @@ export class MaintenanceProcessor extends WorkerHost {
       });
       removed++;
     }
+    // Leftovers of interrupted writes on this server's disk.
+    const swept = await this.storage.local.sweep('incoming', cutoff);
+    if (swept) this.logger.log(`media-cleanup: ${swept} stale files removed`);
     return removed;
   }
 }
