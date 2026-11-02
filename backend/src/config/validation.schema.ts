@@ -133,8 +133,15 @@ export const validationSchema = Joi.object({
   STAFF_LOGIN_CODE_TTL: Joi.number().min(60).max(1800).default(300),
   STAFF_INVITE_TTL_HOURS: Joi.number().min(1).max(720).default(72),
   NEWSROOM_PORTAL_URL: Joi.string().allow('').default(''),
-  // Media storage: Cloudflare R2. Driver "none" (default) disables uploads.
+  // Seals news-source credentials and AI provider keys. Blank = derived from
+  // JWT_ACCESS_SECRET, so set it before ever rotating that secret.
+  NEWSROOM_SECRETS_KEY: Joi.string().allow('').min(32).default(''),
+  // Hosts news ingestion may fetch although they resolve to private
+  // addresses ("host" or "host:port", comma-separated). Local testing only.
+  INGEST_PRIVATE_HOSTS: Joi.string().allow('').default(''),
+  // Website ticker and widget prices from the API's broker feed.
   MARKET_DISPLAY_ENABLED: Joi.string().valid('true', 'false').default('true'),
+  // Media storage: Cloudflare R2. Driver "none" (default) disables uploads.
   MEDIA_STORAGE_DRIVER: Joi.string().valid('r2', 'none').default('none'),
   R2_ACCOUNT_ID: Joi.string().allow('').default(''),
   R2_ACCESS_KEY_ID: Joi.string().allow('').default(''),

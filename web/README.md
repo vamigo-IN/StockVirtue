@@ -139,6 +139,28 @@ for rate limits and the audit log. (The backend stays on `api.stockvirtue.com`.)
 - **News homepage** (`site.manage`, Super Admin and Admin): which sections
   `/news` shows and in what order: breaking banner, featured, top stories,
   trending, one block per chosen category, app promotion.
+- **Incoming news** (`sources.read`; acting on items needs `news.create`):
+  items from the news sources, checked for duplicates, matched to listed
+  companies and labelled by topic. Start a story from one (blank, or from an
+  AI draft you have read) and it becomes your ordinary draft, with the source
+  credited; dismiss the rest. Tips and press releases can be added by hand
+  (`sources.create`). Nothing here is ever published.
+- **News sources** (`sources.*`): feeds (RSS, Atom), licensed news APIs
+  (JSON, with a field mapping), exchange, company, RBI, SEBI and government
+  announcements, and manual submissions. Per source: schedule, default
+  category, what its terms let us keep (headline only, summary, licensed full
+  text), whether AI drafts are allowed, the credit, licence notes and email
+  alerts to editors. Test fetches without storing; every fetch is in the
+  history with Retry for failures.
+- **Stock mapping**: how items are matched to companies — names and capitalised
+  NSE tickers automatically, plus aliases ("RIL") and blocked phrases
+  ("Reserve Bank of India") staff manage, with a tester.
+- **AI assistant** (`ai.configure`): switched off until a provider is added and
+  chosen. In the editor, the **AI** tab (`ai.use`) offers headlines, summary,
+  SEO text, category and tags, related stocks and stories, a check of the
+  draft, jargon explainers, rewriting a passage and a draft from notes; nothing
+  changes until someone presses Use. Stories that use AI-written text are
+  labelled for readers, and the label can't be removed.
 
 ## News site (`/news`)
 
@@ -178,3 +200,32 @@ for rate limits and the audit log. (The backend stays on `api.stockvirtue.com`.)
   same `/api/revalidate` hook as stories.
 - The ticker runs under the `/news` masthead and, when set to "News pages and
   the home page", in the home page's tapes.
+
+## News sources and the AI assistant
+
+- Sources are fetched by the backend worker (`stockvirtue-worker`): it checks
+  every minute for sources that are due, fetches them at most four at a time,
+  and backs off from a failing one (up to six hours between tries). Without
+  the worker, sources show "Needs attention" and AI requests wait.
+- Fetching is locked down: only http(s) addresses that resolve to public
+  networks (no localhost, private ranges or cloud metadata), redirects
+  re-checked, 5 MB and 20 seconds at most. API keys typed into the portal are
+  encrypted with `NEWSROOM_SECRETS_KEY` (backend) and never sent back to a
+  browser; set that key before ever rotating `JWT_ACCESS_SECRET`.
+- An item keeps only what its source's terms allow, as they stood when it
+  arrived. Repeats are caught by link, by headline, and by near-identical
+  headlines (headlines with different figures count as different stories);
+  possible repeats are flagged for a person. Fetch history is kept 60 days,
+  untouched items 120 days.
+- The AI assistant works with Anthropic (Claude), OpenAI, any OpenAI-compatible
+  server or a self-hosted Ollama server. Every answer is checked before anyone
+  sees it: figures that aren't in the story or its sources are removed, wording
+  copied from a source is removed, and items from headline-only sources, or
+  sources whose terms don't allow it, are never drafted. Each request is
+  recorded (what was sent, what came back, the checks, tokens and estimated
+  cost); the text sent is cleared after 90 days. A monthly budget and a daily
+  allowance per person cap the spend.
+- The AI never publishes, schedules or approves anything: drafts land on the
+  incoming item or in the editor for a person, and every story still goes
+  through review.
+

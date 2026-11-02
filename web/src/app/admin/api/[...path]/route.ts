@@ -135,10 +135,17 @@ async function handle(req: NextRequest, ctx: Ctx) {
     return res;
   }
 
-  const res = NextResponse.json(data, {
-    status: upstream.status,
-    headers: { 'cache-control': 'no-store' },
-  });
+  // A 204 (a delete) has no body: Response.json can't carry that status.
+  const res =
+    upstream.status === 204 || upstream.status === 205
+      ? new NextResponse(null, {
+          status: upstream.status,
+          headers: { 'cache-control': 'no-store' },
+        })
+      : NextResponse.json(data, {
+          status: upstream.status,
+          headers: { 'cache-control': 'no-store' },
+        });
   const code = (data as { message?: { code?: unknown } } | null)?.message?.code;
   if (route === 'staff/auth/logout' || isSessionEnd(code)) {
     res.cookies.set(STAFF_COOKIE, '', {

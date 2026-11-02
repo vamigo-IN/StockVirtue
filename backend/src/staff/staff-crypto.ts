@@ -30,7 +30,7 @@ export function normalizeEmail(raw: string): string {
   return raw.trim().toLowerCase();
 }
 
-/** "aditya@growven.ai" → "a••••a@growven.ai", for "code sent to …" copy. */
+/** "priya@example.com" → "p••••a@example.com", for "code sent to …" copy. */
 export function maskEmail(email: string): string {
   const at = email.indexOf('@');
   if (at <= 0) return '••••';

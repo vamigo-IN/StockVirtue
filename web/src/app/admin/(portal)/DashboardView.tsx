@@ -6,10 +6,12 @@ import {
   CalendarClock,
   ClipboardCheck,
   FilePen,
+  Inbox,
   KeyRound,
   MessageSquareWarning,
-  Newspaper,
   MonitorSmartphone,
+  Newspaper,
+  Rss,
   ShieldAlert,
   UserRound,
   Users,
@@ -163,6 +165,47 @@ export function DashboardView() {
               />
             </>
           )}
+        </div>
+      )}
+
+      {data?.sources && data.sources.total > 0 && (
+        <div className="mb-6 grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+          <StatCard
+            label="Incoming news waiting"
+            value={formatCount(data.sources.waiting)}
+            icon={Inbox}
+            href="/admin/inbox"
+            hint={`${formatCount(data.sources.last24h)} items in the last 24 h`}
+          />
+          <StatCard
+            label="News sources healthy"
+            value={`${data.sources.healthy}/${data.sources.total - data.sources.manual}`}
+            icon={Rss}
+            href="/admin/sources"
+            hint={
+              data.sources.paused
+                ? `${data.sources.paused} paused`
+                : 'Fetched on schedule'
+            }
+          />
+          <StatCard
+            label="Sources needing attention"
+            value={formatCount(data.sources.degraded + data.sources.failing)}
+            icon={AlertTriangle}
+            href="/admin/sources"
+            tone={
+              data.sources.failing
+                ? 'danger'
+                : data.sources.degraded
+                  ? 'warning'
+                  : 'default'
+            }
+            hint={
+              data.sources.failing
+                ? `${data.sources.failing} failing`
+                : 'Failing or behind schedule'
+            }
+          />
         </div>
       )}
 

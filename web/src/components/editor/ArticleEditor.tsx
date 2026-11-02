@@ -396,14 +396,19 @@ export function ArticleEditor({
   initialContent,
   editable,
   onChange,
+  onReady,
 }: {
   articleId: string;
   initialContent: Record<string, unknown>;
   editable: boolean;
   onChange: (doc: Record<string, unknown>) => void;
+  /** The TipTap editor once it exists (null when it goes), for tools beside it. */
+  onReady?: (editor: Editor | null) => void;
 }) {
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
+  const onReadyRef = useRef(onReady);
+  onReadyRef.current = onReady;
   const editor = useEditor({
     immediatelyRender: false,
     editable,
@@ -441,6 +446,12 @@ export function ArticleEditor({
     // false: switching to read-only is not an edit, so no autosave.
     editor?.setEditable(editable, false);
   }, [editor, editable]);
+
+  useEffect(() => {
+    if (!editor) return;
+    onReadyRef.current?.(editor);
+    return () => onReadyRef.current?.(null);
+  }, [editor]);
 
   if (!editor) {
     return (

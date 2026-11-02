@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  Bot,
   ChartCandlestick,
   ClipboardCheck,
   ExternalLink,
@@ -13,8 +14,11 @@ import {
   LayoutDashboard,
   LayoutTemplate,
   Library,
+  Link2,
   LogOut,
   Menu,
+  Newspaper,
+  Rss,
   ScrollText,
   ShieldCheck,
   UserRound,
@@ -46,7 +50,7 @@ import { cn } from '@/lib/utils';
 import { can } from '@/portal/access';
 import { api, ApiError, errorMessage } from '@/portal/api';
 import { initials } from '@/portal/format';
-import { useMe } from '@/portal/queries';
+import { useIncomingCount, useMe } from '@/portal/queries';
 import { primaryRole, roleLabel } from '@/portal/roles';
 import type { StaffMe } from '@/portal/types';
 
@@ -65,6 +69,8 @@ interface NavItem {
   icon: LucideIcon;
   /** Shown only to people holding this permission. */
   permission?: string;
+  /** Shows the number of incoming items waiting. */
+  incomingBadge?: boolean;
 }
 
 const NAV: { title?: string; items: NavItem[] }[] = [
@@ -77,6 +83,13 @@ const NAV: { title?: string; items: NavItem[] }[] = [
         label: 'My work',
         icon: Inbox,
         permission: 'news.read',
+      },
+      {
+        href: '/admin/inbox',
+        label: 'Incoming news',
+        icon: Newspaper,
+        permission: 'sources.read',
+        incomingBadge: true,
       },
       {
         href: '/admin/articles',
@@ -107,6 +120,29 @@ const NAV: { title?: string; items: NavItem[] }[] = [
         label: 'Categories & tags',
         icon: FolderTree,
         permission: 'news.read',
+      },
+    ],
+  },
+  {
+    title: 'Sources & AI',
+    items: [
+      {
+        href: '/admin/sources',
+        label: 'News sources',
+        icon: Rss,
+        permission: 'sources.read',
+      },
+      {
+        href: '/admin/stock-mapping',
+        label: 'Stock mapping',
+        icon: Link2,
+        permission: 'sources.read',
+      },
+      {
+        href: '/admin/ai',
+        label: 'AI assistant',
+        icon: Bot,
+        permission: 'ai.configure',
       },
     ],
   },
@@ -202,6 +238,7 @@ function SidebarNav({
   onNavigate?: () => void;
 }) {
   const pathname = usePathname();
+  const incoming = useIncomingCount(can(me, 'sources.read'));
   return (
     <nav
       aria-label="Portal"
@@ -245,6 +282,14 @@ function SidebarNav({
                         aria-hidden
                       />
                       {it.label}
+                      {it.incomingBadge && !!incoming.data && (
+                        <span
+                          className="ml-auto rounded-full bg-sidebar-primary/20 px-1.5 text-[11px] font-semibold text-sidebar-primary tabular-nums"
+                          aria-label={`${incoming.data} waiting`}
+                        >
+                          {incoming.data > 99 ? '99+' : incoming.data}
+                        </span>
+                      )}
                     </Link>
                   </li>
                 );

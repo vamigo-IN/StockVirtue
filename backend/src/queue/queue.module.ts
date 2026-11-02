@@ -8,6 +8,10 @@ export const QUEUES = {
   maintenance: 'newsroom-maintenance',
   /** Scheduled article publishing (delayed jobs plus a one-minute sweep). */
   publishing: 'newsroom-publishing',
+  /** News-source polling (a one-minute sweep plus fetch-now and retries). */
+  ingest: 'newsroom-ingest',
+  /** AI assistant requests. */
+  ai: 'newsroom-ai',
 } as const;
 
 /**

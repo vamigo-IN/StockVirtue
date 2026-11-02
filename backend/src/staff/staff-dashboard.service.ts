@@ -6,6 +6,7 @@ import {
   StaffStatus,
   UserStatus,
 } from '@prisma/client';
+import { sourceHealth, SourceHealth } from '../ingestion/source-health';
 import { PrismaService } from '../prisma/prisma.service';
 import { PermissionKey, SUPER_ADMIN } from '../rbac/rbac.catalog';
 import { StaffPrincipal } from './staff-request';
@@ -31,7 +32,7 @@ export class StaffDashboardService {
   async overview(actor: StaffPrincipal) {
     const can = (p: PermissionKey) =>
       actor.roles.includes(SUPER_ADMIN) || actor.permissions.has(p);
-    const [mySessions, people, users, activity, security, articles] =
+    const [mySessions, people, users, activity, security, articles, sources] =
       await Promise.all([
         this.prisma.staffSession.count({
           where: {
@@ -51,8 +52,39 @@ export class StaffDashboardService {
         can('news.read')
           ? this.articleFigures(actor, can('news.read_all'))
           : null,
+        can('sources.read') ? this.sourceFigures() : null,
       ]);
-    return { mySessions, people, users, activity, security, articles };
+    return { mySessions, people, users, activity, security, articles, sources };
+  }
+
+  /** News-source health and the incoming items waiting for someone. */
+  private async sourceFigures() {
+    const [list, waiting, last24h] = await Promise.all([
+      this.prisma.newsSource.findMany({
+        select: {
+          format: true,
+          isActive: true,
+          consecutiveFailures: true,
+          lastSuccessAt: true,
+          pollMinutes: true,
+          createdAt: true,
+        },
+      }),
+      this.prisma.newsSourceItem.count({ where: { status: 'NEW' } }),
+      this.prisma.newsSourceItem.count({
+        where: { fetchedAt: { gte: new Date(Date.now() - DAY_MS) } },
+      }),
+    ]);
+    const health: Record<SourceHealth, number> = {
+      manual: 0,
+      paused: 0,
+      pending: 0,
+      healthy: 0,
+      degraded: 0,
+      failing: 0,
+    };
+    for (const s of list) health[sourceHealth(s)]++;
+    return { total: list.length, ...health, waiting, last24h };
   }
 
   private async people() {

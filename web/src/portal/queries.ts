@@ -7,6 +7,10 @@ import {
 } from '@tanstack/react-query';
 import { api } from './api';
 import type {
+  AiJob,
+  AiSettingsView,
+  AiStatus,
+  AiUsage,
   AppUserDetail,
   AppUserPage,
   ArticleComment,
@@ -18,6 +22,8 @@ import type {
   Category,
   Dashboard,
   DirectoryEntry,
+  FetchLogRow,
+  FetchStatus,
   HomepageView,
   Invitation,
   MarketInstrument,
@@ -27,12 +33,18 @@ import type {
   MediaPage,
   MySession,
   MyWork,
+  NewsSourceView,
+  Paged,
   PermissionInfo,
   RoleInfo,
+  SimilarStories,
   SiteSettingsView,
+  SourceItemDetail,
+  SourceItemPage,
   StaffMe,
   StaffMember,
   StaffSessionRow,
+  StockAlias,
   StockRef,
   Tag,
   VersionDetail,
@@ -71,7 +83,42 @@ export const qk = {
   media: (q: string) => ['media', q] as const,
   myWork: ['my-work'] as const,
   directory: ['directory'] as const,
+  sources: ['sources'] as const,
+  source: (id: string) => ['sources', 'one', id] as const,
+  fetchLogs: (f: FetchLogFilters) => ['sources', 'logs', f] as const,
+  items: (f: ItemFilters) => ['source-items', 'list', f] as const,
+  item: (id: string) => ['source-items', 'one', id] as const,
+  stockAliases: ['stock-mapping'] as const,
+  aiStatus: ['ai', 'status'] as const,
+  aiSettings: ['ai', 'settings'] as const,
+  aiUsage: ['ai', 'usage'] as const,
+  aiJobs: (f: AiJobFilters) => ['ai', 'jobs', f] as const,
+  aiJob: (id: string) => ['ai', 'job', id] as const,
+  similar: (id: string) => ['article', id, 'similar'] as const,
 };
+
+export interface FetchLogFilters {
+  sourceId?: string;
+  status?: FetchStatus;
+  page?: number;
+}
+
+export interface ItemFilters {
+  status?: string;
+  sourceId?: string;
+  q?: string;
+  stock?: string;
+  topic?: string;
+  page?: number;
+}
+
+export interface AiJobFilters {
+  articleId?: string;
+  task?: string;
+  status?: string;
+  scope?: 'mine' | 'all';
+  page?: number;
+}
 
 export interface ArticleFilters {
   status?: string;
@@ -335,3 +382,128 @@ export function invalidateArticles(qc: QueryClient) {
   void qc.invalidateQueries({ queryKey: qk.dashboard });
   void qc.invalidateQueries({ queryKey: ['audit'] });
 }
+
+// ── News sources and incoming news ─────────────────────────────────────
+
+export const useSources = (enabled = true) =>
+  useQuery({
+    queryKey: qk.sources,
+    queryFn: () => api<NewsSourceView[]>('staff/sources'),
+    enabled,
+    refetchInterval: 30_000,
+  });
+
+export const useSource = (id: string) =>
+  useQuery({
+    queryKey: qk.source(id),
+    queryFn: () => api<NewsSourceView>(`staff/sources/${id}`),
+    refetchInterval: 15_000,
+  });
+
+export const useFetchLogs = (f: FetchLogFilters) =>
+  useQuery({
+    queryKey: qk.fetchLogs(f),
+    queryFn: () =>
+      api<Paged<FetchLogRow>>('staff/sources/logs', { query: { ...f } }),
+    // A fetch now / retry finishes within seconds; keep the history live.
+    refetchInterval: 10_000,
+  });
+
+export const useSourceItems = (f: ItemFilters) =>
+  useQuery({
+    queryKey: qk.items(f),
+    queryFn: () =>
+      api<SourceItemPage>('staff/source-items', { query: { ...f } }),
+    refetchInterval: 30_000,
+  });
+
+export const useSourceItem = (id: string | null) =>
+  useQuery({
+    queryKey: qk.item(id ?? ''),
+    queryFn: () => api<SourceItemDetail>(`staff/source-items/${id}`),
+    enabled: !!id,
+    refetchInterval: (q) =>
+      q.state.data?.aiDraft &&
+      ['QUEUED', 'RUNNING'].includes(q.state.data.aiDraft.status)
+        ? 2_000
+        : false,
+  });
+
+/** Waiting items, for the nav badge. */
+export const useIncomingCount = (enabled: boolean) =>
+  useQuery({
+    queryKey: qk.items({ status: 'NEW', page: 1 }),
+    queryFn: () =>
+      api<SourceItemPage>('staff/source-items', {
+        query: { status: 'NEW', page: 1 },
+      }),
+    enabled,
+    refetchInterval: 60_000,
+    select: (d) => d.counts.NEW,
+  });
+
+export const useStockAliases = () =>
+  useQuery({
+    queryKey: qk.stockAliases,
+    queryFn: () => api<StockAlias[]>('staff/stock-mapping'),
+  });
+
+export const useSimilar = (articleId: string, enabled: boolean) =>
+  useQuery({
+    queryKey: qk.similar(articleId),
+    queryFn: () => api<SimilarStories>(`staff/articles/${articleId}/similar`),
+    enabled,
+  });
+
+export function invalidateIncoming(qc: QueryClient) {
+  void qc.invalidateQueries({ queryKey: ['source-items'] });
+  void qc.invalidateQueries({ queryKey: qk.sources });
+  void qc.invalidateQueries({ queryKey: qk.dashboard });
+}
+
+// ── AI assistant ───────────────────────────────────────────────────────
+
+export const useAiStatus = (enabled = true) =>
+  useQuery({
+    queryKey: qk.aiStatus,
+    queryFn: () => api<AiStatus>('staff/ai/status'),
+    enabled,
+    staleTime: 30_000,
+  });
+
+export const useAiSettings = () =>
+  useQuery({
+    queryKey: qk.aiSettings,
+    queryFn: () => api<AiSettingsView>('staff/ai/settings'),
+  });
+
+export const useAiUsage = () =>
+  useQuery({
+    queryKey: qk.aiUsage,
+    queryFn: () => api<AiUsage>('staff/ai/usage'),
+  });
+
+export const useAiJobs = (f: AiJobFilters, enabled = true) =>
+  useQuery({
+    queryKey: qk.aiJobs(f),
+    queryFn: () => api<Paged<AiJob>>('staff/ai/jobs', { query: { ...f } }),
+    enabled,
+    refetchInterval: (q) =>
+      q.state.data?.items.some(
+        (j) => j.status === 'QUEUED' || j.status === 'RUNNING',
+      )
+        ? 3_000
+        : false,
+  });
+
+const AI_DONE = ['SUCCEEDED', 'FAILED'];
+
+/** One AI request, polled until it finishes. */
+export const useAiJob = (id: string | null) =>
+  useQuery({
+    queryKey: qk.aiJob(id ?? ''),
+    queryFn: () => api<AiJob>(`staff/ai/jobs/${id}`),
+    enabled: !!id,
+    refetchInterval: (q) =>
+      q.state.data && AI_DONE.includes(q.state.data.status) ? false : 1_500,
+  });

@@ -171,6 +171,12 @@ export interface NewsroomConfig {
   inviteTtlHours: number;
   /// Public URL of the staff portal, used to build invitation links.
   portalUrl: string;
+  /// Seals news-source credentials and AI provider keys. Blank = derived
+  /// from JWT_ACCESS_SECRET (see common/secret-box.ts).
+  secretsKey: string;
+  /// Hosts ingestion may fetch although they resolve to private addresses
+  /// ("host" or "host:port"). For local testing; empty in production.
+  ingestPrivateHosts: string[];
 }
 
 export type StorageDriverName = 'r2' | 'none';
@@ -397,6 +403,11 @@ export default (): AppConfig => ({
     portalUrl: (
       process.env.NEWSROOM_PORTAL_URL || 'https://stockvirtue.com/admin'
     ).replace(/\/+$/, ''),
+    secretsKey: process.env.NEWSROOM_SECRETS_KEY ?? '',
+    ingestPrivateHosts: (process.env.INGEST_PRIVATE_HOSTS ?? '')
+      .split(',')
+      .map((h) => h.trim().toLowerCase())
+      .filter(Boolean),
   },
   marketDisplay: {
     enabled: (process.env.MARKET_DISPLAY_ENABLED ?? 'true') !== 'false',

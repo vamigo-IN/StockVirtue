@@ -819,6 +819,8 @@ model StaffProfile {
   assignedByMe    NewsAssignment[]      @relation("AssignmentAssigner")
   comments        NewsComment[]
   uploads         MediaAsset[]
+  handledItems    NewsSourceItem[]      @relation("ItemHandledBy")
+  aiJobs          AiJob[]               @relation("AiJobRequestedBy")
 
   @@index([status])
   @@map("staff_profiles")
@@ -998,9 +1000,11 @@ model NewsCategory {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  parent   NewsCategory?  @relation("CategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
-  children NewsCategory[] @relation("CategoryTree")
-  articles NewsArticle[]
+  parent         NewsCategory?    @relation("CategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children       NewsCategory[]   @relation("CategoryTree")
+  articles       NewsArticle[]
+  sources        NewsSource[]
+  suggestedItems NewsSourceItem[] @relation("ItemSuggestedCategory")
 
   @@index([parentId, position])
   @@map("news_categories")
@@ -1123,6 +1127,9 @@ model NewsArticle {
   relatedBy     NewsRelatedArticle[] @relation("RelatedTo")
   dailyStats    NewsDailyStat[]
   widgets       NewsWidgetInstance[]
+  sourceItems   NewsSourceItem[]     @relation("ItemArticle")
+  repeatedBy    NewsSourceItem[]     @relation("ItemDuplicateOfArticle")
+  aiJobs        AiJob[]
 
   /// Full-text search document. A STORED generated column (headline weight A,
   /// standfirst + summary B, body text C) that Postgres keeps up to date; the
@@ -1438,4 +1445,336 @@ model NewsWidgetInstance {
   @@index([widgetId])
   @@index([symbols], type: Gin)
   @@map("news_widget_instances")
+}
+
+// ─── Newsroom: news ingestion ───────────────────────────────────────────────
+//
+// Sources the worker polls (feeds, licensed APIs, exchange / RBI / SEBI /
+// government announcements) and the items they deliver. Items wait in the
+// portal's Incoming list for a person: nothing here is ever published, and a
+// story started from an item goes through the normal review workflow.
+
+enum NewsSourceType {
+  RSS
+  LICENSED_API
+  EXCHANGE
+  COMPANY_IR
+  RBI
+  SEBI
+  GOVERNMENT
+  MANUAL
+}
+
+/// How a source is read: a feed (RSS, Atom or RDF, detected), a JSON API
+/// through a field mapping, or not at all (manual submissions).
+enum NewsSourceFormat {
+  FEED
+  JSON_API
+  NONE
+}
+
+/// What the source's terms let the newsroom keep and reuse.
+enum NewsSourceUsage {
+  /// Headline and link only.
+  HEADLINE_ONLY
+  /// Headline, link and the source's own summary.
+  SUMMARY
+  /// Licensed full text.
+  FULL_TEXT
+}
+
+enum NewsItemStatus {
+  NEW
+  DRAFTED
+  DISMISSED
+  DUPLICATE
+}
+
+enum NewsFetchStatus {
+  RUNNING
+  SUCCESS
+  NOT_MODIFIED
+  FAILED
+}
+
+enum NewsFetchTrigger {
+  SCHEDULE
+  MANUAL
+  RETRY
+}
+
+model NewsSource {
+  id                  String           @id @default(uuid()) @db.Uuid
+  name                String
+  type                NewsSourceType
+  format              NewsSourceFormat
+  /// Feed or API address (none for manual submissions).
+  url                 String?
+  /// { mode: "header" | "query", name }: where the secret goes on a request.
+  auth                Json             @default("{}")
+  /// API key or token, sealed with NEWSROOM_SECRETS_KEY (common/secret-box.ts).
+  /// Never returned to any client.
+  secret              String?
+  /// JSON APIs: { itemsPath, fields: { title, url, id, publishedAt, summary, content, author } }.
+  mapping             Json             @default("{}")
+  pollMinutes         Int              @default(30)
+  isActive            Boolean          @default(true)
+  /// Default category for stories started from this source.
+  categoryId          String?          @db.Uuid
+  usage               NewsSourceUsage  @default(HEADLINE_ONLY)
+  /// Whether the source's terms allow AI-assisted drafts from its items.
+  allowAiDrafts       Boolean          @default(false)
+  /// Credit shown on stories, e.g. "Reserve Bank of India".
+  attribution         String           @default("")
+  licenceNote         String?          @db.Text
+  /// Email editors when new items arrive.
+  notifyEditors       Boolean          @default(false)
+  etag                String?
+  lastModified        String?
+  nextPollAt          DateTime?
+  lastFetchedAt       DateTime?
+  lastSuccessAt       DateTime?
+  lastErrorAt         DateTime?
+  lastError           String?
+  consecutiveFailures Int              @default(0)
+  createdById         String?          @db.Uuid
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+
+  category  NewsCategory?    @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  items     NewsSourceItem[]
+  fetchLogs NewsFetchLog[]
+
+  @@index([isActive, nextPollAt])
+  @@map("news_sources")
+}
+
+model NewsSourceItem {
+  id                   String          @id @default(uuid()) @db.Uuid
+  sourceId             String          @db.Uuid
+  /// SHA-256 of the item's id in its source (guid, else link, else headline
+  /// and time): each item is stored once per source.
+  externalHash         String
+  /// The original story, without tracking parameters.
+  url                  String?
+  /// SHA-256 of `url`: the same story arriving from another source.
+  urlHash              String?
+  title                String
+  /// Normalised headline words, for duplicate checks.
+  titleKey             String
+  /// The source's own summary, kept only when its terms allow (SUMMARY, FULL_TEXT).
+  summary              String?         @db.Text
+  /// Full text, from licensed (FULL_TEXT) sources only.
+  content              String?         @db.Text
+  author               String?
+  /// When the source says it published the story.
+  publishedAt          DateTime?
+  fetchedAt            DateTime        @default(now())
+  /// The source's terms when the item arrived; later changes don't widen them.
+  usage                NewsSourceUsage
+  allowAiDrafts        Boolean         @default(false)
+  attribution          String          @default("")
+  /// Categories or keywords from the source itself.
+  feedCategories       String[]        @default([])
+  /// Listed companies found in the item: [{ exchange, symbol, name, via }].
+  stocks               Json            @default("[]")
+  /// "NSE:INFY" refs of `stocks`, for filtering.
+  stockRefs            String[]        @default([])
+  /// Topics from the classifier ("ipo", "results", "policy", …).
+  topics               String[]        @default([])
+  suggestedCategoryId  String?         @db.Uuid
+  status               NewsItemStatus  @default(NEW)
+  /// The earlier item (or story) this one repeats. With status DUPLICATE it
+  /// is a confirmed repeat; on a NEW item it is a possible one.
+  duplicateOfId        String?         @db.Uuid
+  duplicateOfArticleId String?         @db.Uuid
+  /// Headline similarity to it (1 = same link or headline).
+  duplicateScore       Float?
+  /// The story started from this item.
+  articleId            String?         @db.Uuid
+  handledById          String?         @db.Uuid
+  handledAt            DateTime?
+
+  source             NewsSource       @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  suggestedCategory  NewsCategory?    @relation("ItemSuggestedCategory", fields: [suggestedCategoryId], references: [id], onDelete: SetNull)
+  duplicateOf        NewsSourceItem?  @relation("ItemDuplicates", fields: [duplicateOfId], references: [id], onDelete: SetNull)
+  duplicates         NewsSourceItem[] @relation("ItemDuplicates")
+  duplicateOfArticle NewsArticle?     @relation("ItemDuplicateOfArticle", fields: [duplicateOfArticleId], references: [id], onDelete: SetNull)
+  article            NewsArticle?     @relation("ItemArticle", fields: [articleId], references: [id], onDelete: SetNull)
+  handledBy          StaffProfile?    @relation("ItemHandledBy", fields: [handledById], references: [id], onDelete: SetNull)
+  aiJobs             AiJob[]
+
+  @@unique([sourceId, externalHash])
+  @@index([status, fetchedAt(sort: Desc)])
+  @@index([sourceId, fetchedAt(sort: Desc)])
+  @@index([urlHash])
+  @@index([titleKey])
+  @@index([fetchedAt])
+  @@index([articleId])
+  @@index([stockRefs], type: Gin)
+  @@map("news_source_items")
+}
+
+/// One fetch of one source: when, how it went, and what it found.
+model NewsFetchLog {
+  id             String           @id @default(uuid()) @db.Uuid
+  sourceId       String           @db.Uuid
+  trigger        NewsFetchTrigger
+  status         NewsFetchStatus  @default(RUNNING)
+  /// Who pressed Fetch now or Retry (display name).
+  requestedBy    String?
+  retryOfId      String?          @db.Uuid
+  startedAt      DateTime         @default(now())
+  finishedAt     DateTime?
+  durationMs     Int?
+  httpStatus     Int?
+  itemsSeen      Int              @default(0)
+  itemsNew       Int              @default(0)
+  itemsDuplicate Int              @default(0)
+  error          String?          @db.Text
+
+  source  NewsSource     @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  retryOf NewsFetchLog?  @relation("FetchRetries", fields: [retryOfId], references: [id], onDelete: SetNull)
+  retries NewsFetchLog[] @relation("FetchRetries")
+
+  @@index([sourceId, startedAt(sort: Desc)])
+  @@index([status, startedAt(sort: Desc)])
+  @@map("news_fetch_logs")
+}
+
+/// Stock mapping: phrases the matcher maps to a listed company (an alias such
+/// as "RIL"), or never treats as a company (exchange and symbol null).
+model NewsStockAlias {
+  id        String   @id @default(uuid()) @db.Uuid
+  /// Normalised phrase, e.g. "ril" or "l and t".
+  alias     String   @unique
+  /// What staff typed, for display.
+  label     String
+  exchange  String?
+  symbol    String?
+  note      String?
+  createdBy String?
+  createdAt DateTime @default(now())
+
+  @@map("news_stock_aliases")
+}
+
+// ─── Newsroom: AI assistant ─────────────────────────────────────────────────
+//
+// Provider-independent and off until a Super Admin sets it up. AI only ever
+// returns drafts and suggestions to a person; nothing it writes is published
+// without the normal editorial review.
+
+enum AiProviderKind {
+  ANTHROPIC
+  OPENAI
+  OPENAI_COMPATIBLE
+  OLLAMA
+}
+
+enum AiJobStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+}
+
+enum AiTask {
+  DRAFT_FROM_SOURCE
+  DRAFT_FROM_NOTES
+  HEADLINES
+  SUMMARY
+  SEO
+  TAXONOMY
+  RELATED_STOCKS
+  RELATED_ARTICLES
+  REVIEW
+  EXPLAINERS
+  REWRITE_SECTION
+}
+
+model AiProvider {
+  id                String         @id @default(uuid()) @db.Uuid
+  name              String
+  kind              AiProviderKind
+  /// API address. Blank = the provider's own; required for compatible servers and Ollama.
+  baseUrl           String?
+  model             String
+  /// Sealed API key (common/secret-box.ts). Never returned to any client.
+  apiKey            String?
+  /// US dollars per million tokens, for cost estimates.
+  inputCostPerMTok  Float?
+  outputCostPerMTok Float?
+  timeoutSeconds    Int            @default(120)
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  jobs     AiJob[]
+  settings AiSettings[]
+
+  @@map("ai_providers")
+}
+
+/// One row (id "default"): the newsroom's AI switch, provider and limits.
+model AiSettings {
+  id               String   @id @default("default")
+  enabled          Boolean  @default(false)
+  providerId       String?  @db.Uuid
+  /// Draft automatically when a source that allows AI drafts delivers an item.
+  autoDraft        Boolean  @default(false)
+  /// AiTask names staff may not run.
+  disabledTasks    String[] @default([])
+  monthlyBudgetUsd Float?
+  dailyJobsPerUser Int      @default(60)
+  version          Int      @default(1)
+  updatedBy        String?
+  updatedAt        DateTime @updatedAt
+
+  provider AiProvider? @relation(fields: [providerId], references: [id], onDelete: SetNull)
+
+  @@map("ai_settings")
+}
+
+/// Every AI request: what was asked, what came back, the automatic checks,
+/// tokens and cost. The assistant's processing history.
+model AiJob {
+  id            String      @id @default(uuid()) @db.Uuid
+  task          AiTask
+  status        AiJobStatus @default(QUEUED)
+  providerId    String?     @db.Uuid
+  /// Provider kind and model that ran it, kept if the provider is removed.
+  providerKind  String?
+  model         String?
+  promptId      String
+  promptVersion Int
+  input         Json
+  output        Json?
+  /// Automatic checks on the output: { removed, unverified, copied }.
+  checks        Json?
+  error         String?     @db.Text
+  inputTokens   Int?
+  outputTokens  Int?
+  costUsd       Float?
+  durationMs    Int?
+  /// null = started automatically (a source item).
+  requestedById String?     @db.Uuid
+  articleId     String?     @db.Uuid
+  sourceItemId  String?     @db.Uuid
+  appliedAt     DateTime?
+  appliedById   String?     @db.Uuid
+  createdAt     DateTime    @default(now())
+  startedAt     DateTime?
+  finishedAt    DateTime?
+
+  provider    AiProvider?     @relation(fields: [providerId], references: [id], onDelete: SetNull)
+  requestedBy StaffProfile?   @relation("AiJobRequestedBy", fields: [requestedById], references: [id], onDelete: SetNull)
+  article     NewsArticle?    @relation(fields: [articleId], references: [id], onDelete: SetNull)
+  sourceItem  NewsSourceItem? @relation(fields: [sourceItemId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt(sort: Desc)])
+  @@index([articleId, createdAt(sort: Desc)])
+  @@index([sourceItemId, createdAt(sort: Desc)])
+  @@index([requestedById, createdAt(sort: Desc)])
+  @@index([status, createdAt])
+  @@map("ai_jobs")
 }

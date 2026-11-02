@@ -92,6 +92,7 @@ export interface Dashboard {
   activity: AuditEntry[] | null;
   security: { activeSessions: number; failedSignIns24h: number } | null;
   articles: ArticleFigures | null;
+  sources: SourceFigures | null;
 }
 
 export interface MySession {
@@ -536,4 +537,324 @@ export interface ArticleFigures {
   published: number;
   publishedToday: number;
   overdueScheduled: number;
+}
+
+// ── News sources and incoming news ─────────────────────────────────────
+
+export type SourceType =
+  | 'RSS'
+  | 'LICENSED_API'
+  | 'EXCHANGE'
+  | 'COMPANY_IR'
+  | 'RBI'
+  | 'SEBI'
+  | 'GOVERNMENT'
+  | 'MANUAL';
+export type SourceFormat = 'FEED' | 'JSON_API' | 'NONE';
+export type SourceUsage = 'HEADLINE_ONLY' | 'SUMMARY' | 'FULL_TEXT';
+export type SourceHealth =
+  'manual' | 'paused' | 'pending' | 'healthy' | 'degraded' | 'failing';
+
+export interface SourceMapping {
+  itemsPath: string;
+  fields: Record<string, string>;
+}
+
+export interface NewsSourceView {
+  id: string;
+  name: string;
+  type: SourceType;
+  format: SourceFormat;
+  url: string | null;
+  auth: { mode: 'none' | 'header' | 'query'; name?: string };
+  hasSecret: boolean;
+  /** False when the saved secret was sealed with another key. */
+  secretReadable: boolean;
+  mapping: SourceMapping;
+  pollMinutes: number;
+  isActive: boolean;
+  category: { id: string; name: string } | null;
+  usage: SourceUsage;
+  allowAiDrafts: boolean;
+  attribution: string;
+  licenceNote: string | null;
+  notifyEditors: boolean;
+  health: SourceHealth;
+  lastFetchedAt: string | null;
+  lastSuccessAt: string | null;
+  lastErrorAt: string | null;
+  lastError: string | null;
+  consecutiveFailures: number;
+  nextPollAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  waiting?: number;
+  last24h?: number;
+  total?: number;
+}
+
+export interface SourcePreview {
+  httpStatus: number;
+  found: number;
+  items: {
+    title: string;
+    url: string | null;
+    publishedAt: string | null;
+    summary: string | null;
+    hasFullText: boolean;
+    author: string | null;
+  }[];
+}
+
+export type FetchStatus = 'RUNNING' | 'SUCCESS' | 'NOT_MODIFIED' | 'FAILED';
+
+export interface FetchLogRow {
+  id: string;
+  source: { id: string; name: string };
+  trigger: 'SCHEDULE' | 'MANUAL' | 'RETRY';
+  status: FetchStatus;
+  requestedBy: string | null;
+  startedAt: string;
+  finishedAt: string | null;
+  durationMs: number | null;
+  httpStatus: number | null;
+  itemsSeen: number;
+  itemsNew: number;
+  itemsDuplicate: number;
+  error: string | null;
+  retryOfId: string | null;
+  retriedBy: { id: string; status: FetchStatus; startedAt: string } | null;
+}
+
+export interface Paged<T> {
+  items: T[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export type ItemStatus = 'NEW' | 'DRAFTED' | 'DISMISSED' | 'DUPLICATE';
+
+export interface ItemStock {
+  exchange: 'NSE';
+  symbol: string;
+  name: string;
+  via: 'name' | 'symbol' | 'alias';
+}
+
+export interface SourceItem {
+  id: string;
+  title: string;
+  url: string | null;
+  summary: string | null;
+  hasFullText: boolean;
+  author: string | null;
+  publishedAt: string | null;
+  fetchedAt: string;
+  usage: SourceUsage;
+  allowAiDrafts: boolean;
+  attribution: string;
+  feedCategories: string[];
+  stocks: ItemStock[];
+  topics: string[];
+  status: ItemStatus;
+  duplicateScore: number | null;
+  source: { id: string; name: string; type: SourceType };
+  suggestedCategory: { id: string; name: string } | null;
+  duplicateOf: {
+    id: string;
+    title: string;
+    status: ItemStatus;
+    source: string;
+  } | null;
+  duplicateOfArticle: { id: string; title: string; status: string } | null;
+  article: { id: string; title: string; status: string } | null;
+  handledBy: { id: string; displayName: string } | null;
+  handledAt: string | null;
+  aiDraft: {
+    id: string;
+    status: AiJobStatus;
+    error: string | null;
+    createdAt: string;
+    finishedAt: string | null;
+  } | null;
+}
+
+export interface SourceItemPage extends Paged<SourceItem> {
+  counts: Record<ItemStatus, number>;
+}
+
+export interface SourceItemDetail extends SourceItem {
+  content: string | null;
+  draft: {
+    id: string;
+    output: AiDraftOutput;
+    checks: AiChecks | null;
+    model: string | null;
+    finishedAt: string | null;
+  } | null;
+}
+
+export interface StockAlias {
+  id: string;
+  phrase: string;
+  exchange: string | null;
+  symbol: string | null;
+  company: string | null;
+  note: string | null;
+  createdBy: string | null;
+  createdAt: string;
+}
+
+export interface SimilarStories {
+  stories: {
+    id: string;
+    title: string;
+    status: string;
+    publishedAt: string | null;
+    updatedAt: string;
+    score: number;
+  }[];
+  items: {
+    id: string;
+    title: string;
+    status: ItemStatus;
+    url: string | null;
+    fetchedAt: string;
+    source: string;
+    score: number;
+  }[];
+}
+
+export interface SourceFigures {
+  total: number;
+  manual: number;
+  paused: number;
+  pending: number;
+  healthy: number;
+  degraded: number;
+  failing: number;
+  waiting: number;
+  last24h: number;
+}
+
+// ── AI assistant ───────────────────────────────────────────────────────
+
+export type AiTask =
+  | 'DRAFT_FROM_SOURCE'
+  | 'DRAFT_FROM_NOTES'
+  | 'HEADLINES'
+  | 'SUMMARY'
+  | 'SEO'
+  | 'TAXONOMY'
+  | 'RELATED_STOCKS'
+  | 'RELATED_ARTICLES'
+  | 'REVIEW'
+  | 'EXPLAINERS'
+  | 'REWRITE_SECTION';
+export type AiJobStatus = 'QUEUED' | 'RUNNING' | 'SUCCEEDED' | 'FAILED';
+export type AiProviderKind =
+  'ANTHROPIC' | 'OPENAI' | 'OPENAI_COMPATIBLE' | 'OLLAMA';
+
+export interface AiStatus {
+  enabled: boolean;
+  ready: boolean;
+  reason: string | null;
+  provider: { name: string; kind: AiProviderKind; model: string } | null;
+  tasks: { task: AiTask; label: string; enabled: boolean }[];
+  autoDraft: boolean;
+  usage: {
+    mineToday: number;
+    dailyLimit: number;
+    monthSpendUsd: number;
+    monthlyBudgetUsd: number | null;
+  };
+}
+
+export interface AiProviderView {
+  id: string;
+  name: string;
+  kind: AiProviderKind;
+  baseUrl: string | null;
+  model: string;
+  hasKey: boolean;
+  keyReadable: boolean;
+  inputCostPerMTok: number | null;
+  outputCostPerMTok: number | null;
+  timeoutSeconds: number;
+  updatedAt: string;
+}
+
+export interface AiSettingsView {
+  enabled: boolean;
+  providerId: string | null;
+  autoDraft: boolean;
+  disabledTasks: AiTask[];
+  monthlyBudgetUsd: number | null;
+  dailyJobsPerUser: number;
+  version: number;
+  updatedAt: string;
+  updatedBy: string | null;
+  providers: AiProviderView[];
+  tasks: { task: AiTask; label: string }[];
+  models: {
+    ANTHROPIC: { id: string; label: string; input: number; output: number }[];
+  };
+}
+
+export interface AiUsage {
+  since: string;
+  spendUsd: number;
+  failed: number;
+  jobs: number;
+  byTask: {
+    task: AiTask;
+    label: string;
+    jobs: number;
+    costUsd: number;
+    inputTokens: number;
+    outputTokens: number;
+  }[];
+}
+
+export interface AiChecks {
+  removed: {
+    text: string;
+    reason: 'figures' | 'copied';
+    figures?: string[];
+  }[];
+  withheld: { text: string; figures: string[] }[];
+}
+
+export interface AiDraftOutput {
+  headline: string;
+  standfirst: string;
+  summary: string;
+  keyPoints: string[];
+  sections: { heading: string; paragraphs: string[] }[];
+}
+
+export interface AiJob {
+  id: string;
+  task: AiTask;
+  label: string;
+  status: AiJobStatus;
+  output: unknown;
+  checks: AiChecks | null;
+  error: string | null;
+  provider: AiProviderKind | null;
+  model: string | null;
+  promptVersion: number;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  costUsd: number | null;
+  durationMs: number | null;
+  createdAt: string;
+  finishedAt: string | null;
+  appliedAt: string | null;
+  requestedBy: { id: string; displayName: string } | null;
+  automatic: boolean;
+  article: { id: string; title: string } | null;
+  sourceItem: { id: string; title: string } | null;
+  input?: unknown;
 }

@@ -1,6 +1,7 @@
 'use client';
 
 import { useQueryClient } from '@tanstack/react-query';
+import type { Editor } from '@tiptap/react';
 import {
   AlertCircle,
   ArrowLeft,
@@ -22,12 +23,14 @@ import { toast } from 'sonner';
 import { ArticleEditor } from '@/components/editor/ArticleEditor';
 import { ArticleStatusBadge } from '@/components/portal/ArticleStatusBadge';
 import { QueryError, RowsSkeleton } from '@/components/portal/common';
+import { usePortalMe } from '@/components/portal/PortalShell';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
+import { can as hasPermission } from '@/portal/access';
 import { api, ApiError, errorMessage } from '@/portal/api';
 import { formatDateTime } from '@/portal/format';
 import {
@@ -37,6 +40,7 @@ import {
   useArticle,
 } from '@/portal/queries';
 import type { ArticleDetail, SaveResult } from '@/portal/types';
+import { AiPanel } from './AiPanel';
 import { CollabPanel } from './CollabPanel';
 import { DetailsPanel } from './DetailsPanel';
 import { type Draft, type DraftKey, SEO_KEYS, toBody, toDraft } from './draft';
@@ -152,6 +156,8 @@ function Workspace({
 }) {
   const qc = useQueryClient();
   const router = useRouter();
+  const me = usePortalMe();
+  const editorRef = useRef<Editor | null>(null);
   const [article, setArticle] = useState(initial);
   const [draft, setDraft] = useState<Draft>(() => toDraft(initial));
   const draftRef = useRef(draft);
@@ -506,6 +512,9 @@ function Workspace({
             initialContent={initial.content}
             editable={editable}
             onChange={(doc) => change('content', doc)}
+            onReady={(e) => {
+              editorRef.current = e;
+            }}
           />
         </div>
         <aside className="min-w-0">
@@ -514,6 +523,9 @@ function Workspace({
               <TabsTrigger value="details">Details</TabsTrigger>
               {showSeoTab && <TabsTrigger value="seo">SEO</TabsTrigger>}
               <TabsTrigger value="team">Team</TabsTrigger>
+              <TabsTrigger value="ai">
+                {hasPermission(me, 'ai.use') ? 'AI' : 'Similar'}
+              </TabsTrigger>
             </TabsList>
             <TabsContent value="details" className="mt-3">
               <DetailsPanel
@@ -538,6 +550,20 @@ function Workspace({
             )}
             <TabsContent value="team" className="mt-3">
               <CollabPanel article={article} onArticle={applyArticle} />
+            </TabsContent>
+            <TabsContent value="ai" className="mt-3">
+              <AiPanel
+                article={article}
+                draft={draft}
+                change={change}
+                editable={editable}
+                seoEditable={seoEditable}
+                getEditor={() => editorRef.current}
+                flush={async () => {
+                  window.clearTimeout(timer.current);
+                  if (dirty.current.size) await persist(false);
+                }}
+              />
             </TabsContent>
           </Tabs>
         </aside>

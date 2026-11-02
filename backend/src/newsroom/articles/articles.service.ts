@@ -12,6 +12,7 @@ import {
   NewsVersionReason,
   Prisma,
 } from '@prisma/client';
+import { STORY_WRITING_TASKS } from '../../ai/ai-tasks';
 import { AuditService } from '../../audit/audit.service';
 import { CompanyDirectoryService } from '../../market/company-directory.service';
 import { ScripMasterService } from '../../market/scrip-master.service';
@@ -335,6 +336,121 @@ export class ArticlesService {
     return { id: article.id, slug: article.slug };
   }
 
+  /**
+   * A draft started from an incoming news item: the item's headline as a
+   * working title, its link as the source credit, the companies it mentions
+   * as related stocks and, when an AI draft was chosen, that draft as the
+   * body. Always a DRAFT owned by the person who started it, so it goes
+   * through review like any other story. `claim` runs in the same
+   * transaction and must throw if the item was taken meanwhile.
+   */
+  async createFromSource(
+    actor: StaffPrincipal,
+    d: {
+      title: string;
+      subtitle?: string;
+      summary?: string;
+      content?: Record<string, unknown> | null;
+      categoryId?: string | null;
+      stocks: { exchange: 'NSE' | 'BSE'; symbol: string }[];
+      sourceAttribution: { name: string; url?: string; note?: string }[];
+      editorialNotes?: string;
+      isAiGenerated: boolean;
+      sourceItemId: string;
+    },
+    claim: (tx: Prisma.TransactionClient, articleId: string) => Promise<void>,
+    client: ClientInfo,
+  ) {
+    const title =
+      d.title.replace(/\s+/g, ' ').trim().slice(0, 200) || 'Untitled story';
+    let categoryId = d.categoryId ?? null;
+    if (categoryId) {
+      const exists = await this.prisma.newsCategory.count({
+        where: { id: categoryId },
+      });
+      if (!exists) categoryId = null;
+    }
+    const rendered = d.content ? await this.renderContent(d.content) : null;
+    // Suggested stocks: keep the ones the stock list still knows.
+    const seen = new Set<string>();
+    const stocks = d.stocks
+      .flatMap((s) => {
+        try {
+          return this.resolveStocks([s]);
+        } catch {
+          return [];
+        }
+      })
+      .filter(
+        (s) =>
+          !seen.has(`${s.exchange}:${s.symbol}`) &&
+          seen.add(`${s.exchange}:${s.symbol}`),
+      )
+      .slice(0, 8);
+    const slug = await this.freeArticleSlug(slugify(title));
+    const article = await this.prisma.$transaction(async (tx) => {
+      const author = await this.taxonomy.authorForStaff(actor.staffId, tx);
+      const created = await tx.newsArticle.create({
+        data: {
+          title,
+          slug,
+          status: NewsStatus.DRAFT,
+          createdById: actor.staffId,
+          authorId: author.id,
+          categoryId,
+          subtitle: d.subtitle?.trim() || null,
+          summary: d.summary?.trim() ?? '',
+          content: (rendered?.doc ?? {
+            type: 'doc',
+            content: [{ type: 'paragraph' }],
+          }) as unknown as Prisma.InputJsonValue,
+          contentHtml: rendered?.html ?? '',
+          contentText: rendered?.text ?? '',
+          readingMinutes: rendered?.minutes ?? 1,
+          sourceAttribution: d.sourceAttribution,
+          editorialNotes: d.editorialNotes?.trim() || null,
+          isAiGenerated: d.isAiGenerated,
+        },
+      });
+      await claim(tx, created.id);
+      if (stocks.length) {
+        await tx.newsArticleStock.createMany({
+          data: stocks.map((s, i) => ({
+            articleId: created.id,
+            ...s,
+            isPrimary: i === 0,
+          })),
+        });
+      }
+      if (rendered?.widgets.length) {
+        await this.indexWidgets(tx, created.id, rendered.widgets);
+      }
+      await recordVersion(
+        tx,
+        created.id,
+        NewsVersionReason.MANUAL,
+        actor.staffId,
+        {
+          force: true,
+        },
+      );
+      await this.audit.record(
+        {
+          actor: { userId: actor.userId, email: actor.email },
+          action: 'news.article.create',
+          entityType: 'NewsArticle',
+          entityId: created.id,
+          after: { title, slug },
+          meta: { fromSourceItem: d.sourceItemId, aiDraft: d.isAiGenerated },
+          ...client,
+        },
+        tx,
+      );
+      return created;
+    });
+    return { id: article.id, slug: article.slug };
+  }
+
   async update(
     actor: StaffPrincipal,
     id: string,
@@ -427,6 +543,22 @@ export class ArticlesService {
     }
     if (dto.editorialNotes !== undefined) {
       data.editorialNotes = dto.editorialNotes.trim() || null;
+    }
+    if (dto.isAiGenerated === false) {
+      // Readers are told when AI helped write a story: once AI-written text
+      // has been used here, the label stays.
+      const used = await this.prisma.aiJob.count({
+        where: {
+          articleId: id,
+          appliedAt: { not: null },
+          task: { in: STORY_WRITING_TASKS },
+        },
+      });
+      if (used > 0) {
+        throw new BadRequestException(
+          'AI-written text was used in this story, so it keeps its AI-assisted label.',
+        );
+      }
     }
     if (dto.isAiGenerated !== undefined) data.isAiGenerated = dto.isAiGenerated;
     if (dto.seo !== undefined) {
