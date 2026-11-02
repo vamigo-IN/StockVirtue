@@ -17,8 +17,10 @@ import { AppConfig } from '../config/configuration';
 import { StaffAuthService } from './staff-auth.service';
 import { CurrentStaff, StaffOnly } from './staff-auth.guard';
 import {
+  StaffForgotPasswordDto,
   StaffLoginDto,
   StaffResendDto,
+  StaffResetPasswordDto,
   StaffVerifyDto,
   UpdateStaffProfileDto,
 } from './staff.dto';
@@ -54,6 +56,25 @@ export class StaffAuthController {
   @HttpCode(200)
   resend(@Body() dto: StaffResendDto, @Req() req: Request) {
     return this.auth.resend(dto.challengeId, this.client(req));
+  }
+
+  @Throttle({ default: { limit: 5, ttl: 60_000 } })
+  @Post('password/forgot')
+  @HttpCode(200)
+  forgotPassword(@Body() dto: StaffForgotPasswordDto, @Req() req: Request) {
+    return this.auth.requestPasswordReset(dto.email, this.client(req));
+  }
+
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  @Post('password/reset')
+  @HttpCode(200)
+  resetPassword(@Body() dto: StaffResetPasswordDto, @Req() req: Request) {
+    return this.auth.resetPassword(
+      dto.email,
+      dto.code,
+      dto.password,
+      this.client(req),
+    );
   }
 
   @StaffOnly()

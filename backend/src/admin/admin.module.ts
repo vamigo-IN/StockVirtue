@@ -7,6 +7,7 @@ import { PortfolioModule } from '../portfolio/portfolio.module';
 import { RedisModule } from '../redis/redis.module';
 import { SiteModule } from '../site/site.module';
 import { SmartApiModule } from '../smartapi/smartapi.module';
+import { StaffModule } from '../staff/staff.module';
 import { AdminAuditService } from './admin-audit.service';
 import { AdminAuthService } from './admin-auth.service';
 import { AdminGuard } from './admin-auth.guard';
@@ -25,6 +26,8 @@ import { AdminController } from './admin.controller';
     AchievementsModule,
     SiteModule,
     NotificationsModule,
+    // Newsroom Super Admins are managed here (SuperAdminsService).
+    StaffModule,
   ],
   controllers: [AdminController],
   providers: [

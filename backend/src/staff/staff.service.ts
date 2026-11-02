@@ -30,6 +30,13 @@ import { ClientInfo, StaffPrincipal } from './staff-request';
 
 const INVITE_INVALID =
   'This invitation link is no longer valid. Ask a newsroom admin for a new one.';
+/// Super Admins are managed only in the StockVirtue admin console.
+const CONSOLE_ONLY =
+  'Super Admins are added, removed, suspended and restored in the StockVirtue admin console (api.stockvirtue.com/admin).';
+
+const isSuperAdmin = (target: {
+  user: { roles: { role: { key: string } }[] };
+}) => target.user.roles.some((r) => r.role.key === SUPER_ADMIN);
 
 type RoleWithPermissions = Prisma.RoleGetPayload<{
   include: { permissions: true };
@@ -103,9 +110,6 @@ export class StaffService {
       return this.memberView(staffId);
     }
     const roles = await this.assertCanGrant(actor, [...added, ...removed]);
-    if (removed.includes(SUPER_ADMIN)) {
-      await this.assertNotLastSuperAdmin(target.userId);
-    }
     const addedIds = roles
       .filter((r) => added.includes(r.key))
       .map((r) => r.id);
@@ -152,10 +156,7 @@ export class StaffService {
     if (target.userId === actor.userId) {
       throw new BadRequestException("You can't suspend yourself.");
     }
-    this.assertCanManageTarget(actor, target);
-    if (target.user.roles.some((r) => r.role.key === SUPER_ADMIN)) {
-      await this.assertNotLastSuperAdmin(target.userId);
-    }
+    if (isSuperAdmin(target)) throw new ForbiddenException(CONSOLE_ONLY);
     const now = new Date();
     await this.prisma.$transaction(async (tx) => {
       await tx.staffProfile.update({
@@ -188,7 +189,7 @@ export class StaffService {
 
   async reactivate(actor: StaffPrincipal, staffId: string, client: ClientInfo) {
     const target = await this.findStaff(staffId);
-    this.assertCanManageTarget(actor, target);
+    if (isSuperAdmin(target)) throw new ForbiddenException(CONSOLE_ONLY);
     await this.prisma.$transaction(async (tx) => {
       await tx.staffProfile.update({
         where: { id: target.id },
@@ -653,11 +654,7 @@ export class StaffService {
     }
     const actorIsSuper = actor.roles.includes(SUPER_ADMIN);
     for (const role of roles) {
-      if (role.key === SUPER_ADMIN && !actorIsSuper) {
-        throw new ForbiddenException(
-          'Only a Super Admin can grant or remove the Super Admin role.',
-        );
-      }
+      if (role.key === SUPER_ADMIN) throw new ForbiddenException(CONSOLE_ONLY);
       if (actorIsSuper) continue;
       const beyond = role.permissions.some(
         (p) => !actor.permissions.has(p.permissionKey),
@@ -742,35 +739,6 @@ export class StaffService {
   }
 
   /** Non-super-admins can't suspend or reactivate a Super Admin. */
-  private assertCanManageTarget(
-    actor: StaffPrincipal,
-    target: { user: { roles: { role: { key: string } }[] } },
-  ) {
-    const targetIsSuper = target.user.roles.some(
-      (r) => r.role.key === SUPER_ADMIN,
-    );
-    if (targetIsSuper && !actor.roles.includes(SUPER_ADMIN)) {
-      throw new ForbiddenException(
-        'Only a Super Admin can suspend or reactivate another Super Admin.',
-      );
-    }
-  }
-
-  private async assertNotLastSuperAdmin(userId: string) {
-    const others = await this.prisma.userRole.count({
-      where: {
-        role: { key: SUPER_ADMIN },
-        userId: { not: userId },
-        user: { staffProfile: { status: StaffStatus.ACTIVE } },
-      },
-    });
-    if (others === 0) {
-      throw new BadRequestException(
-        'This is the only active Super Admin. Make someone else a Super Admin first.',
-      );
-    }
-  }
-
   private async openInvitation(token: string) {
     const inv = await this.prisma.staffInvitation.findUnique({
       where: { tokenHash: sha256Hex(token) },

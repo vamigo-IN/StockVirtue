@@ -89,6 +89,7 @@ export interface LayoutOpts {
     | 'learning'
     | 'messages'
     | 'notifications'
+    | 'newsroom'
     | 'monitoring'
     | 'health'
     | 'settings'
@@ -111,6 +112,7 @@ const NAV_ITEMS = [
     href: '/admin/notifications',
     icon: '✷',
   },
+  { key: 'newsroom', label: 'Newsroom', href: '/admin/newsroom', icon: '✎' },
   { key: 'monitoring', label: 'Traffic', href: '/admin/monitoring', icon: '◎' },
   { key: 'health', label: 'System health', href: '/admin/health', icon: '♥' },
   { key: 'settings', label: 'Settings', href: '/admin/settings', icon: '⚙' },
@@ -1602,4 +1604,108 @@ export function messageDetailBody(
         </div>
       </div>
     </div>`;
+}
+
+// ─── Newsroom: Super Admins of the portal ───────────────────────────────
+
+export function newsroomBody(opts: {
+  admins: {
+    staffId: string;
+    name: string;
+    email: string | null;
+    status: string;
+    lastPortalLoginAt: Date | null;
+  }[];
+  invitations: { id: string; email: string; expiresAt: Date }[];
+  portalUrl: string;
+  /// Result of the last action, echoed back after the redirect.
+  notice: { ok: boolean; message: string } | null;
+}): string {
+  const when = (d: Date) =>
+    `${esc(istIso(d).replace('T', ' ').slice(0, 16))} IST`;
+  const btn =
+    'text-xs px-3 py-1.5 rounded-lg border font-bold transition whitespace-nowrap';
+  const notice = opts.notice
+    ? `<div class="text-sm px-4 py-3 rounded-xl ${
+        opts.notice.ok
+          ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-500/30'
+          : 'bg-rose-500/15 text-rose-300 border border-rose-500/30'
+      }">${esc(opts.notice.message)}</div>`
+    : '';
+  const rows = opts.admins
+    .map((a) => {
+      const suspended = a.status === 'SUSPENDED';
+      const badge = suspended
+        ? `<span class="text-[10px] px-2 py-0.5 rounded-md bg-rose-500/15 text-rose-300 font-bold tracking-wider">SUSPENDED</span>`
+        : `<span class="text-[10px] px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-300 font-bold tracking-wider">ACTIVE</span>`;
+      const base = `/admin/newsroom/super-admins/${esc(a.staffId)}`;
+      return `<tr class="border-t border-zinc-800 align-top">
+        <td class="px-3 py-3"><div class="font-medium">${esc(a.name)}</div><div class="text-[11px] text-zinc-500">${esc(a.email ?? '—')}</div></td>
+        <td class="px-3 py-3">${badge}</td>
+        <td class="px-3 py-3 text-xs text-zinc-400">${a.lastPortalLoginAt ? when(a.lastPortalLoginAt) : 'Never'}</td>
+        <td class="px-3 py-3">
+          <div class="flex flex-wrap justify-end gap-2">
+            <form method="post" action="${base}/${suspended ? 'reactivate' : 'suspend'}">
+              <button class="${btn} ${
+                suspended
+                  ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/40 hover:bg-emerald-500/25'
+                  : 'bg-amber-500/10 text-amber-300 border-amber-500/40 hover:bg-amber-500/20'
+              }">${suspended ? 'Restore access' : 'Suspend'}</button>
+            </form>
+            <form method="post" action="${base}/remove">
+              <button class="${btn} bg-rose-500/10 text-rose-300 border-rose-500/40 hover:bg-rose-500/20">Remove Super Admin</button>
+            </form>
+          </div>
+        </td>
+      </tr>`;
+    })
+    .join('');
+  const table = opts.admins.length
+    ? `<div class="overflow-x-auto"><table class="w-full text-sm">
+        <thead><tr class="text-left text-[11px] uppercase tracking-wider text-zinc-500">
+          <th class="px-3 py-2 font-semibold">Super Admin</th>
+          <th class="px-3 py-2 font-semibold">Status</th>
+          <th class="px-3 py-2 font-semibold">Last portal sign-in</th>
+          <th class="px-3 py-2"><span class="sr-only">Actions</span></th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table></div>`
+    : `<p class="text-sm text-amber-300">The newsroom has no Super Admin yet. Add one below.</p>`;
+  const invitations = opts.invitations.length
+    ? `<div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">
+        <h2 class="font-bold mb-1">Waiting to be accepted</h2>
+        <p class="text-xs text-zinc-500 mb-4">Invitations to become a Super Admin. Each link works once, until it expires.</p>
+        <ul class="divide-y divide-zinc-800">${opts.invitations
+          .map(
+            (i) => `<li class="flex flex-wrap items-center gap-3 py-3">
+              <div class="min-w-0"><div class="font-medium text-sm">${esc(i.email)}</div><div class="text-[11px] text-zinc-500">Expires ${when(i.expiresAt)}</div></div>
+              <form method="post" action="/admin/newsroom/invitations/${esc(i.id)}/revoke" class="ml-auto">
+                <button class="${btn} text-zinc-300 border-zinc-700 hover:border-rose-500/50 hover:text-rose-300">Cancel invitation</button>
+              </form>
+            </li>`,
+          )
+          .join('')}</ul>
+      </div>`
+    : '';
+  return `
+    <div class="max-w-4xl space-y-6">
+      ${notice}
+      <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">
+        <h2 class="font-bold mb-1">Newsroom Super Admins</h2>
+        <p class="text-xs text-zinc-500 mb-5">Super Admins run the newsroom portal at <a class="text-indigo-300 hover:underline" href="${esc(opts.portalUrl)}" target="_blank" rel="noopener">${esc(opts.portalUrl)}</a> and manage every other staff member there. Super Admins themselves are added, suspended and removed only here.</p>
+        ${table}
+      </div>
+      <div class="bg-zinc-900/60 border border-zinc-800 rounded-2xl p-6">
+        <h2 class="font-bold mb-1">Add a Super Admin</h2>
+        <p class="text-xs text-zinc-500 mb-5">Someone already in the newsroom becomes a Super Admin at once. Anyone else gets an email invitation: they accept it, choose a password (or use their StockVirtue app password if they have an account), then sign in at the portal.</p>
+        <form method="post" action="/admin/newsroom/super-admins" class="flex flex-wrap gap-3">
+          <input type="email" name="email" required maxlength="160" autocomplete="off" placeholder="name@example.com"
+            class="flex-1 min-w-[240px] bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:border-indigo-500" />
+          <button type="submit" class="bg-indigo-500 hover:bg-indigo-400 transition text-white font-bold text-sm px-4 py-2.5 rounded-lg">Add Super Admin</button>
+        </form>
+      </div>
+      ${invitations}
+      <p class="text-xs text-zinc-500">Super Admins who forget their password reset it themselves from the portal's sign-in page (Forgot password).</p>
+    </div>
+  `;
 }

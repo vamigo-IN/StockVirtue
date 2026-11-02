@@ -20,7 +20,8 @@ src/
     api/revalidate   signed hook the API calls to refresh news pages
     api/news/view    counts a story read (forwarded to the API)
     admin/         newsroom portal (portal.css; isolated from the site chrome)
-      login/ invite/   sign-in (password + emailed code) and invitation acceptance
+      login/ invite/   sign-in (password + emailed code), forgotten password
+                       (login/forgot) and invitation acceptance
       (portal)/        signed-in pages: dashboard, articles (+ editor, history), review,
                        my-work, media, storage, taxonomy, staff, roles, users, settings,
                        audit, security
@@ -96,10 +97,16 @@ for rate limits and the audit log. (The backend stays on `api.stockvirtue.com`.)
 ## Newsroom portal (`/admin`)
 
 - Staff sign in with their StockVirtue account password, then a 6-digit code
-  emailed to them. Nobody has portal access until a Super Admin grants it: the
-  first one on the server with
-  `node dist/cli/grant-staff-role.js --email you@… --role SUPER_ADMIN` (backend),
-  everyone else by invitation from **Staff**.
+  emailed to them. A forgotten password is reset on the sign-in page (an
+  emailed code, then a new password; it is also the app password).
+- **Super Admins** are added, suspended and removed only in the StockVirtue
+  admin console (api.stockvirtue.com/admin, **Newsroom** page): someone
+  already in the newsroom gets the role at once, anyone else an emailed
+  invitation. Server fallback:
+  `node dist/cli/grant-staff-role.js --email you@… --role SUPER_ADMIN` (backend).
+- Super Admins manage everyone else from **Staff** (invitations, roles,
+  suspension); the portal can't grant, suspend or restore the Super Admin
+  role.
 - Each role sees only the pages its permissions cover; the API enforces the same
   permissions on every request.
 - **Site settings** (was the old password panel): title/description, contact

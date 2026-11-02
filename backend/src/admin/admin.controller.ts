@@ -2,7 +2,9 @@ import {
   Body,
   Controller,
   Get,
+  HttpException,
   HttpStatus,
+  Logger,
   Param,
   Post,
   Query,
@@ -45,6 +47,7 @@ import {
   messagesBody,
   monitoringActorBody,
   monitoringBody,
+  newsroomBody,
   notificationsBody,
   referralsBody,
   roomsBody,
@@ -57,6 +60,10 @@ import { AbuseStatus, ContactStatus } from '@prisma/client';
 import { MonitoringService } from '../monitoring/monitoring.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { SiteService } from '../site/site.service';
+import {
+  ConsoleActor,
+  SuperAdminsService,
+} from '../staff/super-admins.service';
 
 /// Deliberate, blocking delay used for the progressive wrong-password back-off
 /// (spec §10). Bounded by PASSWORD_DELAYS_MS, so it cannot be used to pin
@@ -67,6 +74,8 @@ function sleep(ms: number): Promise<void> {
 
 @Controller('admin')
 export class AdminController {
+  private readonly logger = new Logger(AdminController.name);
+
   constructor(
     private readonly auth: AdminAuthService,
     private readonly stats: AdminStatsService,
@@ -80,6 +89,7 @@ export class AdminController {
     private readonly notifications: NotificationsService,
     private readonly monitoringSvc: MonitoringService,
     private readonly shield: AdminShieldService,
+    private readonly superAdmins: SuperAdminsService,
   ) {}
 
   // ─── Login / logout ──────────────────────────────────────────────
@@ -1034,6 +1044,147 @@ export class AdminController {
         adminEmail,
         body: auditBody(rows),
       }),
+    );
+  }
+
+  // ─── Newsroom: Super Admins of stockvirtue.com/admin ─────────────
+
+  @Get('newsroom')
+  @UseGuards(AdminGuard)
+  async newsroomPage(
+    @Req() req: Request,
+    @Res() res: Response,
+    @Query('msg') msg?: string,
+    @Query('ok') ok?: string,
+  ) {
+    const [overview, adminEmail] = await Promise.all([
+      this.superAdmins.overview(),
+      this.currentAdminEmail(req),
+    ]);
+    this.sendHtml(
+      res,
+      layout({
+        title: 'Newsroom',
+        current: 'newsroom',
+        adminEmail,
+        body: newsroomBody({
+          ...overview,
+          // Echoed from the action redirect; esc()'d in the view.
+          notice: msg ? { ok: ok === '1', message: msg.slice(0, 300) } : null,
+        }),
+      }),
+    );
+  }
+
+  @Post('newsroom/super-admins')
+  @UseGuards(AdminGuard)
+  async addSuperAdmin(
+    @Req() req: Request,
+    @Body() body: { email?: string },
+    @Res() res: Response,
+  ) {
+    const email = (body.email ?? '').trim();
+    await this.newsroomAction(req, res, 'newsroom.superadmin.add', email, {
+      run: async (by) => {
+        const outcome = await this.superAdmins.add(email, by);
+        if (outcome === 'invited') {
+          return `Invitation sent to ${email}. They become a Super Admin once they accept it.`;
+        }
+        return outcome === 'granted'
+          ? `${email} is now a Super Admin.`
+          : `${email} is already a Super Admin.`;
+      },
+    });
+  }
+
+  @Post('newsroom/super-admins/:id/:action')
+  @UseGuards(AdminGuard)
+  async changeSuperAdmin(
+    @Req() req: Request,
+    @Param('id') id: string,
+    @Param('action') action: string,
+    @Res() res: Response,
+  ) {
+    const actions: Record<
+      string,
+      { run: (by: ConsoleActor) => Promise<unknown>; done: string }
+    > = {
+      remove: {
+        run: (by) => this.superAdmins.remove(id, by),
+        done: 'Super Admin role removed.',
+      },
+      suspend: {
+        run: (by) => this.superAdmins.suspend(id, by),
+        done: 'Suspended. Their portal sessions have ended.',
+      },
+      reactivate: {
+        run: (by) => this.superAdmins.reactivate(id, by),
+        done: 'Access restored.',
+      },
+    };
+    const chosen = actions[action];
+    if (!chosen) {
+      res.redirect('/admin/newsroom');
+      return;
+    }
+    await this.newsroomAction(req, res, `newsroom.superadmin.${action}`, id, {
+      run: async (by) => {
+        await chosen.run(by);
+        return chosen.done;
+      },
+    });
+  }
+
+  @Post('newsroom/invitations/:id/revoke')
+  @UseGuards(AdminGuard)
+  async revokeSuperAdminInvitation(
+    @Req() req: Request,
+    @Param('id') id: string,
+    @Res() res: Response,
+  ) {
+    await this.newsroomAction(req, res, 'newsroom.invite.revoke', id, {
+      run: async (by) => {
+        await this.superAdmins.revokeInvitation(id, by);
+        return 'Invitation cancelled.';
+      },
+    });
+  }
+
+  /// Runs a Super Admin change, records it in both audit logs, and bounces
+  /// back to /admin/newsroom with the outcome.
+  private async newsroomAction(
+    req: Request,
+    res: Response,
+    action: string,
+    target: string,
+    step: { run: (by: ConsoleActor) => Promise<string> },
+  ) {
+    const by: ConsoleActor = {
+      adminEmail: await this.currentAdminEmail(req),
+      ip: req.ip ?? null,
+      userAgent: req.headers['user-agent'] ?? null,
+    };
+    let ok = true;
+    let message: string;
+    try {
+      message = await step.run(by);
+    } catch (err) {
+      ok = false;
+      if (err instanceof HttpException) {
+        message = err.message;
+      } else {
+        this.logger.error(`${action} failed: ${(err as Error).message}`);
+        message = 'Something went wrong. Try again.';
+      }
+    }
+    await this.auditAction(
+      req,
+      action,
+      target,
+      ok ? 'success' : `rejected: ${message}`,
+    );
+    res.redirect(
+      `/admin/newsroom?msg=${encodeURIComponent(message)}&ok=${ok ? '1' : '0'}`,
     );
   }
 

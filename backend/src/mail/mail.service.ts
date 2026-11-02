@@ -173,6 +173,29 @@ export class MailService {
     );
   }
 
+  /** Code for choosing a new password on the newsroom portal. */
+  async sendStaffPasswordReset(
+    to: string,
+    code: string,
+    ttlSeconds: number,
+  ): Promise<void> {
+    const minutes = this.minutes(ttlSeconds);
+    await this.send(
+      to,
+      'Reset your StockVirtue newsroom password',
+      this.codeEmail({
+        heading: 'Reset your password',
+        intro:
+          "Enter this code on the newsroom's password reset page to choose a new password. It's also your StockVirtue app password. If you didn't ask for this, ignore this email: your password stays as it is.",
+        code,
+        minutes,
+        preheader: `${code} is your StockVirtue newsroom password reset code (expires in ${minutes} min).`,
+      }),
+      `Your StockVirtue newsroom password reset code is ${code}. It expires in ${minutes} minute(s). If you didn't ask for this, ignore this email.`,
+      `newsroom reset code ${code}`,
+    );
+  }
+
   /** Invitation to join the newsroom with the given roles. */
   async sendStaffInvitation(
     to: string,

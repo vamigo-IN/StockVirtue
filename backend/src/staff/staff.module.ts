@@ -7,6 +7,7 @@ import { StaffDashboardService } from './staff-dashboard.service';
 import { StaffSecurityService } from './staff-security.service';
 import { StaffController } from './staff.controller';
 import { StaffService } from './staff.service';
+import { SuperAdminsService } from './super-admins.service';
 
 // Prisma, Redis, Mail, RBAC and Audit are global modules.
 @Module({
@@ -18,9 +19,11 @@ import { StaffService } from './staff.service';
     StaffSecurityService,
     StaffDashboardService,
     StaffAuthGuard,
+    SuperAdminsService,
   ],
   // Exported so later newsroom modules can protect their routes with
-  // @StaffOnly(...) — the guard needs StaffAuthService in scope.
-  exports: [StaffAuthService, StaffAuthGuard],
+  // @StaffOnly(...) — the guard needs StaffAuthService in scope. The admin
+  // console manages Super Admins through SuperAdminsService.
+  exports: [StaffAuthService, StaffAuthGuard, SuperAdminsService],
 })
 export class StaffModule {}

@@ -29,6 +29,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { SUPER_ADMIN } from '../rbac/rbac.catalog';
 import { RbacService, UserAccess } from '../rbac/rbac.service';
 import { RedisService } from '../redis/redis.service';
+import { UsersService } from '../users/users.service';
 import {
   maskEmail,
   newOpaqueToken,
@@ -53,6 +54,11 @@ const RESTART = 'This sign-in attempt is no longer valid. Sign in again.';
 const SIGN_IN = 'Sign in to the newsroom to continue.';
 const IDLE = 'You were signed out after a period of inactivity. Sign in again.';
 const EXPIRED = 'Your newsroom session has ended. Sign in again.';
+/// A password reset code is good for 15 minutes and MAX_CODE_ATTEMPTS tries.
+const RESET_TTL_SEC = 15 * 60;
+const RESET_SENT =
+  "If that email belongs to a newsroom account, we've sent it a code.";
+const RESET_BAD = "That code isn't right or has expired. Ask for a new one.";
 
 /**
  * Why a staff session can't be used. Sent as `code` beside the message so the
@@ -107,6 +113,7 @@ export class StaffAuthService {
     private readonly mail: MailService,
     private readonly audit: AuditService,
     private readonly rbac: RbacService,
+    private readonly users: UsersService,
     config: ConfigService<AppConfig, true>,
   ) {
     this.cfg = config.get('newsroom', { infer: true });
@@ -215,6 +222,137 @@ export class StaffAuthService {
     });
     await this.sendCode(challenge.id, email, code);
     return { expiresAt: updated.expiresAt, sentTo: maskEmail(email) };
+  }
+
+  // ── Forgotten password ──────────────────────────────────────────────
+
+  /**
+   * Emails a password reset code to a newsroom member. The reply is the same
+   * whether or not the email has newsroom access, and the email goes out in
+   * the background, so neither the answer nor its timing tells them apart.
+   */
+  async requestPasswordReset(rawEmail: string, client: ClientInfo) {
+    const email = normalizeEmail(rawEmail);
+    await enforceRateLimit(
+      this.redis.client,
+      `staff:pwreset:ip:${client.ip ?? 'unknown'}`,
+      10,
+      15 * 60,
+      'Too many requests. Try again in a few minutes.',
+    );
+    await enforceRateLimit(
+      this.redis.client,
+      `staff:pwreset:email:${email}`,
+      3,
+      15 * 60,
+      'A code was sent a moment ago. Check your inbox, or try again in a few minutes.',
+    );
+    const user = await this.prisma.user.findUnique({
+      where: { emailAlias: email },
+      include: { staffProfile: true },
+    });
+    if (
+      user?.staffProfile?.status === StaffStatus.ACTIVE &&
+      user.status !== UserStatus.BLOCKED
+    ) {
+      const code = generateOtp();
+      await this.redis.client.set(
+        this.resetKey(email),
+        hashCode(code, this.codeSecret),
+        'EX',
+        RESET_TTL_SEC,
+      );
+      await this.redis.client.del(this.resetTriesKey(email));
+      void this.mail
+        .sendStaffPasswordReset(email, code, RESET_TTL_SEC)
+        .catch((err: Error) =>
+          this.logger.error(`Password reset email failed: ${err.message}`),
+        );
+      await this.audit.recordSafely({
+        actor: { userId: user.id, email },
+        action: 'staff.password.reset_requested',
+        ...client,
+      });
+    }
+    return { message: RESET_SENT, expiresInSeconds: RESET_TTL_SEC };
+  }
+
+  /**
+   * Sets a new password with an emailed code. Every portal session ends, and
+   * the app's too: it signs in with the same password.
+   */
+  async resetPassword(
+    rawEmail: string,
+    code: string,
+    password: string,
+    client: ClientInfo,
+  ) {
+    const email = normalizeEmail(rawEmail);
+    await enforceRateLimit(
+      this.redis.client,
+      `staff:pwreset:verify:ip:${client.ip ?? 'unknown'}`,
+      30,
+      15 * 60,
+      'Too many attempts. Try again in a few minutes.',
+    );
+    const stored = await this.redis.client.get(this.resetKey(email));
+    if (!stored) throw new BadRequestException(RESET_BAD);
+    const tries = await this.redis.client.incr(this.resetTriesKey(email));
+    if (tries === 1) {
+      await this.redis.client.expire(this.resetTriesKey(email), RESET_TTL_SEC);
+    }
+    if (tries > MAX_CODE_ATTEMPTS) {
+      await this.redis.client.del(
+        this.resetKey(email),
+        this.resetTriesKey(email),
+      );
+      throw new BadRequestException('Too many wrong codes. Ask for a new one.');
+    }
+    if (!verifyCode(code, stored, this.codeSecret)) {
+      throw new BadRequestException(RESET_BAD);
+    }
+    const user = await this.prisma.user.findUnique({
+      where: { emailAlias: email },
+      include: { staffProfile: true },
+    });
+    if (!user?.staffProfile) throw new BadRequestException(RESET_BAD);
+    const staff = await this.assertCanUsePortal(user, user.staffProfile);
+    // One use only, even when two requests race with the same code.
+    if ((await this.redis.client.del(this.resetKey(email))) !== 1) {
+      throw new BadRequestException(RESET_BAD);
+    }
+    await this.redis.client.del(this.resetTriesKey(email));
+    await this.users.setPassword(user.id, await hashPassword(password));
+    if (!user.emailVerified) await this.users.markEmailVerified(user.id);
+    const now = new Date();
+    await this.prisma.$transaction(async (tx) => {
+      await tx.staffSession.updateMany({
+        where: { staffId: staff.id, revokedAt: null },
+        data: { revokedAt: now, revokedReason: 'password_reset' },
+      });
+      await this.audit.record(
+        {
+          actor: { userId: user.id, email },
+          action: 'staff.password.reset',
+          entityType: 'StaffProfile',
+          entityId: staff.id,
+          ...client,
+        },
+        tx,
+      );
+    });
+    // The app's refresh tokens (same keys as AuthService.revokeAllSessions).
+    const appSessions = await this.redis.client.keys(`refresh:${user.id}:*`);
+    if (appSessions.length) await this.redis.client.del(...appSessions);
+    return { ok: true };
+  }
+
+  private resetKey(email: string): string {
+    return `staff:pwreset:code:${email}`;
+  }
+
+  private resetTriesKey(email: string): string {
+    return `staff:pwreset:tries:${email}`;
   }
 
   // ── Step 2: emailed code → session ──────────────────────────────────

@@ -95,7 +95,7 @@ export function StaffView() {
     <>
       <PageHeader
         title="Staff"
-        description="Everyone who can sign in to the newsroom portal, and the roles that decide what they can do."
+        description="Everyone who can sign in to the newsroom portal, and the roles that decide what they can do. Super Admins are added, suspended and removed in the StockVirtue admin console."
         actions={
           can(me, 'staff.invite') && (
             <Button onClick={() => setInviteOpen(true)}>
@@ -332,8 +332,11 @@ function MembersTable({
             <TableBody>
               {shown.map((m) => {
                 const self = m.userId === me.userId;
+                // Super Admins are suspended and restored in the admin console.
+                const suspendable =
+                  canSuspend && !m.roles.some((r) => r.key === 'SUPER_ADMIN');
                 const hasActions =
-                  !self && (canEditRoles || canSuspend || canSignOut);
+                  !self && (canEditRoles || suspendable || canSignOut);
                 return (
                   <TableRow key={m.id}>
                     <TableCell className="pl-4">
@@ -423,7 +426,7 @@ function MembersTable({
                                 <LogOut /> Sign out everywhere
                               </DropdownMenuItem>
                             )}
-                            {canSuspend && (
+                            {suspendable && (
                               <>
                                 <DropdownMenuSeparator />
                                 {m.status === 'ACTIVE' ? (

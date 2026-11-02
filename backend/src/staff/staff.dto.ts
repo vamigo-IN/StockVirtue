@@ -31,6 +31,23 @@ export class StaffLoginDto {
   password!: string;
 }
 
+export class StaffForgotPasswordDto {
+  @IsEmail()
+  @MaxLength(160)
+  email!: string;
+}
+
+export class StaffResetPasswordDto extends StaffForgotPasswordDto {
+  @Matches(/^\d{6}$/, { message: 'Enter the 6-digit code from the email.' })
+  code!: string;
+
+  // Same rule as app sign-up (email-register.dto.ts).
+  @IsString()
+  @MinLength(10, { message: 'Use at least 10 characters for your password.' })
+  @MaxLength(128)
+  password!: string;
+}
+
 export class StaffVerifyDto {
   @IsUUID()
   challengeId!: string;

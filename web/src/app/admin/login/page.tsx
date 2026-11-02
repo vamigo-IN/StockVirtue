@@ -20,6 +20,7 @@ export default async function LoginPage({
         next={safeNext(one('next'))}
         reason={one('reason')}
         signedOut={one('signedOut') === '1'}
+        passwordReset={one('reset') === '1'}
         email={one('email')}
       />
     </AuthScreen>
