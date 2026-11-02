@@ -9,5 +9,6 @@ import { IpoService } from './ipo.service';
   imports: [MarketModule, SmartApiModule, RedisModule],
   controllers: [IpoController],
   providers: [IpoService],
+  exports: [IpoService],
 })
 export class IpoModule {}

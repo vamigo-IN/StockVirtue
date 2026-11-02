@@ -1,0 +1,156 @@
+/* ============================================================================
+   StockVirtue newsroom portal (stockvirtue.com/admin). Tailwind CSS v4 +
+   shadcn/ui tokens. Loaded ONLY by the /admin layout: the marketing pages keep
+   their own globals.css and never see these resets or utilities.
+   ========================================================================== */
+@import "tailwindcss";
+@import "tw-animate-css";
+/* Article body typography, shared with the public news pages. */
+@import "../../styles/article-prose.css";
+@import "../../styles/widgets.css";
+@plugin "@tailwindcss/typography";
+
+/* Only scan the portal's own code for class names. */
+@source not "../(site)";
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-success: var(--success);
+  --color-warning: var(--warning);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-muted: var(--sidebar-muted);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-border: var(--sidebar-border);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    Helvetica, Arial, sans-serif;
+  --font-display: var(--font-space), system-ui, -apple-system, "Segoe UI",
+    sans-serif;
+  --font-mono: var(--font-mono-jb), ui-monospace, "SF Mono", Menlo, Consolas,
+    monospace;
+}
+
+/* Light theme: StockVirtue green on soft green-tinted neutrals. */
+:root {
+  --radius: 0.625rem;
+  --background: oklch(0.982 0.004 160);
+  --foreground: oklch(0.2 0.02 160);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.2 0.02 160);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.2 0.02 160);
+  /* green-700: white text on it passes WCAG AA. */
+  --primary: oklch(0.527 0.137 150);
+  --primary-foreground: oklch(0.99 0 0);
+  --secondary: oklch(0.955 0.008 160);
+  --secondary-foreground: oklch(0.24 0.02 160);
+  --muted: oklch(0.958 0.006 160);
+  --muted-foreground: oklch(0.47 0.02 160);
+  --accent: oklch(0.952 0.024 155);
+  --accent-foreground: oklch(0.3 0.06 155);
+  --destructive: oklch(0.577 0.215 27);
+  --success: oklch(0.527 0.137 150);
+  --warning: oklch(0.555 0.146 60);
+  --border: oklch(0.91 0.008 160);
+  --input: oklch(0.885 0.01 160);
+  --ring: oklch(0.66 0.15 150);
+  /* The sidebar stays dark in both themes: the brand's trading-desk look. */
+  --sidebar: oklch(0.175 0.012 160);
+  --sidebar-foreground: oklch(0.88 0.01 160);
+  --sidebar-muted: oklch(0.66 0.015 160);
+  --sidebar-primary: oklch(0.792 0.18 151.7);
+  --sidebar-accent: oklch(0.245 0.02 160);
+  --sidebar-border: oklch(0.255 0.015 160);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: oklch(0.16 0.01 160);
+    --foreground: oklch(0.95 0.005 160);
+    --card: oklch(0.2 0.012 160);
+    --card-foreground: oklch(0.95 0.005 160);
+    --popover: oklch(0.215 0.012 160);
+    --popover-foreground: oklch(0.95 0.005 160);
+    --primary: oklch(0.723 0.192 149.6);
+    --primary-foreground: oklch(0.17 0.02 160);
+    --secondary: oklch(0.26 0.012 160);
+    --secondary-foreground: oklch(0.95 0.005 160);
+    --muted: oklch(0.255 0.012 160);
+    --muted-foreground: oklch(0.72 0.015 160);
+    --accent: oklch(0.28 0.035 155);
+    --accent-foreground: oklch(0.93 0.03 155);
+    --destructive: oklch(0.66 0.2 25);
+    --success: oklch(0.76 0.17 151);
+    --warning: oklch(0.8 0.15 75);
+    --border: oklch(1 0 0 / 10%);
+    --input: oklch(1 0 0 / 15%);
+    --ring: oklch(0.6 0.15 150);
+    --sidebar: oklch(0.13 0.01 160);
+    --sidebar-accent: oklch(0.21 0.018 160);
+    --sidebar-border: oklch(0.22 0.014 160);
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: var(--font-sans);
+  }
+  h1,
+  h2,
+  h3 {
+    font-family: var(--font-display);
+    letter-spacing: -0.01em;
+  }
+}
+
+/* ── Editor only ─────────────────────────────────────────────────────────── */
+.tiptap :where(.is-empty, .is-editor-empty)::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+  color: var(--muted-foreground);
+}
+.sv-figure-edit.is-selected img,
+.sv-figure-edit.is-selected > div:first-child {
+  outline: 3px solid color-mix(in oklab, var(--ring) 70%, transparent);
+  outline-offset: 2px;
+}
+.tiptap .selectedCell::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: color-mix(in oklab, var(--primary) 12%, transparent);
+}
+.tiptap a {
+  cursor: text;
+}

@@ -150,6 +150,75 @@ export class MailService {
     );
   }
 
+  /** Second step of a newsroom portal sign-in. */
+  async sendStaffLoginCode(
+    to: string,
+    code: string,
+    ttlSeconds: number,
+  ): Promise<void> {
+    const minutes = this.minutes(ttlSeconds);
+    await this.send(
+      to,
+      'Your StockVirtue newsroom sign-in code',
+      this.codeEmail({
+        heading: 'Newsroom sign-in',
+        intro:
+          "Enter this code to finish signing in to the StockVirtue newsroom. If you didn't just sign in, change your password now — someone else knows it.",
+        code,
+        minutes,
+        preheader: `${code} is your StockVirtue newsroom sign-in code (expires in ${minutes} min).`,
+      }),
+      `Your StockVirtue newsroom sign-in code is ${code}. It expires in ${minutes} minute(s). If you didn't just sign in, change your password now.`,
+      `newsroom code ${code}`,
+    );
+  }
+
+  /** Invitation to join the newsroom with the given roles. */
+  async sendStaffInvitation(
+    to: string,
+    opts: {
+      inviterName: string;
+      roleNames: string[];
+      acceptUrl: string;
+      expiresAt: Date;
+    },
+  ): Promise<void> {
+    const roles = opts.roleNames.join(', ');
+    const expires = opts.expiresAt.toLocaleString('en-IN', {
+      dateStyle: 'medium',
+      timeStyle: 'short',
+      timeZone: 'Asia/Kolkata',
+    });
+    const bodyHtml = [
+      this.para(
+        `<b>${escapeHtml(opts.inviterName)}</b> invited you to the StockVirtue newsroom as <b>${escapeHtml(roles)}</b>.`,
+      ),
+      this.para(
+        `<a href="${escapeHtml(opts.acceptUrl)}" style="color:${BRAND.green};font-weight:700;">Accept the invitation</a> to set up your newsroom access. If you already use StockVirtue, use the same email and password.`,
+      ),
+      this.detailTable([
+        { label: 'Role', value: roles },
+        { label: 'Link expires', value: `${expires} IST` },
+      ]),
+      this.para(
+        "If you weren't expecting this, you can ignore this email. Nothing happens until the invitation is accepted.",
+      ),
+    ].join('');
+    const bodyText = `${opts.inviterName} invited you to the StockVirtue newsroom as ${roles}. Accept here: ${opts.acceptUrl} (expires ${expires} IST). If you weren't expecting this, ignore this email.`;
+    // Same layout as notify(), but the link goes in the dev-console note so a
+    // local setup without SMTP can still follow it.
+    const inner = `
+      ${this.headingHtml('Join the StockVirtue newsroom')}
+      <div style="font-size:15px;line-height:23px;color:${BRAND.body}">${bodyHtml}</div>`;
+    await this.send(
+      to,
+      `${opts.inviterName} invited you to the StockVirtue newsroom`,
+      this.layout(inner, bodyText.slice(0, 140)),
+      bodyText,
+      `invite ${opts.acceptUrl}`,
+    );
+  }
+
   /**
    * Generic high-signal notification (no code). Used by referral/trade/digest
    * emails. `bodyHtml` is trusted HTML the caller built from escaped values;

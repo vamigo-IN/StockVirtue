@@ -85,11 +85,13 @@ export const validationSchema = Joi.object({
   ADMIN_DEVICE_FAIL_THRESHOLD: Joi.number().min(2).default(5),
   ADMIN_ALERT_EMAIL: Joi.string().email().allow('').default(''),
 
-  // Marketing website (stockvirtue.com). SITE_ADMIN_KEY authenticates the
-  // website server when saving site settings; blank disables that write
-  // endpoint. SITE_CONTACT_TO receives contact-form emails (defaults to
-  // ADMIN_EMAIL). Both optional so the backend boots without the website.
+  // Marketing website (stockvirtue.com). SITE_ADMIN_KEY identifies the
+  // website server that runs the newsroom portal (its forwarded client IPs are
+  // trusted only with it). SITE_CONTACT_TO receives contact-form emails
+  // (defaults to ADMIN_EMAIL). Both optional so the backend boots without it.
   SITE_ADMIN_KEY: Joi.string().allow('').default(''),
+  // Where the API asks the website to refresh news pages (blank = derived).
+  SITE_REVALIDATE_URL: Joi.string().allow('').default(''),
   SITE_CONTACT_TO: Joi.string().email().allow('').default(''),
 
   // Traffic monitoring / abuse detection. Defaults: on, 1-in-50 raw-log
@@ -120,4 +122,33 @@ export const validationSchema = Joi.object({
   FEED_UNIVERSE_REFRESH_MS: Joi.number().min(60000).default(21600000),
   FEED_MAX_CONNECTIONS: Joi.number().min(1).default(5000),
   FEED_MAX_CONNECTIONS_PER_IP: Joi.number().min(1).default(20),
+
+  // ─── Newsroom ─────────────────────────────────────────────────────────
+  // All optional-with-default for the same reason as the feed block above:
+  // a missing newsroom value must never stop the trading API from booting.
+  // Blank STAFF_AUTH_SECRET = derived from JWT_ACCESS_SECRET.
+  STAFF_AUTH_SECRET: Joi.string().allow('').min(32).default(''),
+  STAFF_SESSION_IDLE_MINUTES: Joi.number().min(5).max(1440).default(60),
+  STAFF_SESSION_MAX_HOURS: Joi.number().min(1).max(168).default(12),
+  STAFF_LOGIN_CODE_TTL: Joi.number().min(60).max(1800).default(300),
+  STAFF_INVITE_TTL_HOURS: Joi.number().min(1).max(720).default(72),
+  NEWSROOM_PORTAL_URL: Joi.string().allow('').default(''),
+  // Seals news-source credentials and AI provider keys. Blank = derived from
+  // JWT_ACCESS_SECRET, so set it before ever rotating that secret.
+  NEWSROOM_SECRETS_KEY: Joi.string().allow('').min(32).default(''),
+  // Hosts news ingestion may fetch although they resolve to private
+  // addresses ("host" or "host:port", comma-separated). Local testing only.
+  INGEST_PRIVATE_HOSTS: Joi.string().allow('').default(''),
+  // Website ticker and widget prices from the API's broker feed.
+  MARKET_DISPLAY_ENABLED: Joi.string().valid('true', 'false').default('true'),
+  // Media storage: Cloudflare R2. Driver "none" (default) disables uploads.
+  MEDIA_STORAGE_DRIVER: Joi.string().valid('r2', 'none').default('none'),
+  R2_ACCOUNT_ID: Joi.string().allow('').default(''),
+  R2_ACCESS_KEY_ID: Joi.string().allow('').default(''),
+  R2_SECRET_ACCESS_KEY: Joi.string().allow('').default(''),
+  R2_BUCKET: Joi.string().allow('').default(''),
+  R2_ENDPOINT: Joi.string().allow('').default(''),
+  MEDIA_PUBLIC_BASE_URL: Joi.string().allow('').default(''),
+  MEDIA_MAX_UPLOAD_MB: Joi.number().min(1).max(100).default(10),
+  QUEUE_PREFIX: Joi.string().allow('').default('sv'),
 });

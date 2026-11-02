@@ -12,7 +12,12 @@ import { FeatureFlagsModule } from './feature-flags/feature-flags.module';
 import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
 import { UsersModule } from './users/users.module';
+import { AppUsersModule } from './app-users/app-users.module';
 import { AuthModule } from './auth/auth.module';
+import { AiModule } from './ai/ai.module';
+import { IngestionModule } from './ingestion/ingestion.module';
+import { MarketDisplayModule } from './market-display/market-display.module';
+import { NewsroomModule } from './newsroom/newsroom.module';
 import { SmartApiModule } from './smartapi/smartapi.module';
 import { MarketModule } from './market/market.module';
 import { WatchlistsModule } from './watchlists/watchlists.module';
@@ -33,6 +38,10 @@ import { SiteModule } from './site/site.module';
 import { MonitoringModule } from './monitoring/monitoring.module';
 import { FeedModule } from './feed/feed.module';
 import { IpoModule } from './ipo/ipo.module';
+import { RbacModule } from './rbac/rbac.module';
+import { AuditModule } from './audit/audit.module';
+import { StaffModule } from './staff/staff.module';
+import { StorageModule } from './storage/storage.module';
 
 @Module({
   imports: [
@@ -75,6 +84,16 @@ import { IpoModule } from './ipo/ipo.module';
     MonitoringModule,
     FeedModule,
     IpoModule,
+    // Newsroom foundations (all routes under /api/v1).
+    RbacModule,
+    AuditModule,
+    StaffModule,
+    AppUsersModule,
+    NewsroomModule,
+    MarketDisplayModule,
+    IngestionModule,
+    AiModule,
+    StorageModule,
   ],
   controllers: [AppController],
   providers: [

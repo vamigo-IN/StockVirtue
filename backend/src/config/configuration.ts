@@ -65,12 +65,17 @@ export interface AdminConfig {
   shield: AdminShieldConfig;
 }
 
-/// Marketing website (stockvirtue.com) integration. `adminKey` authenticates
-/// the website's Next.js server when it saves site settings (server-to-server);
-/// blank disables the write endpoint. `contactTo` receives contact-form emails.
+/// Marketing website (stockvirtue.com) integration. `adminKey` identifies the
+/// website's Next.js server, which runs the newsroom portal: only with it are
+/// the browser IP / user agent it forwards trusted (staff sessions, audit).
+/// `contactTo` receives contact-form emails. `revalidateUrl` is where the API
+/// asks the website to refresh its news pages after a change (signed with
+/// `adminKey`); blank SITE_REVALIDATE_URL = the portal URL's origin +
+/// /api/revalidate.
 export interface SiteConfig {
   adminKey: string;
   contactTo: string;
+  revalidateUrl: string;
 }
 
 /// Traffic-monitoring & abuse-detection subsystem. `enabled` is a kill-switch;
@@ -144,6 +149,64 @@ export interface AppConfig {
   feed: FeedConfig;
   /// Where the app loads company logos from ({symbol} = NSE ticker).
   logoUrlTemplate: string;
+  newsroom: NewsroomConfig;
+  storage: StorageConfig;
+  marketDisplay: MarketDisplayConfig;
+  queue: QueueConfig;
+}
+
+/// Newsroom staff portal sign-in. Every value is optional-with-default: a
+/// missing one must never take the trading API down.
+export interface NewsroomConfig {
+  /// HMAC key for emailed sign-in codes. Blank = derived from
+  /// JWT_ACCESS_SECRET with a newsroom-specific label (see staff-crypto.ts).
+  staffAuthSecret: string;
+  /// A portal session ends after this long without a request.
+  sessionIdleMinutes: number;
+  /// …and after this long regardless of activity.
+  sessionMaxHours: number;
+  /// Lifetime of an emailed sign-in code.
+  loginCodeTtlSeconds: number;
+  /// Lifetime of an emailed staff invitation link.
+  inviteTtlHours: number;
+  /// Public URL of the staff portal, used to build invitation links.
+  portalUrl: string;
+  /// Seals news-source credentials and AI provider keys. Blank = derived
+  /// from JWT_ACCESS_SECRET (see common/secret-box.ts).
+  secretsKey: string;
+  /// Hosts ingestion may fetch although they resolve to private addresses
+  /// ("host" or "host:port"). For local testing; empty in production.
+  ingestPrivateHosts: string[];
+}
+
+export type StorageDriverName = 'r2' | 'none';
+
+/// Media storage (article images). Cloudflare R2 through its S3-compatible API.
+/// Prices for the website's ticker and article widgets (curated list, one
+/// subscription on the trading app's broker socket). `enabled` false = serve
+/// only the last stored prices, e.g. on a machine with no broker session.
+export interface MarketDisplayConfig {
+  enabled: boolean;
+}
+
+export interface StorageConfig {
+  driver: StorageDriverName;
+  r2AccountId: string;
+  r2AccessKeyId: string;
+  r2SecretAccessKey: string;
+  r2Bucket: string;
+  /// Optional S3-compatible endpoint instead of R2's (e.g. MinIO for local
+  /// testing). Blank = https://<account>.r2.cloudflarestorage.com.
+  r2Endpoint: string;
+  /// CDN base that serves the bucket, e.g. https://media.stockvirtue.com
+  publicBaseUrl: string;
+  maxUploadBytes: number;
+}
+
+/// Background jobs (BullMQ on the existing Redis).
+export interface QueueConfig {
+  /// Key prefix so queue data never collides with other Redis keys.
+  prefix: string;
 }
 
 /// Parse `FEED_API_KEYS` — a comma-separated list of "clientId:secret" pairs.
@@ -170,6 +233,19 @@ function parseFeedApiKeys(raw: string): FeedApiKey[] {
   return out;
 }
 
+/** Where to ask the website to refresh news pages (see SiteConfig). */
+function siteRevalidateUrl(): string {
+  const explicit = (process.env.SITE_REVALIDATE_URL ?? '').trim();
+  if (explicit) return explicit;
+  try {
+    return new URL(
+      '/api/revalidate',
+      process.env.NEWSROOM_PORTAL_URL || 'https://stockvirtue.com/admin',
+    ).toString();
+  } catch {
+    return '';
+  }
+}
 export default (): AppConfig => ({
   nodeEnv: (process.env.NODE_ENV as NodeEnv) ?? 'development',
   host: process.env.HOST ?? '0.0.0.0',
@@ -259,6 +335,7 @@ export default (): AppConfig => ({
       process.env.SITE_CONTACT_TO ||
       process.env.ADMIN_EMAIL ||
       'admin@stockvirtue.local',
+    revalidateUrl: siteRevalidateUrl(),
   },
   monitoring: {
     enabled: (process.env.MONITORING_ENABLED ?? 'true') !== 'false',
@@ -304,5 +381,54 @@ export default (): AppConfig => ({
       process.env.FEED_MAX_CONNECTIONS_PER_IP ?? '20',
       10,
     ),
+  },
+  newsroom: {
+    staffAuthSecret: process.env.STAFF_AUTH_SECRET ?? '',
+    sessionIdleMinutes: Math.max(
+      5,
+      parseInt(process.env.STAFF_SESSION_IDLE_MINUTES ?? '60', 10),
+    ),
+    sessionMaxHours: Math.max(
+      1,
+      parseInt(process.env.STAFF_SESSION_MAX_HOURS ?? '12', 10),
+    ),
+    loginCodeTtlSeconds: Math.max(
+      60,
+      parseInt(process.env.STAFF_LOGIN_CODE_TTL ?? '300', 10),
+    ),
+    inviteTtlHours: Math.max(
+      1,
+      parseInt(process.env.STAFF_INVITE_TTL_HOURS ?? '72', 10),
+    ),
+    portalUrl: (
+      process.env.NEWSROOM_PORTAL_URL || 'https://stockvirtue.com/admin'
+    ).replace(/\/+$/, ''),
+    secretsKey: process.env.NEWSROOM_SECRETS_KEY ?? '',
+    ingestPrivateHosts: (process.env.INGEST_PRIVATE_HOSTS ?? '')
+      .split(',')
+      .map((h) => h.trim().toLowerCase())
+      .filter(Boolean),
+  },
+  marketDisplay: {
+    enabled: (process.env.MARKET_DISPLAY_ENABLED ?? 'true') !== 'false',
+  },
+  storage: {
+    driver: process.env.MEDIA_STORAGE_DRIVER === 'r2' ? 'r2' : 'none',
+    r2AccountId: process.env.R2_ACCOUNT_ID ?? '',
+    r2AccessKeyId: process.env.R2_ACCESS_KEY_ID ?? '',
+    r2SecretAccessKey: process.env.R2_SECRET_ACCESS_KEY ?? '',
+    r2Bucket: process.env.R2_BUCKET ?? '',
+    r2Endpoint: (process.env.R2_ENDPOINT ?? '').replace(/\/+$/, ''),
+    publicBaseUrl: (process.env.MEDIA_PUBLIC_BASE_URL ?? '').replace(
+      /\/+$/,
+      '',
+    ),
+    maxUploadBytes:
+      Math.max(1, parseInt(process.env.MEDIA_MAX_UPLOAD_MB ?? '10', 10)) *
+      1024 *
+      1024,
+  },
+  queue: {
+    prefix: process.env.QUEUE_PREFIX || 'sv',
   },
 });

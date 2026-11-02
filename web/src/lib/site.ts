@@ -19,8 +19,20 @@ export const SITE = {
   twitter: '@stockvirtue',
 } as const;
 
-export const NAV: { href: string; label: string }[] = [
+/**
+ * `fullLoad` links leave the marketing pages for another area of the site
+ * (the news site) with a normal page load, so the two areas' stylesheets are
+ * never on one page.
+ */
+export interface SiteLink {
+  href: string;
+  label: string;
+  fullLoad?: boolean;
+}
+
+export const NAV: SiteLink[] = [
   { href: '/features', label: 'Features' },
+  { href: '/news', label: 'News', fullLoad: true },
   { href: '/about', label: 'About' },
   { href: '/faq', label: 'FAQ' },
   { href: '/contact', label: 'Contact' },
@@ -29,12 +41,13 @@ export const NAV: { href: string; label: string }[] = [
 
 export const FOOTER_LINKS: {
   title: string;
-  links: { href: string; label: string }[];
+  links: SiteLink[];
 }[] = [
   {
     title: 'Product',
     links: [
       { href: '/features', label: 'Features' },
+      { href: '/news', label: 'Market news', fullLoad: true },
       { href: '/download', label: 'Download' },
       { href: '/faq', label: 'FAQ' },
     ],

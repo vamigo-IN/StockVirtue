@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/analytics.dart';
 import 'core/market_hours.dart';
+import 'core/navigation.dart';
 import 'core/theme.dart';
 import 'core/theme_provider.dart';
 import 'features/auth/auth_controller.dart';
@@ -36,6 +37,8 @@ class StockVirtueApp extends ConsumerWidget {
         ref.watch(themeControllerProvider).value ?? ThemeMode.dark;
     return MaterialApp(
       title: 'StockVirtue',
+      // Lets a tapped news push open the story from outside the tree.
+      navigatorKey: rootNavigatorKey,
       debugShowCheckedModeBanner: false,
       theme: buildLightTheme(),
       darkTheme: buildDarkTheme(),

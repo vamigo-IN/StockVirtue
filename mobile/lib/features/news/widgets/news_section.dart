@@ -3,19 +3,22 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/design/tokens.dart';
 import '../../../widgets/ui/market_widgets.dart';
+import '../news_format.dart';
 import '../news_repository.dart';
 import '../screens/article_screen.dart';
+import '../screens/news_screen.dart';
+import 'news_tiles.dart';
 
-/// Renders the latest articles from the backend RSS aggregator. On the home
-/// tab (no [symbol]) it shows the markets feed 10 at a time with a "Load
-/// more" button; on the symbol-detail screen it shows the articles that
-/// mention that symbol, and hides itself when there are none.
+/// News on the home tab and the symbol screen. StockVirtue's own stories
+/// come first; until the newsroom has published any (or on an older
+/// backend) it shows the headline feed as before. On the home tab it pages
+/// 10 at a time with "Load more"; on a symbol screen it shows stories tagged
+/// with that company, else headlines mentioning it, and hides itself when
+/// there are none.
 class NewsSection extends ConsumerWidget {
   const NewsSection({super.key, this.symbol});
 
-  /// When non-null the backend filters articles whose title/summary mentions
-  /// [symbol] (case-insensitive). Otherwise the general markets feed is
-  /// returned.
+  /// When set, only news about this NSE symbol.
   final String? symbol;
 
   @override
@@ -23,14 +26,23 @@ class NewsSection extends ConsumerWidget {
     final sym = symbol;
     if (sym != null) {
       return ref.watch(symbolNewsProvider(sym)).maybeWhen(
-            data: (items) => items.isEmpty
-                ? const SizedBox.shrink()
-                : _NewsList(
+            data: (news) {
+              if (news.stories.isEmpty && news.headlines.isEmpty) {
+                return const SizedBox.shrink();
+              }
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // The detail screen already spaces its sections.
+                  SectionHeader(
                     title: 'News on $sym',
-                    items: items,
-                    // The detail screen already spaces its sections.
-                    headerPadding: const EdgeInsets.fromLTRB(16, 0, 8, 10),
+                    padding: const EdgeInsets.fromLTRB(16, 0, 8, 10),
                   ),
+                  for (final c in news.stories) NewsListTile(card: c),
+                  for (final h in news.headlines) _HeadlineTile(headline: h),
+                ],
+              );
+            },
             orElse: () => const SizedBox.shrink(),
           );
     }
@@ -45,55 +57,39 @@ class NewsSection extends ConsumerWidget {
         ),
       ),
       data: (feed) {
-        if (feed.items.isEmpty) {
+        if (feed.isEmpty) {
           return const _NewsShell(
             child: _MessageRow(text: 'No market news at the moment.'),
           );
         }
-        return _NewsList(
-          title: 'Markets news',
-          items: feed.items,
-          footer: feed.hasMore
-              ? _LoadMoreButton(
+        final ownStories = feed.stories.isNotEmpty;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SectionHeader(
+              title: 'Markets news',
+              actionLabel: ownStories ? 'All news' : null,
+              onAction: ownStories
+                  ? () => Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const NewsScreen()),
+                      )
+                  : null,
+            ),
+            for (final c in feed.stories) NewsListTile(card: c),
+            for (final h in feed.headlines) _HeadlineTile(headline: h),
+            if (feed.hasMore)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 2, 16, 0),
+                child: _LoadMoreButton(
                   loading: feed.loadingMore,
                   failed: feed.loadMoreFailed,
                   onPressed: () =>
                       ref.read(marketsNewsProvider.notifier).loadMore(),
-                )
-              : null,
+                ),
+              ),
+          ],
         );
       },
-    );
-  }
-}
-
-class _NewsList extends StatelessWidget {
-  const _NewsList({
-    required this.title,
-    required this.items,
-    this.footer,
-    this.headerPadding,
-  });
-  final String title;
-  final List<NewsArticle> items;
-  final Widget? footer;
-  final EdgeInsets? headerPadding;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        headerPadding == null
-            ? SectionHeader(title: title)
-            : SectionHeader(title: title, padding: headerPadding!),
-        for (final item in items) _NewsTile(article: item),
-        if (footer != null)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 2, 16, 0),
-            child: footer,
-          ),
-      ],
     );
   }
 }
@@ -154,9 +150,10 @@ class _LoadMoreButton extends StatelessWidget {
   }
 }
 
-class _NewsTile extends StatelessWidget {
-  const _NewsTile({required this.article});
-  final NewsArticle article;
+/// A headline from another publisher, opened in the in-app browser.
+class _HeadlineTile extends StatelessWidget {
+  const _HeadlineTile({required this.headline});
+  final NewsHeadline headline;
 
   @override
   Widget build(BuildContext context) {
@@ -171,8 +168,8 @@ class _NewsTile extends StatelessWidget {
         onTap: () => Navigator.of(context).push(
           MaterialPageRoute(
             builder: (_) => ArticleScreen(
-              title: article.title,
-              url: article.link,
+              title: headline.title,
+              url: headline.link,
             ),
           ),
         ),
@@ -180,7 +177,7 @@ class _NewsTile extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              article.title,
+              headline.title,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: t.titleSmall?.copyWith(
@@ -188,10 +185,10 @@ class _NewsTile extends StatelessWidget {
                 height: 1.3,
               ),
             ),
-            if (article.summary.isNotEmpty) ...[
+            if (headline.summary.isNotEmpty) ...[
               const SizedBox(height: 4),
               Text(
-                article.summary,
+                headline.summary,
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: t.bodySmall?.copyWith(height: 1.4),
@@ -205,7 +202,7 @@ class _NewsTile extends StatelessWidget {
                     children: [
                       Flexible(
                         child: Text(
-                          article.source,
+                          headline.source,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: t.labelSmall?.copyWith(
@@ -214,9 +211,9 @@ class _NewsTile extends StatelessWidget {
                           ),
                         ),
                       ),
-                      if (article.publishedAt != null)
+                      if (headline.publishedAt != null)
                         Text(
-                          '  ·  ${_relative(article.publishedAt!)}',
+                          '  ·  ${newsAgo(headline.publishedAt!)}',
                           style: t.labelSmall?.copyWith(
                             color: scheme.onSurfaceVariant,
                           ),
@@ -236,15 +233,6 @@ class _NewsTile extends StatelessWidget {
         ),
       ),
     );
-  }
-
-  static String _relative(DateTime at) {
-    final diff = DateTime.now().difference(at);
-    if (diff.inMinutes < 1) return 'just now';
-    if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
-    if (diff.inHours < 24) return '${diff.inHours}h ago';
-    if (diff.inDays < 7) return '${diff.inDays}d ago';
-    return '${at.day}/${at.month}/${at.year}';
   }
 }
 

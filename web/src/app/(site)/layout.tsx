@@ -1,3 +1,4 @@
+import '../globals.css';
 import { getSettings } from '@/lib/settings';
 import { Header } from '@/components/Header';
 import { Footer } from '@/components/Footer';

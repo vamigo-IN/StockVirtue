@@ -9,22 +9,30 @@ export type Tick = {
 
 /**
  * Always-running symbol tape. Renders the row twice so the -50% translate
- * loops seamlessly. Green ▲ up-ticks / red ▼ down-ticks. Decorative
- * (aria-hidden); frozen under reduced motion via globals.css.
+ * loops seamlessly. Green ▲ up-ticks / red ▼ down-ticks; `note` (the prices'
+ * label and time) leads each loop. Frozen under reduced motion via
+ * globals.css.
  */
 export function TickerTape({
   items,
   speed = 42,
   reverse = false,
   className,
+  note,
 }: {
   items: Tick[];
   speed?: number;
   reverse?: boolean;
   className?: string;
+  note?: string;
 }) {
   const group = (
     <div className="ticker-group">
+      {note && (
+        <span className="tk">
+          <span className="sym">{note}</span>
+        </span>
+      )}
       {items.map((t, i) => (
         <span className={`tk ${t.up ? 'up' : 'down'}`} key={`${t.sym}-${i}`}>
           <span className="sym">{t.sym}</span>

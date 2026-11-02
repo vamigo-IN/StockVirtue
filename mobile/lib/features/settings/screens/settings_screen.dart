@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/preferences.dart';
 import '../../../data/models/order.dart';
 import '../../auth/auth_controller.dart';
+import '../../news/news_repository.dart';
 import '../../notifications/notifications_provider.dart';
 
 class SettingsScreen extends ConsumerWidget {
@@ -70,6 +71,9 @@ class SettingsScreen extends ConsumerWidget {
             ],
           ),
           const SizedBox(height: 18),
+          _SectionTitle('News alerts'),
+          _SettingsCard(children: const [_NewsAlertToggles()]),
+          const SizedBox(height: 18),
           _SectionTitle('Email'),
           _SettingsCard(
             children: const [_TradeEmailToggle()],
@@ -83,8 +87,9 @@ class SettingsScreen extends ConsumerWidget {
                 label: 'Push notifications',
                 hint:
                     'On. This device is registered for push, so order fills, '
-                    'price alerts, market-close reminders and updates arrive '
-                    'even when the app is closed. Mute categories above.',
+                    'price alerts, news alerts, market-close reminders and '
+                    'updates arrive even when the app is closed. Mute '
+                    'categories above.',
               ),
               _Divider(),
               _DeferredRow(
@@ -335,6 +340,87 @@ class _TradeEmailToggle extends ConsumerWidget {
       ),
       contentPadding: const EdgeInsets.symmetric(horizontal: 14),
       dense: true,
+    );
+  }
+}
+
+/// Breaking-news and followed-stock pushes. Saved on the account (the
+/// server decides who gets each push), so they apply on every device.
+class _NewsAlertToggles extends ConsumerWidget {
+  const _NewsAlertToggles();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final scheme = Theme.of(context).colorScheme;
+    final async = ref.watch(newsAlertsProvider);
+    final alerts = async.value;
+    final hint = TextStyle(
+      fontSize: 11.5,
+      color: scheme.onSurface.withValues(alpha: 0.6),
+    );
+    Future<void> save({bool? breaking, bool? followedStocks}) async {
+      try {
+        await ref
+            .read(newsAlertsProvider.notifier)
+            .set(breaking: breaking, followedStocks: followedStocks);
+      } catch (_) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Could not update news alerts')),
+          );
+        }
+      }
+    }
+
+    if (alerts == null) {
+      return ListTile(
+        dense: true,
+        title: Text(
+          async.hasError
+              ? 'News alerts can’t be loaded right now.'
+              : 'Loading news alerts…',
+          style: hint,
+        ),
+        trailing: async.hasError
+            ? TextButton(
+                onPressed: () => ref.invalidate(newsAlertsProvider),
+                child: const Text('Retry'),
+              )
+            : null,
+      );
+    }
+    final n = alerts.followedCount;
+    return Column(
+      children: [
+        SwitchListTile.adaptive(
+          value: alerts.breaking,
+          onChanged: (v) => save(breaking: v),
+          title: const Text(
+            'Breaking news',
+            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5),
+          ),
+          subtitle: Text('Major market stories, as they happen.', style: hint),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 14),
+          dense: true,
+        ),
+        const _Divider(),
+        SwitchListTile.adaptive(
+          value: alerts.followedStocks,
+          onChanged: (v) => save(followedStocks: v),
+          title: const Text(
+            'Stocks you follow',
+            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5),
+          ),
+          subtitle: Text(
+            n == 0
+                ? 'Stories about stocks in your watchlists and portfolio.'
+                : 'Stories about the $n ${n == 1 ? 'stock' : 'stocks'} in your watchlists and portfolio.',
+            style: hint,
+          ),
+          contentPadding: const EdgeInsets.symmetric(horizontal: 14),
+          dense: true,
+        ),
+      ],
     );
   }
 }

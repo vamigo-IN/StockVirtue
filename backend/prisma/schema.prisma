@@ -351,6 +351,11 @@ model User {
   achievements    UserAchievement[]
   lessonProgress  LessonProgress[]
   quizAttempts    QuizAttempt[]
+  /// Present only for newsroom staff (see StaffProfile).
+  staffProfile    StaffProfile?
+  roles           UserRole[]
+  newsBookmarks   NewsBookmark[]
+  newsAlerts      NewsAlertPreference?
 
   @@index([phone])
   @@index([referredById])
@@ -777,4 +782,1084 @@ model ContactMessage {
   @@index([status, createdAt])
   @@index([createdAt])
   @@map("contact_messages")
+}
+
+// ─── Newsroom: staff, roles & permissions ───────────────────────────────────
+//
+// Staff are ordinary [User] accounts — one identity across the app, the
+// website and the newsroom portal — with a StaffProfile and one or more roles
+// on top. Newsroom tables use UUID ids; keys into the older cuid tables stay
+// text.
+
+enum StaffStatus {
+  ACTIVE
+  SUSPENDED
+}
+
+/// A newsroom staff member. Created when a user is first granted a role;
+/// suspending it ends every portal session at once.
+model StaffProfile {
+  id                String      @id @default(uuid()) @db.Uuid
+  userId            String      @unique
+  displayName       String
+  title             String?
+  status            StaffStatus @default(ACTIVE)
+  suspendedAt       DateTime?
+  suspendedReason   String?
+  lastPortalLoginAt DateTime?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  user            User                  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  sessions        StaffSession[]
+  loginChallenges StaffLoginChallenge[]
+  author          NewsAuthor?
+  createdArticles NewsArticle[]         @relation("ArticleCreatedBy")
+  versions        NewsVersion[]
+  reviews         NewsReview[]
+  assignments     NewsAssignment[]      @relation("AssignmentAssignee")
+  assignedByMe    NewsAssignment[]      @relation("AssignmentAssigner")
+  comments        NewsComment[]
+  uploads         MediaAsset[]
+  handledItems    NewsSourceItem[]      @relation("ItemHandledBy")
+  aiJobs          AiJob[]               @relation("AiJobRequestedBy")
+
+  @@index([status])
+  @@map("staff_profiles")
+}
+
+/// A named bundle of permissions. The ten default roles are system roles,
+/// seeded and kept in sync from code (rbac/rbac.catalog.ts); admins can add
+/// custom roles alongside them.
+model Role {
+  id          String   @id @default(uuid()) @db.Uuid
+  key         String   @unique
+  name        String
+  description String   @default("")
+  isSystem    Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  permissions RolePermission[]
+  users       UserRole[]
+
+  @@map("roles")
+}
+
+/// One granular capability, e.g. `news.publish`. The catalogue lives in code
+/// and is synced on boot, so a deploy can add permissions without a migration.
+model Permission {
+  key         String @id
+  group       String
+  description String
+
+  roles RolePermission[]
+
+  @@map("permissions")
+}
+
+model RolePermission {
+  roleId        String @db.Uuid
+  permissionKey String
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permissionKey], references: [key], onDelete: Cascade)
+
+  @@id([roleId, permissionKey])
+  @@index([permissionKey])
+  @@map("role_permissions")
+}
+
+/// A role granted to a user. A role that is still assigned can't be deleted.
+model UserRole {
+  userId      String
+  roleId      String   @db.Uuid
+  grantedById String?
+  grantedAt   DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Restrict)
+
+  @@id([userId, roleId])
+  @@index([roleId])
+  @@map("user_roles")
+}
+
+/// A signed-in newsroom portal session. The portal holds an opaque random
+/// token; only its SHA-256 is stored, so a database leak can't be replayed.
+model StaffSession {
+  id            String    @id @default(uuid()) @db.Uuid
+  staffId       String    @db.Uuid
+  tokenHash     String    @unique
+  ip            String?
+  userAgent     String?
+  createdAt     DateTime  @default(now())
+  lastSeenAt    DateTime  @default(now())
+  expiresAt     DateTime
+  revokedAt     DateTime?
+  revokedReason String?
+
+  staff StaffProfile @relation(fields: [staffId], references: [id], onDelete: Cascade)
+
+  @@index([staffId, revokedAt])
+  @@index([expiresAt])
+  @@map("staff_sessions")
+}
+
+enum StaffChallengeStatus {
+  PENDING
+  VERIFIED
+  FAILED
+  EXPIRED
+}
+
+/// The second sign-in step: a one-time code emailed after the password check.
+/// Only a keyed hash of the code is stored.
+model StaffLoginChallenge {
+  id         String               @id @default(uuid()) @db.Uuid
+  staffId    String               @db.Uuid
+  codeHash   String
+  attempts   Int                  @default(0)
+  resends    Int                  @default(0)
+  status     StaffChallengeStatus @default(PENDING)
+  ip         String?
+  userAgent  String?
+  createdAt  DateTime             @default(now())
+  expiresAt  DateTime
+  verifiedAt DateTime?
+
+  staff StaffProfile @relation(fields: [staffId], references: [id], onDelete: Cascade)
+
+  @@index([staffId, createdAt])
+  @@index([expiresAt])
+  @@map("staff_login_challenges")
+}
+
+/// An invitation to join the newsroom with the given roles. The emailed link
+/// carries a random token; only its SHA-256 is stored.
+model StaffInvitation {
+  id             String    @id @default(uuid()) @db.Uuid
+  email          String
+  roleKeys       String[]
+  tokenHash      String    @unique
+  invitedById    String?
+  expiresAt      DateTime
+  acceptedAt     DateTime?
+  acceptedUserId String?
+  revokedAt      DateTime?
+  createdAt      DateTime  @default(now())
+
+  @@index([email])
+  @@map("staff_invitations")
+}
+
+/// Append-only record of every privileged newsroom action. Never updated or
+/// deleted; actor and entity ids are plain text so history survives deletes.
+model AuditLog {
+  id          String   @id @default(uuid()) @db.Uuid
+  actorUserId String?
+  actorEmail  String?
+  action      String
+  entityType  String?
+  entityId    String?
+  before      Json?
+  after       Json?
+  meta        Json?
+  ip          String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([entityType, entityId])
+  @@index([actorUserId, createdAt])
+  @@index([action, createdAt])
+  @@map("audit_logs")
+}
+
+// ─── Newsroom: editorial content ────────────────────────────────────────────
+
+enum NewsStatus {
+  DRAFT
+  IN_REVIEW
+  CHANGES_REQUESTED
+  APPROVED
+  SCHEDULED
+  PUBLISHED
+  REJECTED
+  CANCELLED
+  ARCHIVED
+}
+
+model NewsCategory {
+  id          String   @id @default(uuid()) @db.Uuid
+  slug        String   @unique
+  name        String
+  description String   @default("")
+  parentId    String?  @db.Uuid
+  position    Int      @default(0)
+  isActive    Boolean  @default(true)
+  seo         Json     @default("{}")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  parent         NewsCategory?    @relation("CategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
+  children       NewsCategory[]   @relation("CategoryTree")
+  articles       NewsArticle[]
+  sources        NewsSource[]
+  suggestedItems NewsSourceItem[] @relation("ItemSuggestedCategory")
+
+  @@index([parentId, position])
+  @@map("news_categories")
+}
+
+model NewsTag {
+  id        String   @id @default(uuid()) @db.Uuid
+  slug      String   @unique
+  name      String
+  createdAt DateTime @default(now())
+
+  articles NewsArticleTag[]
+
+  @@map("news_tags")
+}
+
+/// Public byline. Usually a staff member, but outside contributors get one too.
+model NewsAuthor {
+  id        String   @id @default(uuid()) @db.Uuid
+  slug      String   @unique
+  name      String
+  bio       String   @default("")
+  avatarUrl String?
+  socials   Json     @default("{}")
+  staffId   String?  @unique @db.Uuid
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  staff    StaffProfile? @relation(fields: [staffId], references: [id], onDelete: SetNull)
+  articles NewsArticle[]
+
+  @@map("news_authors")
+}
+
+enum MediaStatus {
+  PENDING
+  READY
+  DELETED
+}
+
+/// An uploaded image or file in object storage. PENDING until the upload is
+/// confirmed and checked; only READY assets can be used in articles.
+model MediaAsset {
+  id           String      @id @default(uuid()) @db.Uuid
+  storageKey   String      @unique
+  originalName String?
+  mimeType     String
+  bytes        Int
+  width        Int?
+  height       Int?
+  sha256       String?
+  alt          String      @default("")
+  caption      String?
+  credit       String?
+  variants     Json        @default("{}")
+  status       MediaStatus @default(PENDING)
+  uploadedById String?     @db.Uuid
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  uploadedBy         StaffProfile? @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
+  featuredInArticles NewsArticle[]
+
+  @@index([status, createdAt])
+  @@map("media_assets")
+}
+
+model NewsArticle {
+  id                   String     @id @default(uuid()) @db.Uuid
+  slug                 String     @unique
+  title                String
+  subtitle             String?
+  summary              String     @default("") @db.Text
+  /// Rich-text document (TipTap/ProseMirror JSON), validated against the
+  /// allowed node schema before every save.
+  content              Json       @default("{}")
+  /// Sanitised HTML rendered from `content`, the only HTML ever served.
+  contentHtml          String     @default("") @db.Text
+  /// Plain text of `content`, for search and reading time.
+  contentText          String     @default("") @db.Text
+  status               NewsStatus @default(DRAFT)
+  categoryId           String?    @db.Uuid
+  authorId             String?    @db.Uuid
+  createdById          String?    @db.Uuid
+  featuredImageId      String?    @db.Uuid
+  featuredImageCaption String?
+  /// Sector names the story is about ("Banking", "IT").
+  sectors              String[]   @default([])
+  isFeatured           Boolean    @default(false)
+  isBreaking           Boolean    @default(false)
+  isAiGenerated        Boolean    @default(false)
+  readingMinutes       Int        @default(1)
+  /// { title, description, canonicalUrl, noIndex, noFollow, ogImageId }
+  seo                  Json       @default("{}")
+  /// [{ name, url, publishedAt, licence }]
+  sourceAttribution    Json       @default("[]")
+  editorialNotes       String?    @db.Text
+  correctionNote       String?    @db.Text
+  retractedAt          DateTime?
+  retractionNote       String?    @db.Text
+  version              Int        @default(1)
+  scheduledAt          DateTime?
+  publishedAt          DateTime?
+  firstPublishedAt     DateTime?
+  createdAt            DateTime   @default(now())
+  updatedAt            DateTime   @updatedAt
+
+  category      NewsCategory?        @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  author        NewsAuthor?          @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  createdBy     StaffProfile?        @relation("ArticleCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  featuredImage MediaAsset?          @relation(fields: [featuredImageId], references: [id], onDelete: SetNull)
+  tags          NewsArticleTag[]
+  versions      NewsVersion[]
+  reviews       NewsReview[]
+  assignments   NewsAssignment[]
+  comments      NewsComment[]
+  stocks        NewsArticleStock[]
+  related       NewsRelatedArticle[] @relation("RelatedFrom")
+  relatedBy     NewsRelatedArticle[] @relation("RelatedTo")
+  dailyStats    NewsDailyStat[]
+  widgets       NewsWidgetInstance[]
+  sourceItems   NewsSourceItem[]     @relation("ItemArticle")
+  repeatedBy    NewsSourceItem[]     @relation("ItemDuplicateOfArticle")
+  aiJobs        AiJob[]
+  bookmarks     NewsBookmark[]
+  pushCampaigns NotificationCampaign[]
+
+  /// Full-text search document. A STORED generated column (headline weight A,
+  /// standfirst + summary B, body text C) that Postgres keeps up to date; the
+  /// app only reads it. The default below mirrors the generation expression
+  /// from the news_public_site migration so `migrate diff` sees no drift.
+  searchVector Unsupported("tsvector")? @default(dbgenerated("((setweight(to_tsvector('english'::regconfig, COALESCE(title, ''::text)), 'A'::\"char\") || setweight(to_tsvector('english'::regconfig, ((COALESCE(subtitle, ''::text) || ' '::text) || COALESCE(summary, ''::text))), 'B'::\"char\")) || setweight(to_tsvector('english'::regconfig, COALESCE(\"contentText\", ''::text)), 'C'::\"char\"))"))
+
+  @@index([status, publishedAt(sort: Desc)])
+  @@index([categoryId, status, publishedAt(sort: Desc)])
+  @@index([authorId, status, publishedAt(sort: Desc)])
+  @@index([createdById, status])
+  @@index([status, scheduledAt])
+  @@index([searchVector], type: Gin)
+  @@map("news_articles")
+}
+
+enum NewsVersionReason {
+  AUTOSAVE
+  MANUAL
+  SUBMIT
+  APPROVE
+  PUBLISH
+  CORRECTION
+  RESTORE
+}
+
+/// A full snapshot of an article at a meaningful moment; revision comparison
+/// diffs two of these.
+model NewsVersion {
+  id        String            @id @default(uuid()) @db.Uuid
+  articleId String            @db.Uuid
+  version   Int
+  reason    NewsVersionReason
+  snapshot  Json
+  editorId  String?           @db.Uuid
+  createdAt DateTime          @default(now())
+
+  article NewsArticle   @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  editor  StaffProfile? @relation(fields: [editorId], references: [id], onDelete: SetNull)
+
+  @@unique([articleId, version])
+  @@map("news_versions")
+}
+
+model NewsArticleTag {
+  articleId String @db.Uuid
+  tagId     String @db.Uuid
+
+  article NewsArticle @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  tag     NewsTag     @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([articleId, tagId])
+  @@index([tagId])
+  @@map("news_article_tags")
+}
+
+enum NewsAssignmentRole {
+  WRITER
+  EDITOR
+  REVIEWER
+}
+
+enum NewsAssignmentStatus {
+  OPEN
+  DONE
+  CANCELLED
+}
+
+model NewsAssignment {
+  id           String               @id @default(uuid()) @db.Uuid
+  articleId    String               @db.Uuid
+  assigneeId   String               @db.Uuid
+  role         NewsAssignmentRole
+  status       NewsAssignmentStatus @default(OPEN)
+  note         String?
+  dueAt        DateTime?
+  assignedById String?              @db.Uuid
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+
+  article    NewsArticle   @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  assignee   StaffProfile  @relation("AssignmentAssignee", fields: [assigneeId], references: [id], onDelete: Cascade)
+  assignedBy StaffProfile? @relation("AssignmentAssigner", fields: [assignedById], references: [id], onDelete: SetNull)
+
+  @@index([assigneeId, status])
+  @@index([articleId])
+  @@map("news_assignments")
+}
+
+enum NewsReviewDecision {
+  APPROVED
+  CHANGES_REQUESTED
+  REJECTED
+}
+
+model NewsReview {
+  id         String             @id @default(uuid()) @db.Uuid
+  articleId  String             @db.Uuid
+  version    Int
+  reviewerId String?            @db.Uuid
+  decision   NewsReviewDecision
+  comment    String?            @db.Text
+  createdAt  DateTime           @default(now())
+
+  article  NewsArticle   @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  reviewer StaffProfile? @relation(fields: [reviewerId], references: [id], onDelete: SetNull)
+
+  @@index([articleId, createdAt])
+  @@map("news_reviews")
+}
+
+/// Editorial discussion on an article, optionally anchored to one block.
+/// Public reader comments are a separate, later feature.
+model NewsComment {
+  id           String    @id @default(uuid()) @db.Uuid
+  articleId    String    @db.Uuid
+  authorId     String?   @db.Uuid
+  parentId     String?   @db.Uuid
+  blockId      String?
+  body         String    @db.Text
+  resolvedAt   DateTime?
+  resolvedById String?   @db.Uuid
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  article NewsArticle   @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  author  StaffProfile? @relation(fields: [authorId], references: [id], onDelete: SetNull)
+  parent  NewsComment?  @relation("CommentThread", fields: [parentId], references: [id], onDelete: Cascade)
+  replies NewsComment[] @relation("CommentThread")
+
+  @@index([articleId, createdAt])
+  @@map("news_comments")
+}
+
+/// A stock the article is about, keyed into the existing scrip master by
+/// exchange + symbol (no duplicate instrument table).
+model NewsArticleStock {
+  articleId String  @db.Uuid
+  exchange  String
+  symbol    String
+  isPrimary Boolean @default(false)
+
+  article NewsArticle @relation(fields: [articleId], references: [id], onDelete: Cascade)
+
+  @@id([articleId, exchange, symbol])
+  @@index([exchange, symbol])
+  @@map("news_article_stocks")
+}
+
+model NewsRelatedArticle {
+  articleId String @db.Uuid
+  relatedId String @db.Uuid
+  position  Int    @default(0)
+
+  article NewsArticle @relation("RelatedFrom", fields: [articleId], references: [id], onDelete: Cascade)
+  related NewsArticle @relation("RelatedTo", fields: [relatedId], references: [id], onDelete: Cascade)
+
+  @@id([articleId, relatedId])
+  @@map("news_related_articles")
+}
+
+/// Reader views per article per day (IST), from de-duplicated page views. No
+/// reader identity is stored, so "Trending" needs no personal data.
+model NewsDailyStat {
+  articleId String   @db.Uuid
+  day       DateTime @db.Date
+  views     Int      @default(0)
+
+  article NewsArticle @relation(fields: [articleId], references: [id], onDelete: Cascade)
+
+  @@id([articleId, day])
+  @@index([day])
+  @@map("news_daily_stats")
+}
+
+// ─── Newsroom: readers (bookmarks, news alerts) ─────────────────────────────
+
+/// A story a reader saved. One list per account, shared by the app and the
+/// website.
+model NewsBookmark {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String
+  articleId String   @db.Uuid
+  createdAt DateTime @default(now())
+
+  user    User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  article NewsArticle @relation(fields: [articleId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, articleId])
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([articleId])
+  @@map("news_bookmarks")
+}
+
+/// Which news pushes a reader wants. No row means the defaults: both on.
+model NewsAlertPreference {
+  userId         String   @id
+  /// Breaking news.
+  breaking       Boolean  @default(true)
+  /// Stories about stocks in the reader's watchlists or portfolio.
+  followedStocks Boolean  @default(true)
+  updatedAt      DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("news_alert_preferences")
+}
+
+enum NotificationCampaignKind {
+  BREAKING
+  FOLLOWED_STOCKS
+}
+
+enum NotificationCampaignStatus {
+  QUEUED
+  SENDING
+  SENT
+  /// Nothing to send: no audience, push not set up, or the story came down.
+  SKIPPED
+  FAILED
+}
+
+/// One push about a story to one audience: breaking news to every reader who
+/// wants it, or a story to the readers who follow its stocks. `dedupeKey`
+/// keeps it to one of each kind per story.
+model NotificationCampaign {
+  id          String                     @id @default(uuid()) @db.Uuid
+  kind        NotificationCampaignKind
+  status      NotificationCampaignStatus @default(QUEUED)
+  dedupeKey   String?                    @unique
+  articleId   String?                    @db.Uuid
+  title       String
+  body        String
+  /// Who it is for, e.g. { stocks: ["NSE:INFY"] } for followed-stock pushes.
+  audience    Json                       @default("{}")
+  scheduledAt DateTime                   @default(now())
+  startedAt   DateTime?
+  sentAt      DateTime?
+  /// Readers sent to; device sends accepted and refused; taps.
+  recipients  Int                        @default(0)
+  delivered   Int                        @default(0)
+  failed      Int                        @default(0)
+  opens       Int                        @default(0)
+  /// Why nothing was sent (SKIPPED), or what went wrong (FAILED).
+  note        String?
+  createdAt   DateTime                   @default(now())
+  updatedAt   DateTime                   @updatedAt
+
+  article NewsArticle? @relation(fields: [articleId], references: [id], onDelete: SetNull)
+
+  @@index([status, scheduledAt])
+  @@index([articleId])
+  @@index([createdAt(sort: Desc)])
+  @@map("notification_campaigns")
+}
+
+// ─── Website configuration ──────────────────────────────────────────────────
+
+/// Versioned website configuration sections edited in the portal, one row per
+/// section (e.g. `news.homepage`). Values are JSON checked against a schema in
+/// code before every save; their history lives in the audit log.
+model SiteConfig {
+  key         String   @id
+  value       Json
+  version     Int      @default(1)
+  updatedById String?  @db.Uuid
+  updatedAt   DateTime @updatedAt
+
+  @@map("site_config")
+}
+
+// ─── Market display: the ticker and article widgets ─────────────────────────
+//
+// Separate from trading: these tables only decide which instruments the
+// website and app may show, under which data licence, and remember the last
+// price shown. Prices themselves come from the API's existing broker feed.
+
+enum MarketDataRight {
+  LIVE
+  DELAYED
+  EOD
+  OFF
+}
+
+enum MarketInstrumentKind {
+  INDEX
+  STOCK
+  COMMODITY
+  CURRENCY
+}
+
+/// A market-data provider and what we may show from it, per channel. The
+/// website and the app are licensed separately: DELAYED shows prices from
+/// `delayMinutes` ago, EOD the last close, OFF nothing.
+model MarketDataSource {
+  key          String          @id
+  name         String
+  webRight     MarketDataRight @default(LIVE)
+  appRight     MarketDataRight @default(LIVE)
+  delayMinutes Int             @default(15)
+  attribution  String          @default("")
+  updatedById  String?         @db.Uuid
+  updatedAt    DateTime        @updatedAt
+
+  instruments MarketInstrument[]
+
+  @@map("market_data_sources")
+}
+
+/// The curated instruments the ticker and market widgets may show. Capped in
+/// code, so the public market API can never become an open price feed.
+model MarketInstrument {
+  id        String               @id @default(uuid()) @db.Uuid
+  sourceKey String               @default("angel-one")
+  kind      MarketInstrumentKind
+  exchange  String
+  /// Scrip-master lookup key: NIFTY, NIFTY IT, RELIANCE, GOLD, USDINR.
+  symbol    String
+  name      String
+  /// Quote unit for commodities and currencies ("10 g").
+  unit      String?
+  position  Int                  @default(0)
+  isEnabled Boolean              @default(true)
+  inTicker  Boolean              @default(false)
+  createdAt DateTime             @default(now())
+  updatedAt DateTime             @updatedAt
+
+  source MarketDataSource @relation(fields: [sourceKey], references: [key])
+  quote  MarketQuote?
+
+  @@unique([exchange, symbol])
+  @@index([isEnabled, position])
+  @@map("market_instruments")
+}
+
+/// Last known price of a curated instrument, so it survives restarts and can
+/// still be shown, as end-of-day, while the live feed is down.
+model MarketQuote {
+  instrumentId String   @id @db.Uuid
+  ltp          Float
+  open         Float
+  high         Float
+  low          Float
+  prevClose    Float
+  change       Float
+  changePct    Float
+  volume       Float    @default(0)
+  /// When the exchange last moved the price.
+  asOf         DateTime
+  updatedAt    DateTime @updatedAt
+
+  instrument MarketInstrument @relation(fields: [instrumentId], references: [id], onDelete: Cascade)
+
+  @@map("market_quotes")
+}
+
+/// A saved, reusable widget. Articles embed it by reference, so editing it
+/// updates every story that uses it.
+model MarketWidget {
+  id          String   @id @default(uuid()) @db.Uuid
+  name        String
+  type        String
+  version     Int
+  config      Json
+  /// EX:SYMBOL references the widget quotes, for the public quote allowlist.
+  symbols     String[] @default([])
+  createdById String?  @db.Uuid
+  updatedById String?  @db.Uuid
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  instances NewsWidgetInstance[]
+
+  @@index([type])
+  @@index([symbols], type: Gin)
+  @@map("market_widgets")
+}
+
+/// The widgets in each article, rebuilt on every save: usage counts for saved
+/// widgets, and the stocks published stories are allowed to quote.
+model NewsWidgetInstance {
+  id        String   @id @default(uuid()) @db.Uuid
+  articleId String   @db.Uuid
+  position  Int
+  type      String
+  version   Int
+  widgetId  String?  @db.Uuid
+  symbols   String[] @default([])
+
+  article NewsArticle   @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  widget  MarketWidget? @relation(fields: [widgetId], references: [id], onDelete: SetNull)
+
+  @@index([articleId])
+  @@index([widgetId])
+  @@index([symbols], type: Gin)
+  @@map("news_widget_instances")
+}
+
+// ─── Newsroom: news ingestion ───────────────────────────────────────────────
+//
+// Sources the worker polls (feeds, licensed APIs, exchange / RBI / SEBI /
+// government announcements) and the items they deliver. Items wait in the
+// portal's Incoming list for a person: nothing here is ever published, and a
+// story started from an item goes through the normal review workflow.
+
+enum NewsSourceType {
+  RSS
+  LICENSED_API
+  EXCHANGE
+  COMPANY_IR
+  RBI
+  SEBI
+  GOVERNMENT
+  MANUAL
+}
+
+/// How a source is read: a feed (RSS, Atom or RDF, detected), a JSON API
+/// through a field mapping, or not at all (manual submissions).
+enum NewsSourceFormat {
+  FEED
+  JSON_API
+  NONE
+}
+
+/// What the source's terms let the newsroom keep and reuse.
+enum NewsSourceUsage {
+  /// Headline and link only.
+  HEADLINE_ONLY
+  /// Headline, link and the source's own summary.
+  SUMMARY
+  /// Licensed full text.
+  FULL_TEXT
+}
+
+enum NewsItemStatus {
+  NEW
+  DRAFTED
+  DISMISSED
+  DUPLICATE
+}
+
+enum NewsFetchStatus {
+  RUNNING
+  SUCCESS
+  NOT_MODIFIED
+  FAILED
+}
+
+enum NewsFetchTrigger {
+  SCHEDULE
+  MANUAL
+  RETRY
+}
+
+model NewsSource {
+  id                  String           @id @default(uuid()) @db.Uuid
+  name                String
+  type                NewsSourceType
+  format              NewsSourceFormat
+  /// Feed or API address (none for manual submissions).
+  url                 String?
+  /// { mode: "header" | "query", name }: where the secret goes on a request.
+  auth                Json             @default("{}")
+  /// API key or token, sealed with NEWSROOM_SECRETS_KEY (common/secret-box.ts).
+  /// Never returned to any client.
+  secret              String?
+  /// JSON APIs: { itemsPath, fields: { title, url, id, publishedAt, summary, content, author } }.
+  mapping             Json             @default("{}")
+  pollMinutes         Int              @default(30)
+  isActive            Boolean          @default(true)
+  /// Default category for stories started from this source.
+  categoryId          String?          @db.Uuid
+  usage               NewsSourceUsage  @default(HEADLINE_ONLY)
+  /// Whether the source's terms allow AI-assisted drafts from its items.
+  allowAiDrafts       Boolean          @default(false)
+  /// Credit shown on stories, e.g. "Reserve Bank of India".
+  attribution         String           @default("")
+  licenceNote         String?          @db.Text
+  /// Email editors when new items arrive.
+  notifyEditors       Boolean          @default(false)
+  etag                String?
+  lastModified        String?
+  nextPollAt          DateTime?
+  lastFetchedAt       DateTime?
+  lastSuccessAt       DateTime?
+  lastErrorAt         DateTime?
+  lastError           String?
+  consecutiveFailures Int              @default(0)
+  createdById         String?          @db.Uuid
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+
+  category  NewsCategory?    @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  items     NewsSourceItem[]
+  fetchLogs NewsFetchLog[]
+
+  @@index([isActive, nextPollAt])
+  @@map("news_sources")
+}
+
+model NewsSourceItem {
+  id                   String          @id @default(uuid()) @db.Uuid
+  sourceId             String          @db.Uuid
+  /// SHA-256 of the item's id in its source (guid, else link, else headline
+  /// and time): each item is stored once per source.
+  externalHash         String
+  /// The original story, without tracking parameters.
+  url                  String?
+  /// SHA-256 of `url`: the same story arriving from another source.
+  urlHash              String?
+  title                String
+  /// Normalised headline words, for duplicate checks.
+  titleKey             String
+  /// The source's own summary, kept only when its terms allow (SUMMARY, FULL_TEXT).
+  summary              String?         @db.Text
+  /// Full text, from licensed (FULL_TEXT) sources only.
+  content              String?         @db.Text
+  author               String?
+  /// When the source says it published the story.
+  publishedAt          DateTime?
+  fetchedAt            DateTime        @default(now())
+  /// The source's terms when the item arrived; later changes don't widen them.
+  usage                NewsSourceUsage
+  allowAiDrafts        Boolean         @default(false)
+  attribution          String          @default("")
+  /// Categories or keywords from the source itself.
+  feedCategories       String[]        @default([])
+  /// Listed companies found in the item: [{ exchange, symbol, name, via }].
+  stocks               Json            @default("[]")
+  /// "NSE:INFY" refs of `stocks`, for filtering.
+  stockRefs            String[]        @default([])
+  /// Topics from the classifier ("ipo", "results", "policy", …).
+  topics               String[]        @default([])
+  suggestedCategoryId  String?         @db.Uuid
+  status               NewsItemStatus  @default(NEW)
+  /// The earlier item (or story) this one repeats. With status DUPLICATE it
+  /// is a confirmed repeat; on a NEW item it is a possible one.
+  duplicateOfId        String?         @db.Uuid
+  duplicateOfArticleId String?         @db.Uuid
+  /// Headline similarity to it (1 = same link or headline).
+  duplicateScore       Float?
+  /// The story started from this item.
+  articleId            String?         @db.Uuid
+  handledById          String?         @db.Uuid
+  handledAt            DateTime?
+
+  source             NewsSource       @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  suggestedCategory  NewsCategory?    @relation("ItemSuggestedCategory", fields: [suggestedCategoryId], references: [id], onDelete: SetNull)
+  duplicateOf        NewsSourceItem?  @relation("ItemDuplicates", fields: [duplicateOfId], references: [id], onDelete: SetNull)
+  duplicates         NewsSourceItem[] @relation("ItemDuplicates")
+  duplicateOfArticle NewsArticle?     @relation("ItemDuplicateOfArticle", fields: [duplicateOfArticleId], references: [id], onDelete: SetNull)
+  article            NewsArticle?     @relation("ItemArticle", fields: [articleId], references: [id], onDelete: SetNull)
+  handledBy          StaffProfile?    @relation("ItemHandledBy", fields: [handledById], references: [id], onDelete: SetNull)
+  aiJobs             AiJob[]
+
+  @@unique([sourceId, externalHash])
+  @@index([status, fetchedAt(sort: Desc)])
+  @@index([sourceId, fetchedAt(sort: Desc)])
+  @@index([urlHash])
+  @@index([titleKey])
+  @@index([fetchedAt])
+  @@index([articleId])
+  @@index([stockRefs], type: Gin)
+  @@map("news_source_items")
+}
+
+/// One fetch of one source: when, how it went, and what it found.
+model NewsFetchLog {
+  id             String           @id @default(uuid()) @db.Uuid
+  sourceId       String           @db.Uuid
+  trigger        NewsFetchTrigger
+  status         NewsFetchStatus  @default(RUNNING)
+  /// Who pressed Fetch now or Retry (display name).
+  requestedBy    String?
+  retryOfId      String?          @db.Uuid
+  startedAt      DateTime         @default(now())
+  finishedAt     DateTime?
+  durationMs     Int?
+  httpStatus     Int?
+  itemsSeen      Int              @default(0)
+  itemsNew       Int              @default(0)
+  itemsDuplicate Int              @default(0)
+  error          String?          @db.Text
+
+  source  NewsSource     @relation(fields: [sourceId], references: [id], onDelete: Cascade)
+  retryOf NewsFetchLog?  @relation("FetchRetries", fields: [retryOfId], references: [id], onDelete: SetNull)
+  retries NewsFetchLog[] @relation("FetchRetries")
+
+  @@index([sourceId, startedAt(sort: Desc)])
+  @@index([status, startedAt(sort: Desc)])
+  @@map("news_fetch_logs")
+}
+
+/// Stock mapping: phrases the matcher maps to a listed company (an alias such
+/// as "RIL"), or never treats as a company (exchange and symbol null).
+model NewsStockAlias {
+  id        String   @id @default(uuid()) @db.Uuid
+  /// Normalised phrase, e.g. "ril" or "l and t".
+  alias     String   @unique
+  /// What staff typed, for display.
+  label     String
+  exchange  String?
+  symbol    String?
+  note      String?
+  createdBy String?
+  createdAt DateTime @default(now())
+
+  @@map("news_stock_aliases")
+}
+
+// ─── Newsroom: AI assistant ─────────────────────────────────────────────────
+//
+// Provider-independent and off until a Super Admin sets it up. AI only ever
+// returns drafts and suggestions to a person; nothing it writes is published
+// without the normal editorial review.
+
+enum AiProviderKind {
+  ANTHROPIC
+  OPENAI
+  OPENAI_COMPATIBLE
+  OLLAMA
+}
+
+enum AiJobStatus {
+  QUEUED
+  RUNNING
+  SUCCEEDED
+  FAILED
+}
+
+enum AiTask {
+  DRAFT_FROM_SOURCE
+  DRAFT_FROM_NOTES
+  HEADLINES
+  SUMMARY
+  SEO
+  TAXONOMY
+  RELATED_STOCKS
+  RELATED_ARTICLES
+  REVIEW
+  EXPLAINERS
+  REWRITE_SECTION
+}
+
+model AiProvider {
+  id                String         @id @default(uuid()) @db.Uuid
+  name              String
+  kind              AiProviderKind
+  /// API address. Blank = the provider's own; required for compatible servers and Ollama.
+  baseUrl           String?
+  model             String
+  /// Sealed API key (common/secret-box.ts). Never returned to any client.
+  apiKey            String?
+  /// US dollars per million tokens, for cost estimates.
+  inputCostPerMTok  Float?
+  outputCostPerMTok Float?
+  timeoutSeconds    Int            @default(120)
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+
+  jobs     AiJob[]
+  settings AiSettings[]
+
+  @@map("ai_providers")
+}
+
+/// One row (id "default"): the newsroom's AI switch, provider and limits.
+model AiSettings {
+  id               String   @id @default("default")
+  enabled          Boolean  @default(false)
+  providerId       String?  @db.Uuid
+  /// Draft automatically when a source that allows AI drafts delivers an item.
+  autoDraft        Boolean  @default(false)
+  /// AiTask names staff may not run.
+  disabledTasks    String[] @default([])
+  monthlyBudgetUsd Float?
+  dailyJobsPerUser Int      @default(60)
+  version          Int      @default(1)
+  updatedBy        String?
+  updatedAt        DateTime @updatedAt
+
+  provider AiProvider? @relation(fields: [providerId], references: [id], onDelete: SetNull)
+
+  @@map("ai_settings")
+}
+
+/// Every AI request: what was asked, what came back, the automatic checks,
+/// tokens and cost. The assistant's processing history.
+model AiJob {
+  id            String      @id @default(uuid()) @db.Uuid
+  task          AiTask
+  status        AiJobStatus @default(QUEUED)
+  providerId    String?     @db.Uuid
+  /// Provider kind and model that ran it, kept if the provider is removed.
+  providerKind  String?
+  model         String?
+  promptId      String
+  promptVersion Int
+  input         Json
+  output        Json?
+  /// Automatic checks on the output: { removed, unverified, copied }.
+  checks        Json?
+  error         String?     @db.Text
+  inputTokens   Int?
+  outputTokens  Int?
+  costUsd       Float?
+  durationMs    Int?
+  /// null = started automatically (a source item).
+  requestedById String?     @db.Uuid
+  articleId     String?     @db.Uuid
+  sourceItemId  String?     @db.Uuid
+  appliedAt     DateTime?
+  appliedById   String?     @db.Uuid
+  createdAt     DateTime    @default(now())
+  startedAt     DateTime?
+  finishedAt    DateTime?
+
+  provider    AiProvider?     @relation(fields: [providerId], references: [id], onDelete: SetNull)
+  requestedBy StaffProfile?   @relation("AiJobRequestedBy", fields: [requestedById], references: [id], onDelete: SetNull)
+  article     NewsArticle?    @relation(fields: [articleId], references: [id], onDelete: SetNull)
+  sourceItem  NewsSourceItem? @relation(fields: [sourceItemId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt(sort: Desc)])
+  @@index([articleId, createdAt(sort: Desc)])
+  @@index([sourceItemId, createdAt(sort: Desc)])
+  @@index([requestedById, createdAt(sort: Desc)])
+  @@index([status, createdAt])
+  @@map("ai_jobs")
 }

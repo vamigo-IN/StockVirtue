@@ -17,6 +17,16 @@ String defaultApiBaseUrl() {
   return 'https://api.stockvirtue.com/api';
 }
 
+/// The public website. News stories live at `$kWebsiteUrl/news/<slug>`;
+/// override with `--dart-define=WEBSITE_URL=…` to point at a staging site.
+const String kWebsiteUrl = String.fromEnvironment(
+  'WEBSITE_URL',
+  defaultValue: 'https://stockvirtue.com',
+);
+
+/// A story's page on the website (for sharing and "read on the website").
+String newsArticleUrl(String slug) => '$kWebsiteUrl/news/$slug';
+
 /// Android package id for the published app.
 const String kAndroidPackageId = 'com.vamigo.stockvirtue';
 

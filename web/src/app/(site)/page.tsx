@@ -11,27 +11,72 @@ import { TiltCard } from '@/components/motion/TiltCard';
 import { Sparkline } from '@/components/motion/Sparkline';
 import { SimChip } from '@/components/motion/Glass';
 import { BadgePop } from '@/components/motion/BadgePop';
+import { fmtPrice, fmtStamp, stampOf } from '@/components/widgets/format';
+import { getTicker } from '@/market/server';
+import type { TickerData } from '@/market/types';
 
-const TICKS: Tick[] = [
-  { sym: 'NIFTY 50', px: '24,318.50', chg: '0.62%', up: true },
-  { sym: 'SENSEX', px: '79,802.10', chg: '0.12%', up: false },
-  { sym: 'BANKNIFTY', px: '52,140.35', chg: '0.88%', up: true },
-  { sym: 'RELIANCE', px: '2,945.10', chg: '1.18%', up: true },
-  { sym: 'HDFCBANK', px: '1,672.85', chg: '0.34%', up: false },
-  { sym: 'TCS', px: '3,890.40', chg: '0.51%', up: true },
-  { sym: 'INFY', px: '1,845.20', chg: '0.27%', up: true },
-  { sym: 'GOLD', px: '71,240', chg: '0.44%', up: true },
-  { sym: 'CRUDEOIL', px: '6,588', chg: '0.73%', up: false },
-];
+/**
+ * The hero tapes show the site ticker's real prices (never made-up ones),
+ * led by their label and time, and only where the ticker is set to run on
+ * every page. With nothing to show, the tapes are left out.
+ */
+function tapeOf(t: TickerData | null): {
+  ticks: Tick[];
+  note: string;
+  hideOnPhones: boolean;
+} {
+  if (
+    !t ||
+    !t.config.enabled ||
+    t.config.placement !== 'news_and_site' ||
+    !t.items.length
+  ) {
+    return { ticks: [], note: '', hideOnPhones: false };
+  }
+  const stamp = stampOf(t.items);
+  const word = (l: string) =>
+    l === 'LIVE'
+      ? 'LIVE'
+      : l === 'EOD'
+        ? 'CLOSING PRICES'
+        : `DELAYED ${t.delayMinutes} MIN`;
+  const ticks = t.items.map((q) => {
+    const chg =
+      q.changePct === null ? '—' : `${Math.abs(q.changePct).toFixed(2)}%`;
+    return {
+      sym: t.config.nameStyle === 'symbol' ? q.symbol : q.name.toUpperCase(),
+      px: fmtPrice(q.ltp, q.kind),
+      // A price that differs from the tape's stamp says what it is.
+      chg: stamp.own(q)
+        ? `${chg} · ${word(q.label)} ${fmtStamp(q.asOf).toUpperCase()}`
+        : chg,
+      up: (q.changePct ?? 0) >= 0,
+    };
+  });
+  return {
+    ticks,
+    note: `${word(stamp.label ?? 'EOD')} · ${fmtStamp(stamp.asOf).toUpperCase()}`,
+    hideOnPhones: t.config.mobile === 'hide',
+  };
+}
 
-export default function HomePage() {
+export default async function HomePage() {
+  const { ticks, note, hideOnPhones } = tapeOf(await getTicker());
+  const phones = hideOnPhones ? ' tape-hide-sm' : '';
   return (
     <>
       {/* ── HERO — dark terminal ─────────────────────────────── */}
       <section className="hero terminal">
         <div className="floor" aria-hidden="true" />
         <div className="grid-bg" aria-hidden="true" />
-        <TickerTape items={TICKS} speed={48} className="hero-ticker" />
+        {ticks.length > 0 && (
+          <TickerTape
+            items={ticks}
+            note={note}
+            speed={48}
+            className={`hero-ticker${phones}`}
+          />
+        )}
 
         <div className="container hero-grid">
           <div>
@@ -376,20 +421,29 @@ export default function HomePage() {
       </section>
 
       {/* ── MARKETS — divider tapes ──────────────────────────── */}
-      <section className="section-sm terminal zone-dark divider-tape">
-        <div className="floor" aria-hidden="true" style={{ opacity: 0.6 }} />
-        <div
-          style={{
-            position: 'relative',
-            zIndex: 2,
-            display: 'grid',
-            gap: 10,
-          }}
+      {ticks.length > 0 && (
+        <section
+          className={`section-sm terminal zone-dark divider-tape${phones}`}
         >
-          <TickerTape items={TICKS} speed={52} />
-          <TickerTape items={[...TICKS].reverse()} speed={64} reverse />
-        </div>
-      </section>
+          <div className="floor" aria-hidden="true" style={{ opacity: 0.6 }} />
+          <div
+            style={{
+              position: 'relative',
+              zIndex: 2,
+              display: 'grid',
+              gap: 10,
+            }}
+          >
+            <TickerTape items={ticks} note={note} speed={52} />
+            <TickerTape
+              items={[...ticks].reverse()}
+              note={note}
+              speed={64}
+              reverse
+            />
+          </div>
+        </section>
+      )}
 
       {/* ── ACADEMY — light zone ─────────────────────────────── */}
       <section className="section">

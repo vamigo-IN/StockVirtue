@@ -8,6 +8,8 @@ import '../../core/analytics.dart';
 import '../../core/firebase_init.dart';
 import '../../data/auth_storage.dart';
 import '../../data/models/user.dart';
+import '../notifications/notifications_repository.dart';
+import '../notifications/push_service.dart';
 import 'auth_repository.dart';
 
 class AuthController extends AsyncNotifier<AppUser?> {
@@ -139,29 +141,30 @@ class AuthController extends AsyncNotifier<AppUser?> {
 
   // ── Google sign-in ───────────────────────────────────────────────
 
+  /// Throws when cancelled or refused. Auth state only changes on success:
+  /// the login screen shows its own progress and the reason for a failure,
+  /// and a loading or error state here would replace it (a cancelled sign-in
+  /// used to land on a full-screen error).
   Future<void> signInWithGoogle() async {
-    state = const AsyncLoading<AppUser?>();
-    state = await AsyncValue.guard(() async {
-      await _ensureGoogleInitialized();
-      final GoogleSignInAccount googleUser;
-      try {
-        // v7: authenticate() throws on cancel/failure instead of returning null.
-        googleUser = await GoogleSignIn.instance.authenticate();
-      } on GoogleSignInException catch (e) {
-        if (e.code == GoogleSignInExceptionCode.canceled) {
-          throw StateError('Google sign-in cancelled');
-        }
-        rethrow;
+    await _ensureGoogleInitialized();
+    final GoogleSignInAccount googleUser;
+    try {
+      // v7: authenticate() throws on cancel/failure instead of returning null.
+      googleUser = await GoogleSignIn.instance.authenticate();
+    } on GoogleSignInException catch (e) {
+      if (e.code == GoogleSignInExceptionCode.canceled) {
+        throw StateError('Google sign-in cancelled');
       }
-      // v7: authentication is synchronous and only exposes the ID token.
-      final googleAuth = googleUser.authentication;
-      final credential = GoogleAuthProvider.credential(
-        idToken: googleAuth.idToken,
-      );
-      final cred =
-          await FirebaseAuth.instance.signInWithCredential(credential);
-      return _exchangeUserCredential(cred, method: 'google');
-    });
+      rethrow;
+    }
+    // v7: authentication is synchronous and only exposes the ID token.
+    final googleAuth = googleUser.authentication;
+    final credential = GoogleAuthProvider.credential(
+      idToken: googleAuth.idToken,
+    );
+    final cred = await FirebaseAuth.instance.signInWithCredential(credential);
+    final user = await _exchangeUserCredential(cred, method: 'google');
+    state = AsyncData<AppUser?>(user);
   }
 
   // ── Shared backend exchange ──────────────────────────────────────
@@ -216,6 +219,11 @@ class AuthController extends AsyncNotifier<AppUser?> {
     final storage = ref.read(authStorageProvider);
     final tokens = await storage.read();
     if (tokens != null) {
+      // Stop pushes to this phone (they name the account's stocks) while
+      // the session can still say so.
+      await ref
+          .read(pushServiceProvider)
+          .forgetDevice(ref.read(notificationsRepositoryProvider));
       try {
         await ref.read(authRepositoryProvider).logout(tokens.refreshToken);
       } catch (_) {

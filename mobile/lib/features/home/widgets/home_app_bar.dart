@@ -10,11 +10,16 @@ import '../../profile/screens/profile_screen.dart';
 import '../../ticks/ticks_providers.dart';
 
 /// Scroll-with-content header shown at the top of the home feed: greeting,
-/// avatar, status indicators, theme toggle, log-out, and a search pill that
-/// opens stock search. Sits inside the ListView so it scrolls away on swipe.
+/// avatar, status indicators, theme toggle, log-out, a search pill that
+/// opens stock search, and an optional full-width [bottom] row (the index
+/// tiles) on the same background. Sits inside the ListView so it scrolls
+/// away on swipe.
 class HomeAppBar extends ConsumerWidget {
-  const HomeAppBar({super.key, required this.user});
+  const HomeAppBar({super.key, required this.user, this.bottom});
   final AppUser user;
+
+  /// Full-width content under the search pill, inside the header.
+  final Widget? bottom;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -26,71 +31,77 @@ class HomeAppBar extends ConsumerWidget {
       elevation: 0,
       child: SafeArea(
         bottom: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 8, 12, 14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 8, 12, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  InkWell(
-                    borderRadius: BorderRadius.circular(12),
-                    onTap: () => Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (_) => const ProfileScreen(),
+                  Row(
+                    children: [
+                      InkWell(
+                        borderRadius: BorderRadius.circular(12),
+                        onTap: () => Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (_) => const ProfileScreen(),
+                          ),
+                        ),
+                        child: _Avatar(name: name, avatarUrl: user.avatarUrl),
                       ),
-                    ),
-                    child: _Avatar(name: name, avatarUrl: user.avatarUrl),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: InkWell(
-                      onTap: () => Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (_) => const ProfileScreen(),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: InkWell(
+                          onTap: () => Navigator.of(context).push(
+                            MaterialPageRoute(
+                              builder: (_) => const ProfileScreen(),
+                            ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                greeting,
+                                style: TextStyle(
+                                  color: scheme.onSurface.withValues(alpha: 0.6),
+                                  fontSize: 12,
+                                  letterSpacing: 0.3,
+                                ),
+                              ),
+                              Text(
+                                name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 17,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            greeting,
-                            style: TextStyle(
-                              color: scheme.onSurface.withValues(alpha: 0.6),
-                              fontSize: 12,
-                              letterSpacing: 0.3,
-                            ),
-                          ),
-                          Text(
-                            name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 17,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+                      const _SocketIndicator(),
+                      const _NotificationsBell(),
+                      _ThemeToggleButton(),
+                    ],
                   ),
-                  const _SocketIndicator(),
-                  const _NotificationsBell(),
-                  _ThemeToggleButton(),
+                  const SizedBox(height: 12),
+                  _SearchPill(
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const StockSearchScreen(),
+                        ),
+                      );
+                    },
+                  ),
                 ],
               ),
-              const SizedBox(height: 12),
-              _SearchPill(
-                onTap: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => const StockSearchScreen(),
-                    ),
-                  );
-                },
-              ),
-            ],
-          ),
+            ),
+            if (bottom != null) ...[bottom!, const SizedBox(height: 14)],
+          ],
         ),
       ),
     );
@@ -191,25 +202,6 @@ class _SearchPill extends StatelessWidget {
                 style: TextStyle(
                   color: scheme.onSurface.withValues(alpha: 0.55),
                   fontSize: 14,
-                ),
-              ),
-            ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-              decoration: BoxDecoration(
-                color: scheme.surface,
-                borderRadius: BorderRadius.circular(6),
-                border: Border.all(
-                  color: scheme.outlineVariant.withValues(alpha: 0.4),
-                ),
-              ),
-              child: Text(
-                '⌘ K',
-                style: TextStyle(
-                  fontSize: 11,
-                  color: scheme.onSurface.withValues(alpha: 0.55),
-                  fontWeight: FontWeight.w600,
-                  letterSpacing: 0.3,
                 ),
               ),
             ),

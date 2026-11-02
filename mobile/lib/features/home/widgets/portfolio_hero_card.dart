@@ -11,10 +11,9 @@ import '../../portfolio/portfolio_live.dart';
 import '../../portfolio/portfolio_providers.dart';
 import '../../ticks/ticks_providers.dart';
 
-/// Portfolio hero at the top of home: live total equity in large type, the
-/// unrealised P&L on open positions, and a slim row of where the money is
-/// (invested · free cash · margin in use). Rides the brand gradient; ticks
-/// live with holdings. Tap → Portfolio tab.
+/// Portfolio hero at the top of home: live total equity in large type and
+/// the unrealised P&L on open positions. Rides the brand gradient; ticks
+/// live with holdings. Tap → Portfolio tab (which has the full breakdown).
 class PortfolioHeroCard extends ConsumerWidget {
   const PortfolioHeroCard({super.key});
 
@@ -53,6 +52,15 @@ class _Hero extends ConsumerWidget {
         live.invested > 0 ? (live.unrealizedPnL / live.invested) * 100 : 0.0;
     const onHero = Colors.white;
     final muted = Colors.white.withValues(alpha: 0.72);
+    // The light theme's banner is bright green: green-on-green text would
+    // vanish, so the pill there is white on a translucent white.
+    final bright = Theme.of(context).brightness == Brightness.light;
+    final pillText = bright
+        ? Colors.white
+        : (isUp ? const Color(0xFF7CF5B6) : const Color(0xFFFFA4A4));
+    final pillFill = bright
+        ? Colors.white.withValues(alpha: 0.18)
+        : (isUp ? m.up : m.down).withValues(alpha: 0.22);
 
     return Material(
       color: Colors.transparent,
@@ -105,14 +113,14 @@ class _Hero extends ConsumerWidget {
                         vertical: 3,
                       ),
                       decoration: BoxDecoration(
-                        color: (isUp ? m.up : m.down).withValues(alpha: 0.22),
+                        color: pillFill,
                         borderRadius: BorderRadius.circular(AppRadius.xs),
                       ),
                       child: Text(
                         '${formatInr(live.unrealizedPnL, sign: true)} '
                         '(${isUp ? '+' : ''}${pnlPct.toStringAsFixed(2)}%)',
                         style: t.labelMedium?.copyWith(
-                          color: isUp ? const Color(0xFF7CF5B6) : const Color(0xFFFFA4A4),
+                          color: pillText,
                           fontWeight: FontWeight.w800,
                         ),
                       ),
@@ -124,72 +132,10 @@ class _Hero extends ConsumerWidget {
                     ),
                   ],
                 ),
-                const SizedBox(height: 14),
-                Container(
-                  height: 1,
-                  color: Colors.white.withValues(alpha: 0.10),
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    _HeroStat(
-                      label: 'Invested',
-                      value: formatInrCompact(live.invested),
-                    ),
-                    _HeroStat(
-                      label: 'Free cash',
-                      value: formatInrCompact(snap.wallet.available),
-                    ),
-                    _HeroStat(
-                      label: 'Margin used',
-                      value: formatInrCompact(snap.wallet.marginReserved),
-                      alignEnd: true,
-                    ),
-                  ],
-                ),
               ],
             ),
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _HeroStat extends StatelessWidget {
-  const _HeroStat({
-    required this.label,
-    required this.value,
-    this.alignEnd = false,
-  });
-
-  final String label;
-  final String value;
-  final bool alignEnd;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = Theme.of(context).textTheme;
-    return Expanded(
-      child: Column(
-        crossAxisAlignment:
-            alignEnd ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: t.labelSmall?.copyWith(
-              color: Colors.white.withValues(alpha: 0.62),
-            ),
-          ),
-          const SizedBox(height: 2),
-          Text(
-            value,
-            style: t.titleSmall?.copyWith(
-              color: Colors.white,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -207,7 +153,8 @@ class _SkeletonHero extends StatelessWidget {
         highlightColor: scheme.surfaceContainerHighest,
       ),
       child: const Bone(
-        height: 168,
+        // Same height as the loaded card, so nothing jumps when it arrives.
+        height: 120,
         borderRadius: BorderRadius.all(Radius.circular(AppRadius.lg)),
       ),
     );
