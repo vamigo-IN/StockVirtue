@@ -36,9 +36,9 @@ export function NewsHeader({
             <img
               src={logo}
               alt={SITE.name}
-              width={143}
+              width={126}
               height={32}
-              className="h-7 w-auto sm:h-8"
+              className="h-8 w-auto sm:h-9"
             />
           </a>
           <span aria-hidden="true" className="h-6 w-px bg-border" />
@@ -135,9 +135,9 @@ export function NewsFooter({
             <img
               src={logoUrl(settings)}
               alt={SITE.name}
-              width={143}
+              width={126}
               height={32}
-              className="h-8 w-auto rounded bg-white/95 px-2 py-1"
+              className="h-10 w-auto rounded bg-white/95 px-2 py-1"
             />
           </a>
           <p className="mt-4 max-w-sm text-sm leading-relaxed text-ink-muted">
@@ -189,7 +189,10 @@ export function NewsFooter({
               </a>
             ))}
             {col.title === 'Legal' && hasOptionalServices(settings.config) && (
-              <CookieSettingsButton className="text-sm text-ink-muted hover:text-glow" />
+              // The button takes its size from here, like the links above.
+              <span className="text-sm">
+                <CookieSettingsButton className="text-ink-muted hover:text-glow" />
+              </span>
             )}
           </FooterColumn>
         ))}

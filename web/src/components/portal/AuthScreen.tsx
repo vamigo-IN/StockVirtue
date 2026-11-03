@@ -12,7 +12,7 @@ export function AuthScreen({ children }: { children: React.ReactNode }) {
           <img
             src="/logo.png"
             alt="StockVirtue"
-            className="h-10 w-auto dark:hidden"
+            className="h-12 w-auto dark:hidden"
           />
           <span className="hidden items-center gap-2.5 dark:flex">
             <span className="grid size-9 place-items-center rounded-lg bg-linear-to-br from-green-400 to-green-700 font-display text-sm font-bold text-white">
