@@ -1,4 +1,5 @@
-import { revalidatePath } from 'next/cache';
+import { revalidatePath, revalidateTag } from 'next/cache';
+import { SETTINGS_TAG } from '@/lib/settings';
 import { NextResponse, type NextRequest } from 'next/server';
 import { API_V1, backendHeaders, clientFromHeaders } from '@/portal/backend';
 import {
@@ -197,8 +198,15 @@ async function handle(req: NextRequest, ctx: Ctx) {
       maxAge: 0,
     });
   }
-  // Saved website settings show on the public site straight away.
-  if (route === 'staff/site/settings' && req.method === 'PUT' && upstream.ok) {
+  // Saved website settings show on the public site straight away (pages,
+  // robots.txt, llms.txt, ads.txt and the sitemaps).
+  if (
+    (route === 'staff/site/settings' ||
+      route.startsWith('staff/site/config/')) &&
+    req.method === 'PUT' &&
+    upstream.ok
+  ) {
+    revalidateTag(SETTINGS_TAG);
     revalidatePath('/', 'layout');
   }
   return res;

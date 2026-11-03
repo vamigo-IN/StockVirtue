@@ -93,14 +93,6 @@ export function PreviewDialog({
               // Server-rendered from the validated document only.
               dangerouslySetInnerHTML={{ __html: article.contentHtml }}
             />
-            {article.correctionNote && (
-              <div className="mt-8 rounded-lg border bg-muted/40 px-4 py-3 text-sm">
-                <p className="font-semibold">Corrections</p>
-                <p className="mt-1 whitespace-pre-line text-muted-foreground">
-                  {article.correctionNote}
-                </p>
-              </div>
-            )}
             {article.sourceAttribution.length > 0 && (
               <p className="mt-6 text-sm text-muted-foreground">
                 Sources:{' '}

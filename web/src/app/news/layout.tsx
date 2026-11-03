@@ -2,10 +2,11 @@ import type { Metadata } from 'next';
 import './news.css';
 import { RawHtml } from '@/components/CodeInjection';
 import { JsonLd } from '@/components/JsonLd';
+import { SiteScripts } from '@/components/SiteScripts';
 import { MarketTicker } from '@/components/news/MarketTicker';
 import { NewsFooter, NewsHeader } from '@/components/news/NewsChrome';
 import { articleSerif } from '@/lib/fonts';
-import { getSettings } from '@/lib/settings';
+import { getSettings, logoUrl } from '@/lib/settings';
 import { SITE } from '@/lib/site';
 import { getTicker } from '@/market/server';
 import { getCategories } from '@/news/api';
@@ -41,10 +42,12 @@ export default async function NewsLayout({
     >
       <RawHtml html={settings.headCode} />
       <RawHtml html={settings.bodyStartCode} />
-      <JsonLd />
+      <SiteScripts config={settings.config} />
+      <JsonLd logoUrl={settings.config.branding.logo?.url} />
       <NewsHeader
         categories={categories}
         playUrl={settings.playStoreUrl || SITE.playUrl}
+        logoUrl={logoUrl(settings)}
       />
       <MarketTicker initial={ticker} />
       <main id="main" className="flex-1">

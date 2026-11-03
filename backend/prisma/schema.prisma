@@ -753,6 +753,8 @@ model SiteSetting {
   headCode        String   @default("") @db.Text
   bodyStartCode   String   @default("") @db.Text
   bodyEndCode     String   @default("") @db.Text
+  /// Branding, search & indexing, analytics and advertising (site-config.ts).
+  config          Json     @default("{}")
   updatedAt       DateTime @updatedAt
 
   @@map("site_settings")
@@ -1623,6 +1625,17 @@ enum NewsFetchTrigger {
   RETRY
 }
 
+/// What happens to a news source's new items.
+enum NewsArrivalMode {
+  /// They wait in Incoming news for a person (the default).
+  INBOX
+  /// Each becomes a draft story for an editor to check and publish.
+  DRAFT
+  /// Each is published at once. Super Admin only, and only for sources whose
+  /// terms allow their summary or full text.
+  PUBLISH
+}
+
 model NewsSource {
   id                  String           @id @default(uuid()) @db.Uuid
   name                String
@@ -1649,6 +1662,11 @@ model NewsSource {
   licenceNote         String?          @db.Text
   /// Email editors when new items arrive.
   notifyEditors       Boolean          @default(false)
+  /// What happens to new items. Changed by a Super Admin only.
+  arrivalMode         NewsArrivalMode  @default(INBOX)
+  /// Stories made automatically (DRAFT/PUBLISH) per IST day; the rest of the
+  /// day's items wait in Incoming news.
+  autoDailyLimit      Int              @default(20)
   etag                String?
   lastModified        String?
   nextPollAt          DateTime?

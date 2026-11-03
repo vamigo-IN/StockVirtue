@@ -1,5 +1,6 @@
 import '../globals.css';
-import { getSettings } from '@/lib/settings';
+import { getSettings, logoUrl } from '@/lib/settings';
+import { SiteScripts } from '@/components/SiteScripts';
 import { Header } from '@/components/Header';
 import { Footer } from '@/components/Footer';
 import { RawHtml } from '@/components/CodeInjection';
@@ -24,11 +25,12 @@ export default async function SiteLayout({
     <>
       <RawHtml html={settings.headCode} />
       <RawHtml html={settings.bodyStartCode} />
-      <JsonLd />
+      <SiteScripts config={settings.config} />
+      <JsonLd logoUrl={settings.config.branding.logo?.url} />
       <MotionProvider>
         <SmoothScroll />
         <ScrollProgress />
-        <Header />
+        <Header logoUrl={logoUrl(settings)} />
         <main>{children}</main>
         <Footer settings={settings} />
       </MotionProvider>

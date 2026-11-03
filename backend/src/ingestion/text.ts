@@ -183,6 +183,40 @@ export function titleKey(title: string): string {
   return titleTokens(title).join(' ').slice(0, 500);
 }
 
+/**
+ * Distinct words of a passage (a headline with its summary), normalised like
+ * titleTokens, at most `max`: for spotting one story told in other words.
+ */
+export function textTokens(text: string, max = 120): string[] {
+  const t = text
+    .normalize('NFKD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/&/g, ' and ')
+    .replace(/(\d),(?=\d)/g, '$1');
+  const seen = new Set<string>();
+  for (const w of t.match(/\d+(?:\.\d+)?(?![a-z0-9])|[a-z0-9]+/g) ?? []) {
+    if (STOPWORDS.has(w) || (w.length < 2 && !isNumberToken(w))) continue;
+    seen.add(stem(w));
+    if (seen.size >= max) break;
+  }
+  return [...seen];
+}
+
+/** At or above: the same text (status DUPLICATE). */
+export const DUPLICATE_TEXT_SIMILARITY = 0.75;
+/** At or above: possibly the same story, told differently. */
+export const POSSIBLE_TEXT_SIMILARITY = 0.4;
+
+/** How alike two passages are (0–1, Jaccard over their words; 8 shared at least). */
+export function textSimilarity(a: string[], b: Set<string>): number {
+  if (a.length === 0 || b.size === 0) return 0;
+  let shared = 0;
+  for (const w of a) if (b.has(w)) shared++;
+  if (shared < 8) return 0;
+  return shared / (a.length + b.size - shared);
+}
+
 /** At or above: the same story (status DUPLICATE). */
 export const DUPLICATE_SIMILARITY = 0.6;
 /** At or above: possibly the same story (flagged for a person to judge). */
@@ -232,6 +266,30 @@ const TZ: Record<string, string> = {
  * as "IST", and day-first Indian dates ("03-11-2026 10:30", read as IST).
  * A time in the future becomes `now`; nonsense or pre-2000 dates are dropped.
  */
+const MONTHS = [
+  'jan',
+  'feb',
+  'mar',
+  'apr',
+  'may',
+  'jun',
+  'jul',
+  'aug',
+  'sep',
+  'oct',
+  'nov',
+  'dec',
+];
+
+/** 1–12 from "11" or "Nov"/"November"; 0 when it isn't a month. */
+function monthNumber(m: string): number {
+  if (/^\d+$/.test(m)) {
+    const n = Number(m);
+    return n >= 1 && n <= 12 ? n : 0;
+  }
+  return MONTHS.indexOf(m.slice(0, 3).toLowerCase()) + 1;
+}
+
 export function parseSourceDate(
   raw: string | null | undefined,
   now = new Date(),
@@ -239,11 +297,13 @@ export function parseSourceDate(
   const s = raw?.trim();
   if (!s) return null;
   let at: number;
+  // "02-11-2026 19:54", and "02-Nov-2026 19:54:29" (NSE, BSE): India's time.
   const dmy =
-    /^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})(?:[ T,]+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(am|pm)?)?$/i.exec(
+    /^(\d{1,2})[-/.](\d{1,2}|[a-z]{3,9})[-/.](\d{4})(?:[ T,]+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(am|pm)?)?$/i.exec(
       s,
     );
-  if (dmy) {
+  const month = dmy ? monthNumber(dmy[2]) : 0;
+  if (dmy && month) {
     let hours = Number(dmy[4] ?? 0);
     const meridiem = dmy[7]?.toLowerCase();
     if (meridiem === 'pm' && hours < 12) hours += 12;
@@ -251,7 +311,7 @@ export function parseSourceDate(
     at =
       Date.UTC(
         Number(dmy[3]),
-        Number(dmy[2]) - 1,
+        month - 1,
         Number(dmy[1]),
         hours,
         Number(dmy[5] ?? 0),

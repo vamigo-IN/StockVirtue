@@ -4,7 +4,7 @@ import { SITE } from '@/lib/site';
  * Structured data (schema.org) for rich results & SEO: the organisation, the
  * website (with search action), and the Android app as a MobileApplication.
  */
-export function JsonLd() {
+export function JsonLd({ logoUrl }: { logoUrl?: string }) {
   const data = [
     {
       '@context': 'https://schema.org',
@@ -12,7 +12,7 @@ export function JsonLd() {
       name: SITE.name,
       legalName: SITE.company,
       url: SITE.url,
-      logo: `${SITE.url}/logo.png`,
+      logo: logoUrl ?? `${SITE.url}/logo.png`,
       email: SITE.email,
       sameAs: [SITE.playUrl],
     },

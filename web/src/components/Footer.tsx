@@ -1,6 +1,6 @@
 import Link from 'next/link';
 import { FOOTER_LINKS, SITE } from '@/lib/site';
-import type { SiteSettings } from '@/lib/settings';
+import { logoUrl, type SiteSettings } from '@/lib/settings';
 import { Sparkline } from './motion/Sparkline';
 import { SimChip } from './motion/Glass';
 
@@ -27,7 +27,7 @@ export function Footer({ settings }: { settings: SiteSettings }) {
               aria-label={`${SITE.name} home`}
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/logo.png" alt={SITE.name} />
+              <img src={logoUrl(settings)} alt={SITE.name} />
             </Link>
             <p className="footer-disclaimer">
               {SITE.name} is an educational stock-market simulator. Every trade
@@ -41,7 +41,14 @@ export function Footer({ settings }: { settings: SiteSettings }) {
               />
             </div>
             {social.length > 0 && (
-              <div style={{ marginTop: 18, display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+              <div
+                style={{
+                  marginTop: 18,
+                  display: 'flex',
+                  gap: 16,
+                  flexWrap: 'wrap',
+                }}
+              >
                 {social.map((s) => (
                   <a key={s.label} href={s.href} target="_blank" rel="noopener">
                     {s.label}
@@ -66,9 +73,15 @@ export function Footer({ settings }: { settings: SiteSettings }) {
           ))}
         </div>
         <div className="footer-bottom">
-          <span style={{ display: 'inline-flex', gap: 14, alignItems: 'center', flexWrap: 'wrap' }}>
-            <SimChip label="Simulated · not a broker" />
-            © {year} {SITE.company}
+          <span
+            style={{
+              display: 'inline-flex',
+              gap: 14,
+              alignItems: 'center',
+              flexWrap: 'wrap',
+            }}
+          >
+            <SimChip label="Simulated · not a broker" />© {year} {SITE.company}
           </span>
           <span>{SITE.name} · Made in India 🇮🇳</span>
         </div>

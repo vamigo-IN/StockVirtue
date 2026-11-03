@@ -1,15 +1,28 @@
 import type { MetadataRoute } from 'next';
+import { getSettings } from '@/lib/settings';
 import { SITE } from '@/lib/site';
 
-export default function manifest(): MetadataRoute.Manifest {
+export default async function manifest(): Promise<MetadataRoute.Manifest> {
+  const s = await getSettings();
+  const { favicon, themeColor } = s.config.branding;
   return {
-    name: SITE.name,
+    name: s.siteTitle || SITE.name,
     short_name: SITE.name,
-    description: SITE.description,
+    description: s.siteDescription || SITE.description,
     start_url: '/',
     display: 'standalone',
     background_color: '#ffffff',
-    theme_color: '#16a34a',
-    icons: [{ src: '/icon.png', sizes: '256x256', type: 'image/png' }],
+    theme_color: themeColor || '#16a34a',
+    icons: favicon
+      ? [
+          {
+            src: favicon.url,
+            sizes:
+              favicon.width && favicon.height
+                ? `${favicon.width}x${favicon.height}`
+                : 'any',
+          },
+        ]
+      : [{ src: '/icon.png', sizes: '256x256', type: 'image/png' }],
   };
 }

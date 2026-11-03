@@ -16,32 +16,67 @@ const jetbrainsMono = JetBrains_Mono({
   display: 'swap',
 });
 
-export const viewport: Viewport = {
-  width: 'device-width',
-  initialScale: 1,
-  themeColor: '#0a0f0d',
-  colorScheme: 'light',
-};
+const DEFAULT_KEYWORDS = [
+  'stock market simulator',
+  'virtual trading app India',
+  'paper trading',
+  'NSE BSE practice',
+  'learn stock trading',
+  'F&O simulator',
+  'demat practice app',
+  'StockVirtue',
+];
+
+export async function generateViewport(): Promise<Viewport> {
+  const { branding } = (await getSettings()).config;
+  return {
+    width: 'device-width',
+    initialScale: 1,
+    themeColor: branding.themeColor || '#0a0f0d',
+    colorScheme: 'light',
+  };
+}
 
 export async function generateMetadata(): Promise<Metadata> {
   const s = await getSettings();
+  const { branding, search, ads } = s.config;
   const title = s.siteTitle || SITE.name;
   const description = s.siteDescription || SITE.description;
+  const share = branding.shareImage;
+  const image = share
+    ? {
+        url: share.url,
+        width: share.width ?? undefined,
+        height: share.height ?? undefined,
+        alt: title,
+      }
+    : { url: '/og.png', width: 1200, height: 630, alt: SITE.name };
+  const keywords = search.keywords
+    .split(',')
+    .map((k) => k.trim())
+    .filter(Boolean);
+  const favicon = branding.favicon?.url;
+  const indexing = !search.noindex;
   return {
     metadataBase: new URL(SITE.url),
-    title: { default: `${title} — ${SITE.tagline}`, template: `%s · ${title}` },
+    title: {
+      default: `${title} — ${SITE.tagline}`,
+      template: search.titleTemplate.includes('%s')
+        ? search.titleTemplate
+        : `%s · ${title}`,
+    },
     description,
     applicationName: SITE.name,
-    keywords: [
-      'stock market simulator',
-      'virtual trading app India',
-      'paper trading',
-      'NSE BSE practice',
-      'learn stock trading',
-      'F&O simulator',
-      'demat practice app',
-      'StockVirtue',
-    ],
+    keywords: keywords.length > 0 ? keywords : DEFAULT_KEYWORDS,
+    icons: favicon
+      ? { icon: [{ url: favicon }], apple: [{ url: favicon }] }
+      : {
+          icon: [
+            { url: '/favicon.ico', sizes: 'any' },
+            { url: '/icon.png', type: 'image/png' },
+          ],
+          apple: [{ url: '/apple-icon.png' }],
+        },
     authors: [{ name: SITE.company }],
     creator: SITE.company,
     publisher: SITE.company,
@@ -55,19 +90,41 @@ export async function generateMetadata(): Promise<Metadata> {
       url: SITE.url,
       title: `${title} — ${SITE.tagline}`,
       description,
-      images: [{ url: '/og.png', width: 1200, height: 630, alt: SITE.name }],
+      images: [image],
     },
     twitter: {
       card: 'summary_large_image',
       title: `${title} — ${SITE.tagline}`,
       description,
-      images: ['/og.png'],
+      images: [image.url],
+      ...(search.twitterHandle
+        ? { site: search.twitterHandle, creator: search.twitterHandle }
+        : {}),
     },
     robots: {
-      index: true,
-      follow: true,
-      googleBot: { index: true, follow: true, 'max-image-preview': 'large' },
+      index: indexing,
+      follow: indexing,
+      googleBot: {
+        index: indexing,
+        follow: indexing,
+        'max-image-preview': 'large',
+      },
     },
+    verification: {
+      ...(search.googleVerification
+        ? { google: search.googleVerification }
+        : {}),
+      ...(search.yandexVerification
+        ? { yandex: search.yandexVerification }
+        : {}),
+      ...(search.bingVerification
+        ? { other: { 'msvalidate.01': search.bingVerification } }
+        : {}),
+    },
+    // AdSense's site check reads this tag as well as its script.
+    ...(ads.adsenseClient
+      ? { other: { 'google-adsense-account': ads.adsenseClient } }
+      : {}),
     category: 'finance',
   };
 }

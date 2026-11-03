@@ -3,6 +3,7 @@ import {
   Body,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   Header,
   HttpCode,
@@ -14,6 +15,7 @@ import {
   Put,
   Query,
   Req,
+  Res,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { SkipThrottle } from '@nestjs/throttler';
@@ -27,7 +29,7 @@ import {
   MaxLength,
   Min,
 } from 'class-validator';
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
 import { MarketInstrumentKind } from '@prisma/client';
 import { enforceRateLimit } from '../common/rate-limit';
 import { optionalAppUser } from '../auth/optional-app-user';
@@ -49,6 +51,7 @@ import {
   UpdateTickerDto,
 } from './market-config.dto';
 import { MarketConfigService } from './market-config.service';
+import { MarketStreamService } from './market-stream.service';
 import {
   CHART_RANGES,
   ChartRange,
@@ -161,6 +164,7 @@ export class MarketPublicController {
     private readonly data: MarketDataService,
     private readonly redis: RedisService,
     private readonly config: ConfigService<AppConfig, true>,
+    private readonly live: MarketStreamService,
   ) {}
 
   @Get('snapshot')
@@ -233,6 +237,18 @@ export class MarketPublicController {
   @Header('Cache-Control', SLOW_CACHE)
   ipos(@Req() req: Request) {
     return this.data.ipos(this.channel(req));
+  }
+
+  /**
+   * Live prices (Server-Sent Events) for the website's server, which shares
+   * one connection with all its readers. Everyone else polls the above.
+   */
+  @Get('stream')
+  stream(@Req() req: Request, @Res() res: Response) {
+    if (!fromSite(req, this.siteKey())) {
+      throw new ForbiddenException('The live price stream is for the website.');
+    }
+    this.live.open(res);
   }
 
   @Get('widgets/:id')

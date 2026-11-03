@@ -11,6 +11,7 @@ import { SecretBoxService } from '../common/secret-box';
 import configuration from '../config/configuration';
 import { validationSchema } from '../config/validation.schema';
 import { FirebaseAdminService } from '../firebase/firebase-admin.service';
+import { AutoStoryService } from '../ingestion/auto-stories.service';
 import { EditorAlertsService } from '../ingestion/editor-alerts.service';
 import {
   IngestProcessor,
@@ -85,6 +86,7 @@ import {
     CompanyDirectoryService,
     StockMatcherService,
     EditorAlertsService,
+    AutoStoryService,
     IngestService,
     IngestProcessor,
     IngestScheduler,

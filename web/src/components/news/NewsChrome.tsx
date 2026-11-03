@@ -1,6 +1,6 @@
 import { Rss, Search } from 'lucide-react';
 import Link from 'next/link';
-import type { SiteSettings } from '@/lib/settings';
+import { logoUrl, type SiteSettings } from '@/lib/settings';
 import { FOOTER_LINKS, SITE } from '@/lib/site';
 import { newsPath } from '@/news/routes';
 import type { NewsCategoryNode } from '@/news/types';
@@ -13,9 +13,11 @@ import { Container } from './blocks';
 export function NewsHeader({
   categories,
   playUrl,
+  logoUrl: logo = '/logo.png',
 }: {
   categories: NewsCategoryNode[];
   playUrl: string;
+  logoUrl?: string;
 }) {
   return (
     <header className="sticky top-0 z-40 border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/80">
@@ -30,7 +32,7 @@ export function NewsHeader({
           <a href="/" aria-label={`${SITE.name} home`} className="shrink-0">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src="/logo.png"
+              src={logo}
               alt={SITE.name}
               width={143}
               height={32}
@@ -129,7 +131,7 @@ export function NewsFooter({
           <a href="/" aria-label={`${SITE.name} home`} className="inline-block">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src="/logo.png"
+              src={logoUrl(settings)}
               alt={SITE.name}
               width={143}
               height={32}

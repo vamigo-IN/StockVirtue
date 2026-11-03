@@ -1,3 +1,4 @@
+import { getSettings } from '@/lib/settings';
 import { getSitemap } from '@/news/api';
 import { newsPath } from '@/news/routes';
 import { absolute } from '@/news/seo';
@@ -25,16 +26,19 @@ function url(loc: string, opts: { lastmod?: string; image?: string } = {}) {
 }
 
 export async function GET() {
-  const map = await getSitemap();
+  const [map, settings] = await Promise.all([getSitemap(), getSettings()]);
+  const { search } = settings.config;
   const newest = map.articles[0]?.updatedAt;
   const entries = [
     url(absolute(newsPath.home()), { lastmod: newest }),
     url(absolute(newsPath.latest()), { lastmod: newest }),
-    ...map.categories.map((c) =>
+    ...(search.sitemapCategories ? map.categories : []).map((c) =>
       url(absolute(newsPath.category(c.slug)), { lastmod: c.updatedAt }),
     ),
-    ...map.tags.map((t) => url(absolute(newsPath.tag(t.slug)))),
-    ...map.authors.map((a) =>
+    ...(search.sitemapTags ? map.tags : []).map((t) =>
+      url(absolute(newsPath.tag(t.slug))),
+    ),
+    ...(search.sitemapAuthors ? map.authors : []).map((a) =>
       url(absolute(newsPath.author(a.slug)), { lastmod: a.updatedAt }),
     ),
     ...map.articles.map((a) =>

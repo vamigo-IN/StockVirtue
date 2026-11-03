@@ -5,6 +5,7 @@ import {
   AlertTriangle,
   CheckCircle2,
   Inbox,
+  Library,
   MoreHorizontal,
   Pencil,
   Plus,
@@ -15,8 +16,10 @@ import {
 import Link from 'next/link';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { CatalogueDialog } from '@/components/newswire/CatalogueDialog';
 import { FetchHistory } from '@/components/newswire/FetchHistory';
 import {
+  ARRIVAL,
   HealthBadge,
   pollLabel,
   sourceTypeLabel,
@@ -56,6 +59,7 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table';
+import { cn } from '@/lib/utils';
 import { can } from '@/portal/access';
 import { api, errorMessage } from '@/portal/api';
 import { formatDateTime, timeAgo } from '@/portal/format';
@@ -80,6 +84,7 @@ export function SourcesView() {
   const qc = useQueryClient();
   const sources = useSources();
   const [adding, setAdding] = useState(false);
+  const [browsing, setBrowsing] = useState(false);
   const [editing, setEditing] = useState<NewsSourceView | null>(null);
   const [removing, setRemoving] = useState<NewsSourceView | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
@@ -130,13 +135,16 @@ export function SourcesView() {
     <div>
       <PageHeader
         title="News sources"
-        description="Where incoming news comes from. The newsroom worker checks each active source on its schedule, catches duplicates and matches companies; new items wait in Incoming news for a person. Nothing is published automatically."
+        description="Where incoming news comes from. The newsroom worker checks each active source on its schedule, catches duplicates and matches companies. New items wait in Incoming news for a person, unless a Super Admin set the source to save drafts or publish automatically."
         actions={
           <>
             <Button variant="outline" asChild>
               <Link href="/admin/inbox">
                 <Inbox /> Incoming news
               </Link>
+            </Button>
+            <Button variant="outline" onClick={() => setBrowsing(true)}>
+              <Library /> Official sources
             </Button>
             {canCreate && (
               <Button onClick={() => setAdding(true)}>
@@ -249,10 +257,23 @@ export function SourcesView() {
                       </TableCell>
                       <TableCell className="text-sm">
                         {USAGE[s.usage].label}
-                        {s.allowAiDrafts && (
-                          <Badge variant="secondary" className="ml-1.5">
-                            AI drafts
-                          </Badge>
+                        {(s.allowAiDrafts || ARRIVAL[s.arrivalMode].badge) && (
+                          <div className="mt-1 flex flex-wrap gap-1.5">
+                            {s.allowAiDrafts && (
+                              <Badge variant="secondary">AI drafts</Badge>
+                            )}
+                            {ARRIVAL[s.arrivalMode].badge && (
+                              <Badge
+                                variant="outline"
+                                className={cn(
+                                  s.arrivalMode === 'PUBLISH' &&
+                                    'border-warning/50 text-warning',
+                                )}
+                              >
+                                {ARRIVAL[s.arrivalMode].badge}
+                              </Badge>
+                            )}
+                          </div>
                         )}
                       </TableCell>
                       <TableCell className="text-right tabular-nums">
@@ -358,6 +379,11 @@ export function SourcesView() {
       )}
 
       <SourceDialog open={adding} onOpenChange={setAdding} onSaved={refresh} />
+      <CatalogueDialog
+        open={browsing}
+        onOpenChange={setBrowsing}
+        canCreate={canCreate}
+      />
       <SourceDialog
         open={!!editing}
         onOpenChange={(o) => !o && setEditing(null)}

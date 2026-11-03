@@ -1,4 +1,4 @@
-import { AlertTriangle, Bot, PenLine } from 'lucide-react';
+import { AlertTriangle, Bot } from 'lucide-react';
 import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
@@ -146,17 +146,6 @@ export default async function ArticlePage({ params }: Props) {
                 className="sv-prose prose prose-neutral mt-8 max-w-none"
                 dangerouslySetInnerHTML={{ __html: a.contentHtml }}
               />
-            )}
-
-            {a.correctionNote && (
-              <aside className="mt-10 rounded-lg border border-border bg-paper p-4">
-                <h2 className="flex items-center gap-2 text-sm font-bold">
-                  <PenLine className="size-4" aria-hidden="true" /> Correction
-                </h2>
-                <p className="mt-1 text-sm whitespace-pre-line text-muted-foreground">
-                  {a.correctionNote}
-                </p>
-              </aside>
             )}
 
             {a.sources.length > 0 && (

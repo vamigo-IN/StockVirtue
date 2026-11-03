@@ -28,13 +28,15 @@ import { api, errorMessage } from '@/portal/api';
 import { formatDateTime } from '@/portal/format';
 import { useCategories } from '@/portal/queries';
 import type {
+  ArrivalMode,
   NewsSourceView,
   SourceFormat,
   SourcePreview,
   SourceType,
   SourceUsage,
 } from '@/portal/types';
-import { POLL_CHOICES, SOURCE_TYPES, USAGE } from './labels';
+import { usePortalMe } from '@/components/portal/PortalShell';
+import { ARRIVAL, POLL_CHOICES, SOURCE_TYPES, USAGE } from './labels';
 
 const JSON_FIELDS: { key: string; label: string; placeholder: string }[] = [
   { key: 'title', label: 'Headline', placeholder: 'title' },
@@ -96,6 +98,8 @@ interface Form {
   licenceNote: string;
   notifyEditors: boolean;
   isActive: boolean;
+  arrivalMode: ArrivalMode;
+  autoDailyLimit: number;
 }
 
 function toForm(s?: NewsSourceView | null): Form {
@@ -118,6 +122,8 @@ function toForm(s?: NewsSourceView | null): Form {
     licenceNote: s?.licenceNote ?? '',
     notifyEditors: s?.notifyEditors ?? false,
     isActive: s?.isActive ?? true,
+    arrivalMode: s?.arrivalMode ?? 'INBOX',
+    autoDailyLimit: s?.autoDailyLimit ?? 20,
   };
 }
 
@@ -149,6 +155,9 @@ function toBody(f: Form) {
     licenceNote: f.licenceNote.trim(),
     notifyEditors: f.notifyEditors,
     isActive: f.isActive,
+    // Unchanged unless a Super Admin edited them (the API checks).
+    arrivalMode: manual ? 'INBOX' : f.arrivalMode,
+    autoDailyLimit: f.autoDailyLimit,
   };
 }
 
@@ -165,6 +174,7 @@ export function SourceDialog({
   onSaved: (s: NewsSourceView) => void;
 }) {
   const editing = !!source;
+  const me = usePortalMe();
   const [f, setF] = useState<Form>(() => toForm(source));
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -242,8 +252,8 @@ export function SourceDialog({
             </DialogTitle>
             <DialogDescription>
               The newsroom worker checks the source on its schedule. New items
-              wait in Incoming news for a person; nothing is published
-              automatically.
+              wait in Incoming news for a person, unless a Super Admin chose
+              drafts or automatic publishing under When news arrives.
             </DialogDescription>
           </DialogHeader>
 
@@ -555,6 +565,86 @@ export function SourceDialog({
               </label>
             ))}
           </fieldset>
+
+          {!manual && (
+            <fieldset className="space-y-2">
+              <legend className="text-sm font-medium">When news arrives</legend>
+              {!me.isSuperAdmin && (
+                <p className="text-xs text-muted-foreground">
+                  Only a Super Admin can change this.
+                </p>
+              )}
+              {(Object.keys(ARRIVAL) as ArrivalMode[]).map((m) => {
+                const blocked = m === 'PUBLISH' && f.usage === 'HEADLINE_ONLY';
+                return (
+                  <label
+                    key={m}
+                    className={cn(
+                      'flex items-start gap-3 rounded-lg border p-3',
+                      f.arrivalMode === m && 'border-primary bg-primary/5',
+                      me.isSuperAdmin && !blocked
+                        ? 'cursor-pointer'
+                        : 'opacity-70',
+                    )}
+                  >
+                    <input
+                      type="radio"
+                      name="arrivalMode"
+                      className="mt-1"
+                      checked={f.arrivalMode === m}
+                      disabled={!me.isSuperAdmin || blocked}
+                      onChange={() => set('arrivalMode', m)}
+                    />
+                    <span>
+                      <span className="text-sm font-medium">
+                        {ARRIVAL[m].label}
+                      </span>
+                      <span className="block text-xs text-muted-foreground">
+                        {blocked
+                          ? 'Needs a source whose terms allow its summary or full text.'
+                          : ARRIVAL[m].hint}
+                      </span>
+                    </span>
+                  </label>
+                );
+              })}
+              {f.arrivalMode !== 'INBOX' && (
+                <div className="flex flex-wrap items-center gap-2 pt-1">
+                  <Label htmlFor="src-limit" className="font-normal">
+                    At most
+                  </Label>
+                  <Input
+                    id="src-limit"
+                    type="number"
+                    min={1}
+                    max={200}
+                    value={f.autoDailyLimit}
+                    onChange={(e) =>
+                      set(
+                        'autoDailyLimit',
+                        Math.min(200, Math.max(1, Number(e.target.value) || 1)),
+                      )
+                    }
+                    disabled={!me.isSuperAdmin}
+                    className="w-20"
+                  />
+                  <span className="text-sm text-muted-foreground">
+                    stories a day; the rest wait in Incoming news. Items another
+                    source or story may already cover always wait for a person.
+                  </span>
+                </div>
+              )}
+              {f.arrivalMode === 'PUBLISH' && (
+                <Alert>
+                  <AlertDescription>
+                    Readers see these stories without anyone checking them
+                    first. Google and AdSense favour original reporting, so
+                    republished text works best alongside your own stories.
+                  </AlertDescription>
+                </Alert>
+              )}
+            </fieldset>
+          )}
 
           <div className="grid gap-4 sm:grid-cols-2">
             <div className="space-y-1.5">

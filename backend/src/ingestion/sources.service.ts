@@ -1,10 +1,12 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import {
+  NewsArrivalMode,
   NewsFetchStatus,
   NewsFetchTrigger,
   NewsItemStatus,
@@ -17,6 +19,7 @@ import {
 import { AuditService } from '../audit/audit.service';
 import { SecretBoxService, SecretUnreadableError } from '../common/secret-box';
 import { PrismaService } from '../prisma/prisma.service';
+import { SUPER_ADMIN } from '../rbac/rbac.catalog';
 import { ClientInfo, StaffPrincipal } from '../staff/staff-request';
 import { FeedParseError, JSON_FIELDS } from './feed-parser';
 import {
@@ -28,6 +31,7 @@ import {
 import { IngestQueue } from './ingest.queue';
 import { LogsQuery, SourceDto, TestSourceDto } from './ingestion.dto';
 import { checkedUrl, SafeFetchError } from './safe-fetch';
+import { SOURCE_CATALOGUE } from './source-catalogue';
 import { sourceHealth } from './source-health';
 
 const MINUTE = 60_000;
@@ -75,6 +79,43 @@ export class SourcesService {
     }));
   }
 
+  /** Ready-made official sources, marked when already added (same address). */
+  async catalogue() {
+    const added = new Set(
+      (await this.prisma.newsSource.findMany({ select: { url: true } }))
+        .map((s) => s.url)
+        .filter(Boolean),
+    );
+    return SOURCE_CATALOGUE.map((c) => ({ ...c, added: added.has(c.url) }));
+  }
+
+  /** Adds a ready-made source with the usage its terms allow; items wait in Incoming news. */
+  async addFromCatalogue(
+    actor: StaffPrincipal,
+    key: string,
+    client: ClientInfo,
+  ) {
+    const c = SOURCE_CATALOGUE.find((x) => x.key === key);
+    if (!c) throw new NotFoundException('That source isn’t in the catalogue.');
+    if (await this.prisma.newsSource.count({ where: { url: c.url } })) {
+      throw new ConflictException(`${c.name} is already one of your sources.`);
+    }
+    const dto: SourceDto = {
+      name: c.name,
+      type: c.type,
+      format: NewsSourceFormat.FEED,
+      url: c.url,
+      pollMinutes: c.pollMinutes,
+      usage: c.usage,
+      attribution: c.attribution,
+      licenceNote: [c.terms, `Terms: ${c.termsUrl}`, c.caution]
+        .filter(Boolean)
+        .join('\n'),
+      isActive: true,
+    };
+    return this.create(actor, dto, client);
+  }
+
   async get(id: string) {
     const s = await this.prisma.newsSource.findUnique({
       where: { id },
@@ -111,6 +152,8 @@ export class SourcesService {
       attribution: s.attribution,
       licenceNote: s.licenceNote,
       notifyEditors: s.notifyEditors,
+      arrivalMode: s.arrivalMode,
+      autoDailyLimit: s.autoDailyLimit,
       health: sourceHealth(s),
       lastFetchedAt: s.lastFetchedAt,
       lastSuccessAt: s.lastSuccessAt,
@@ -195,6 +238,24 @@ export class SourcesService {
       usage === NewsSourceUsage.HEADLINE_ONLY
         ? false
         : (dto.allowAiDrafts ?? existing?.allowAiDrafts ?? false);
+    const arrivalMode =
+      dto.arrivalMode ?? existing?.arrivalMode ?? NewsArrivalMode.INBOX;
+    if (
+      arrivalMode === NewsArrivalMode.PUBLISH &&
+      usage === NewsSourceUsage.HEADLINE_ONLY
+    ) {
+      throw new BadRequestException(
+        'Publishing automatically needs a source whose terms let you use its summary or full text. A headline-only source can save drafts instead.',
+      );
+    }
+    if (
+      arrivalMode !== NewsArrivalMode.INBOX &&
+      type === NewsSourceType.MANUAL
+    ) {
+      throw new BadRequestException(
+        'Typed-in items always wait in Incoming news.',
+      );
+    }
     return {
       name,
       type,
@@ -213,7 +274,29 @@ export class SourcesService {
           ? (existing?.licenceNote ?? null)
           : dto.licenceNote.trim() || null,
       notifyEditors: dto.notifyEditors ?? existing?.notifyEditors ?? false,
+      arrivalMode,
+      autoDailyLimit: dto.autoDailyLimit ?? existing?.autoDailyLimit ?? 20,
     };
+  }
+
+  /**
+   * Whether new items become drafts or are published, and how many a day, is
+   * a Super Admin's call: an automatic story reaches readers (or the drafts
+   * list) without anyone having read it.
+   */
+  private assertMayChangeArrival(
+    actor: StaffPrincipal,
+    next: { arrivalMode: NewsArrivalMode; autoDailyLimit: number },
+    before?: Pick<NewsSource, 'arrivalMode' | 'autoDailyLimit'>,
+  ) {
+    const changed =
+      next.arrivalMode !== (before?.arrivalMode ?? NewsArrivalMode.INBOX) ||
+      next.autoDailyLimit !== (before?.autoDailyLimit ?? 20);
+    if (changed && !actor.roles.includes(SUPER_ADMIN)) {
+      throw new ForbiddenException(
+        'Only a Super Admin can choose what happens to a source’s new items.',
+      );
+    }
   }
 
   private auditable(s: NewsSource) {
@@ -230,12 +313,15 @@ export class SourcesService {
       allowAiDrafts: s.allowAiDrafts,
       attribution: s.attribution,
       notifyEditors: s.notifyEditors,
+      arrivalMode: s.arrivalMode,
+      autoDailyLimit: s.autoDailyLimit,
       hasSecret: !!s.secret,
     } satisfies Prisma.InputJsonValue;
   }
 
   async create(actor: StaffPrincipal, dto: SourceDto, client: ClientInfo) {
     const data = await this.settle(dto);
+    this.assertMayChangeArrival(actor, data);
     const secret =
       dto.secret?.trim() && data.format !== NewsSourceFormat.NONE
         ? this.secrets.seal(dto.secret.trim(), 'news-source')
@@ -269,6 +355,7 @@ export class SourcesService {
     const before = await this.prisma.newsSource.findUnique({ where: { id } });
     if (!before) throw new NotFoundException('That source no longer exists.');
     const data = await this.settle(dto, before);
+    this.assertMayChangeArrival(actor, data, before);
     let secret = before.secret;
     if (dto.secret !== undefined) {
       secret = dto.secret.trim()
