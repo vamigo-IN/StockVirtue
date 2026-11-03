@@ -10,6 +10,81 @@ import { SITE } from './site';
  * and other third-party scripts. They are intentionally trusted: changing them
  * needs the settings.code_injection permission, and every change is audited.
  */
+/** A media library image (logo, favicon, share image). */
+export interface SiteImage {
+  id: string;
+  url: string;
+  width: number | null;
+  height: number | null;
+}
+
+/**
+ * Branding, search & indexing, analytics and advertising, edited under Site
+ * settings in the portal. The API has already checked every id's format.
+ */
+export interface SiteConfig {
+  branding: {
+    logo: SiteImage | null;
+    favicon: SiteImage | null;
+    shareImage: SiteImage | null;
+    /** Blank = the site's own colours. */
+    themeColor: string;
+  };
+  search: {
+    /** %s = the page's own title; blank = the default. */
+    titleTemplate: string;
+    keywords: string;
+    twitterHandle: string;
+    googleVerification: string;
+    bingVerification: string;
+    yandexVerification: string;
+    noindex: boolean;
+    blockAiCrawlers: boolean;
+    robotsExtra: string;
+    sitemapCategories: boolean;
+    sitemapTags: boolean;
+    sitemapAuthors: boolean;
+    googleNewsSitemap: boolean;
+    llmsEnabled: boolean;
+    llmsSummary: string;
+    llmsArticles: number;
+  };
+  analytics: {
+    ga4Id: string;
+    gtmId: string;
+    metaPixelId: string;
+    clarityId: string;
+  };
+  ads: { adsenseClient: string; autoAds: boolean; adsTxt: string };
+}
+
+export const DEFAULT_CONFIG: SiteConfig = {
+  branding: { logo: null, favicon: null, shareImage: null, themeColor: '' },
+  search: {
+    titleTemplate: '',
+    keywords: '',
+    twitterHandle: '',
+    googleVerification: '',
+    bingVerification: '',
+    yandexVerification: '',
+    noindex: false,
+    blockAiCrawlers: false,
+    robotsExtra: '',
+    sitemapCategories: true,
+    sitemapTags: true,
+    sitemapAuthors: true,
+    googleNewsSitemap: true,
+    llmsEnabled: true,
+    llmsSummary: '',
+    llmsArticles: 50,
+  },
+  analytics: { ga4Id: '', gtmId: '', metaPixelId: '', clarityId: '' },
+  ads: { adsenseClient: '', autoAds: false, adsTxt: '' },
+};
+
+/** Saving settings in the portal refreshes everything tagged with this. */
+export const SETTINGS_TAG = 'site-settings';
+
 export interface SiteSettings {
   siteTitle: string;
   siteDescription: string;
@@ -29,6 +104,7 @@ export interface SiteSettings {
   bodyStartCode: string;
   /** Raw HTML injected right before </body> closes. */
   bodyEndCode: string;
+  config: SiteConfig;
 }
 
 export const DEFAULT_SETTINGS: SiteSettings = {
@@ -40,7 +116,21 @@ export const DEFAULT_SETTINGS: SiteSettings = {
   headCode: '',
   bodyStartCode: '',
   bodyEndCode: '',
+  config: DEFAULT_CONFIG,
 };
+
+function mergeConfig(c: Partial<SiteConfig> | undefined): SiteConfig {
+  return {
+    branding: { ...DEFAULT_CONFIG.branding, ...(c?.branding ?? {}) },
+    search: { ...DEFAULT_CONFIG.search, ...(c?.search ?? {}) },
+    analytics: { ...DEFAULT_CONFIG.analytics, ...(c?.analytics ?? {}) },
+    ads: { ...DEFAULT_CONFIG.ads, ...(c?.ads ?? {}) },
+  };
+}
+
+/** The saved logo, or the built-in one. */
+export const logoUrl = (s: SiteSettings) =>
+  s.config.branding.logo?.url ?? '/logo.png';
 
 /**
  * Backend base URL. The NestJS backend serves every route under a global
@@ -64,7 +154,7 @@ const API_BASE = (() => {
 export async function getSettings(): Promise<SiteSettings> {
   try {
     const res = await fetch(`${API_BASE}/site/settings`, {
-      next: { revalidate: 60 },
+      next: { revalidate: 60, tags: [SETTINGS_TAG] },
     });
     if (!res.ok) return DEFAULT_SETTINGS;
     const data = (await res.json()) as Partial<SiteSettings>;
@@ -72,6 +162,7 @@ export async function getSettings(): Promise<SiteSettings> {
       ...DEFAULT_SETTINGS,
       ...data,
       social: { ...DEFAULT_SETTINGS.social, ...(data.social ?? {}) },
+      config: mergeConfig(data.config),
     };
   } catch {
     return DEFAULT_SETTINGS;

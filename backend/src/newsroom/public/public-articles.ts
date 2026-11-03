@@ -61,7 +61,6 @@ export const DETAIL_SELECT = {
   sectors: true,
   seo: true,
   sourceAttribution: true,
-  correctionNote: true,
   retractedAt: true,
   retractionNote: true,
   category: {

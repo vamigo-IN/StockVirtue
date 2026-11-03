@@ -6,6 +6,8 @@ import { MarketModule } from '../market/market.module';
 import { NewsroomModule } from '../newsroom/newsroom.module';
 import { QueueModule, QUEUES } from '../queue/queue.module';
 import { StaffModule } from '../staff/staff.module';
+import { ArticlePublisher } from '../newsroom/publishing/article-publisher';
+import { AutoStoryService } from './auto-stories.service';
 import { EditorAlertsService } from './editor-alerts.service';
 import { IngestQueue } from './ingest.queue';
 import { IngestService } from './ingest.service';
@@ -44,6 +46,8 @@ import { StockMatcherService } from './stock-matcher.service';
     SecretBoxService,
     StockMatcherService,
     EditorAlertsService,
+    ArticlePublisher,
+    AutoStoryService,
     IngestService,
     IngestQueue,
     SourcesService,

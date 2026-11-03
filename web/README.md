@@ -94,6 +94,13 @@ Point nginx `stockvirtue.com` → `127.0.0.1:3001` and pass the visitor's addres
 (`proxy_set_header X-Real-IP $remote_addr;`), which the portal forwards to the API
 for rate limits and the audit log. (The backend stays on `api.stockvirtue.com`.)
 
+Live prices (`/api/market/stream`, and the API's `/api/v1/market/stream`
+behind it) are Server-Sent Events. Both responses carry `X-Accel-Buffering: no`,
+so nginx passes them through unbuffered with no config change; send something
+at least every 15 seconds, well inside nginx's default 60-second
+`proxy_read_timeout`. Don't put a buffering or compressing proxy (or a CDN
+that buffers) in front of those two paths.
+
 ## Newsroom portal (`/admin`)
 
 - Staff sign in with their StockVirtue account password, then a 6-digit code
@@ -109,12 +116,27 @@ for rate limits and the audit log. (The backend stays on `api.stockvirtue.com`.)
   role.
 - Each role sees only the pages its permissions cover; the API enforces the same
   permissions on every request.
-- **Site settings** (was the old password panel): title/description, contact
-  email, Play URL, social links and **code injection** — raw HTML for
-  verification (Google Search Console, Bing, Meta) and analytics (GA4, GTM,
-  Pixel), injected server-side into every public page. Changing injected code
-  needs the `settings.code_injection` permission (Super Admin by default), and
-  every change is in the audit log with the old and new code.
+- **Site settings**, one tab per area, each saved on its own and audited:
+  - **General** (`settings.update`): title/description, contact email, Play
+    URL, social links and **code injection** — raw HTML injected into every
+    public page, for anything the other tabs don't cover. Changing injected
+    code needs `settings.code_injection` (Super Admin by default).
+  - **Branding** (`settings.update`): logo, favicon (also the app icon on
+    phones), default social share image — picked from the media library — and
+    the theme colour. An image in use here can't be deleted from the library.
+  - **Search & indexing** (`seo.update`, so the SEO Manager has it too): title
+    format, X handle, keywords, Google/Bing/Yandex verification codes, hiding
+    the site from search engines, keeping AI training crawlers out, extra
+    `robots.txt` lines (directives and comments only), which pages the
+    sitemaps list, and `llms.txt` (a plain-text guide to the site for AI
+    tools, with the latest stories).
+  - **Analytics** (`settings.update`): Google Analytics 4, Google Tag Manager,
+    Meta Pixel and Microsoft Clarity IDs; each script loads only with a valid
+    ID.
+  - **Advertising** (`ads.manage`): the AdSense publisher ID (adds the account
+    tag, and the Auto ads script when switched on) and extra `ads.txt` lines;
+    `/ads.txt` is written from these.
+  Saved settings reach the public site within seconds.
 - `/admin` is `noindex` and never loads the public chrome or injected code, so a
   broken snippet can't break the portal.
 - **Articles**: writers draft in the editor (autosaves every few seconds; every
@@ -160,7 +182,7 @@ for rate limits and the audit log. (The backend stays on `api.stockvirtue.com`.)
   companies and labelled by topic. Start a story from one (blank, or from an
   AI draft you have read) and it becomes your ordinary draft, with the source
   credited; dismiss the rest. Tips and press releases can be added by hand
-  (`sources.create`). Nothing here is ever published.
+  (`sources.create`).
 - **News sources** (`sources.*`): feeds (RSS, Atom), licensed news APIs
   (JSON, with a field mapping), exchange, company, RBI, SEBI and government
   announcements, and manual submissions. Per source: schedule, default
@@ -168,6 +190,19 @@ for rate limits and the audit log. (The backend stays on `api.stockvirtue.com`.)
   text), whether AI drafts are allowed, the credit, licence notes and email
   alerts to editors. Test fetches without storing; every fetch is in the
   history with Retry for failures.
+- **When news arrives** (per source, Super Admin only): new items wait in
+  Incoming news (the default), become drafts for an editor to check, or are
+  published at once — with a daily limit per source, after which the rest
+  wait in Incoming news. Automatic stories run under the "StockVirtue News
+  Desk" byline with the source credited and linked, and say only what the
+  source's terms allow; a headline-only source can't publish automatically.
+  Anything that may repeat another source or an existing story always waits
+  for a person.
+- **Official sources**: a ready-made list of government, regulator and
+  central-bank feeds (PIB, RBI, SEBI, NITI Aayog, the exchanges; the US Fed,
+  SEC, BLS, BEA and EIA, the ECB and the Bank of England), each with its
+  terms summarised and linked, set to the usage those terms clearly allow.
+  Exchange feeds are headline-only and marked for legal sign-off.
 - **Stock mapping**: how items are matched to companies — names and capitalised
   NSE tickers automatically, plus aliases ("RIL") and blocked phrases
   ("Reserve Bank of India") staff manage, with a tester.
@@ -210,10 +245,17 @@ for rate limits and the audit log. (The backend stays on `api.stockvirtue.com`.)
   API's public market endpoints (`/api/v1/market/…`) that adds the site key;
   only known paths pass. The API decides what each caller may see from the data
   licence, and quotes only stocks on the market list or in a published story.
-- Widgets refresh on their own schedule (set per widget), share one request
-  per kind of data, and pause while the tab is hidden. Changing the licence,
-  the instruments or the ticker refreshes the site within seconds through the
-  same `/api/revalidate` hook as stories.
+- The ticker and the index and commodity widgets move live: the API pushes
+  each price change to this server (at most once a second, and only the
+  prices that moved), which shares that one connection with every reader
+  through `/api/market/stream`. Prices follow the data licence exactly as the
+  other endpoints do (a delayed licence streams delayed prices). The stream
+  pauses while the tab is hidden; if it goes quiet, widgets fall back to
+  polling until it's back.
+- Other widgets refresh on their own schedule (set per widget), share one
+  request per kind of data, and pause while the tab is hidden. Changing the
+  licence, the instruments or the ticker refreshes the site within seconds
+  through the same `/api/revalidate` hook as stories.
 - The ticker runs under the `/news` masthead and, when set to "News pages and
   the home page", in the home page's tapes.
 
@@ -229,10 +271,13 @@ for rate limits and the audit log. (The backend stays on `api.stockvirtue.com`.)
   encrypted with `NEWSROOM_SECRETS_KEY` (backend) and never sent back to a
   browser; set that key before ever rotating `JWT_ACCESS_SECRET`.
 - An item keeps only what its source's terms allow, as they stood when it
-  arrived. Repeats are caught by link, by headline, and by near-identical
-  headlines (headlines with different figures count as different stories);
-  possible repeats are flagged for a person. Fetch history is kept 60 days,
-  untouched items 120 days.
+  arrived. Repeats are caught by link, by headline, by near-identical
+  headlines (headlines with different figures count as different stories),
+  by the same story told in other words (overlapping headline and summary
+  text), and by the same event about the same company from another source
+  within a day (results, IPOs, deals, corporate actions). Sure repeats are
+  set aside; possible ones are flagged for a person and never published
+  automatically. Fetch history is kept 60 days, untouched items 120 days.
 - The AI assistant works with Anthropic (Claude), OpenAI, any OpenAI-compatible
   server or a self-hosted Ollama server. Every answer is checked before anyone
   sees it: figures that aren't in the story or its sources are removed, wording
@@ -242,8 +287,8 @@ for rate limits and the audit log. (The backend stays on `api.stockvirtue.com`.)
   cost); the text sent is cleared after 90 days. A monthly budget and a daily
   allowance per person cap the spend.
 - The AI never publishes, schedules or approves anything: drafts land on the
-  incoming item or in the editor for a person, and every story still goes
-  through review.
+  incoming item or in the editor for a person. (Automatic publishing, above,
+  is a source setting and uses the source's own text, never AI text.)
 
 ## The app: native reader, saved stories and news alerts
 

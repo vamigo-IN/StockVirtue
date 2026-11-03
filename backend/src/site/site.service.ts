@@ -1,5 +1,10 @@
-import { ForbiddenException, Injectable, Logger } from '@nestjs/common';
-import { ContactStatus } from '@prisma/client';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  Logger,
+} from '@nestjs/common';
+import { ContactStatus, MediaStatus, Prisma } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
 import { AuditService } from '../audit/audit.service';
 import { AppConfig } from '../config/configuration';
@@ -7,6 +12,15 @@ import { PrismaService } from '../prisma/prisma.service';
 import { MailService, escapeHtml } from '../mail/mail.service';
 import { SUPER_ADMIN } from '../rbac/rbac.catalog';
 import { ClientInfo, StaffPrincipal } from '../staff/staff-request';
+import { StorageService } from '../storage/storage.service';
+import {
+  badAdsTxtLine,
+  badRobotsLine,
+  readConfig,
+  SiteConfig,
+  SiteConfigGroup,
+  tidyLines,
+} from './site-config';
 import { ContactDto, UpdateSiteSettingsDto } from './site.dto';
 
 const SINGLETON = 'singleton';
@@ -49,6 +63,26 @@ export function changedSettings(
   );
 }
 
+/** A branding image as the website and the portal use it. */
+export interface SiteImage {
+  id: string;
+  url: string;
+  width: number | null;
+  height: number | null;
+}
+
+/** What the website reads: the basics plus the config, images resolved. */
+export interface PublicSite extends PublicSiteSettings {
+  config: Omit<SiteConfig, 'branding'> & {
+    branding: {
+      logo: SiteImage | null;
+      favicon: SiteImage | null;
+      shareImage: SiteImage | null;
+      themeColor: string;
+    };
+  };
+}
+
 const DEFAULTS: PublicSiteSettings = {
   siteTitle: '',
   siteDescription: '',
@@ -69,14 +103,173 @@ export class SiteService {
     private readonly mail: MailService,
     private readonly audit: AuditService,
     private readonly config: ConfigService<AppConfig, true>,
+    private readonly storage: StorageService,
   ) {}
 
   /** Read the singleton settings; returns defaults when none saved yet. */
-  async get(): Promise<PublicSiteSettings> {
+  async get(): Promise<PublicSite> {
     const row = await this.prisma.siteSetting.findUnique({
       where: { id: SINGLETON },
     });
-    return row ? this.shape(row) : DEFAULTS;
+    const config = readConfig(row?.config);
+    const images = await this.images(config);
+    const pick = (id: string | null) => (id && images.get(id)) || null;
+    return {
+      ...(row ? this.shape(row) : DEFAULTS),
+      config: {
+        ...config,
+        branding: {
+          logo: pick(config.branding.logoMediaId),
+          favicon: pick(config.branding.faviconMediaId),
+          shareImage: pick(config.branding.shareImageMediaId),
+          themeColor: config.branding.themeColor,
+        },
+      },
+    };
+  }
+
+  /** The config for the portal: ids as saved, plus their images. */
+  async getConfigForStaff() {
+    const row = await this.prisma.siteSetting.findUnique({
+      where: { id: SINGLETON },
+    });
+    const config = readConfig(row?.config);
+    const images = await this.images(config);
+    return {
+      config,
+      images: Object.fromEntries(images),
+      updatedAt: row?.updatedAt ?? null,
+    };
+  }
+
+  /**
+   * Saves one group of the config. The route checks the group's permission
+   * (branding and analytics: settings.update, search: seo.update, ads:
+   * ads.manage); old and new values land in the audit log.
+   */
+  async updateConfig<G extends SiteConfigGroup>(
+    actor: StaffPrincipal,
+    group: G,
+    input: SiteConfig[G],
+    client: ClientInfo,
+  ) {
+    const row = await this.prisma.siteSetting.findUnique({
+      where: { id: SINGLETON },
+    });
+    const current = readConfig(row?.config);
+    const next = await this.checkGroup(group, input);
+    if (JSON.stringify(current[group]) !== JSON.stringify(next)) {
+      const config = { ...current, [group]: next };
+      await this.prisma.$transaction(async (tx) => {
+        await tx.siteSetting.upsert({
+          where: { id: SINGLETON },
+          create: {
+            id: SINGLETON,
+            config: config as unknown as Prisma.InputJsonValue,
+          },
+          update: { config: config as unknown as Prisma.InputJsonValue },
+        });
+        await this.audit.record(
+          {
+            actor: { userId: actor.userId, email: actor.email },
+            action: `site.config.${group}`,
+            entityType: 'SiteSetting',
+            entityId: SINGLETON,
+            before: current[group] as unknown as Prisma.InputJsonValue,
+            after: next as unknown as Prisma.InputJsonValue,
+            ...client,
+          },
+          tx,
+        );
+      });
+    }
+    return this.getConfigForStaff();
+  }
+
+  /** Validates and tidies one group beyond what its DTO checks. */
+  private async checkGroup<G extends SiteConfigGroup>(
+    group: G,
+    input: SiteConfig[G],
+  ): Promise<SiteConfig[G]> {
+    if (group === 'branding') {
+      const b = input as SiteConfig['branding'];
+      const next: SiteConfig['branding'] = {
+        logoMediaId: b.logoMediaId ?? null,
+        faviconMediaId: b.faviconMediaId ?? null,
+        shareImageMediaId: b.shareImageMediaId ?? null,
+        themeColor: b.themeColor.toLowerCase(),
+      };
+      const ids = [
+        next.logoMediaId,
+        next.faviconMediaId,
+        next.shareImageMediaId,
+      ].filter((id): id is string => !!id);
+      const ready = await this.prisma.mediaAsset.count({
+        where: { id: { in: ids }, status: MediaStatus.READY },
+      });
+      if (ready !== new Set(ids).size) {
+        throw new BadRequestException(
+          'Pick the logo, favicon and share image from the media library.',
+        );
+      }
+      return next as SiteConfig[G];
+    }
+    if (group === 'search') {
+      const s = input as SiteConfig['search'];
+      const bad = badRobotsLine(s.robotsExtra);
+      if (bad) {
+        throw new BadRequestException(
+          `robots.txt only takes User-agent, Allow, Disallow, Crawl-delay, Sitemap and # comment lines. Fix: "${bad.slice(0, 80)}"`,
+        );
+      }
+      const handle = s.twitterHandle.replace(/^@/, '');
+      return {
+        ...s,
+        twitterHandle: handle ? `@${handle}` : '',
+        keywords: s.keywords
+          .split(',')
+          .map((k) => k.trim())
+          .filter(Boolean)
+          .join(', '),
+        robotsExtra: tidyLines(s.robotsExtra),
+      } as SiteConfig[G];
+    }
+    if (group === 'ads') {
+      const a = input as SiteConfig['ads'];
+      const bad = badAdsTxtLine(a.adsTxt);
+      if (bad) {
+        throw new BadRequestException(
+          `This ads.txt line isn't a valid record: "${bad.slice(0, 80)}". Use "domain, account id, DIRECT or RESELLER[, certification id]".`,
+        );
+      }
+      return { ...a, adsTxt: tidyLines(a.adsTxt) } as SiteConfig[G];
+    }
+    return { ...input };
+  }
+
+  /** READY media library images the config points at, by id. */
+  private async images(config: SiteConfig): Promise<Map<string, SiteImage>> {
+    const ids = [
+      config.branding.logoMediaId,
+      config.branding.faviconMediaId,
+      config.branding.shareImageMediaId,
+    ].filter((id): id is string => !!id);
+    if (ids.length === 0) return new Map();
+    const rows = await this.prisma.mediaAsset.findMany({
+      where: { id: { in: ids }, status: MediaStatus.READY },
+      select: { id: true, storageKey: true, width: true, height: true },
+    });
+    return new Map(
+      rows.map((r) => [
+        r.id,
+        {
+          id: r.id,
+          url: this.storage.publicUrl(r.storageKey),
+          width: r.width,
+          height: r.height,
+        },
+      ]),
+    );
   }
 
   /** Settings plus when they last changed, for the staff portal. */

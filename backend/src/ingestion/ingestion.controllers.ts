@@ -106,6 +106,22 @@ export class SourcesController extends StaffController {
   }
 
   @StaffOnly('sources.read')
+  @Get('catalogue')
+  catalogue() {
+    return this.sources.catalogue();
+  }
+
+  @StaffOnly('sources.create')
+  @Post('catalogue/:key')
+  addFromCatalogue(
+    @CurrentStaff() actor: StaffPrincipal,
+    @Param('key') key: string,
+    @Req() req: Request,
+  ) {
+    return this.sources.addFromCatalogue(actor, key, this.client(req));
+  }
+
+  @StaffOnly('sources.read')
   @Get(':id')
   get(@Param('id', ParseUUIDPipe) id: string) {
     return this.sources.get(id);

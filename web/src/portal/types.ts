@@ -169,6 +169,55 @@ export interface SiteSettingsView {
   updatedAt: string | null;
 }
 
+/** Branding, search & indexing, analytics and ads (one group per save). */
+export interface SiteConfigData {
+  branding: {
+    logoMediaId: string | null;
+    faviconMediaId: string | null;
+    shareImageMediaId: string | null;
+    themeColor: string;
+  };
+  search: {
+    titleTemplate: string;
+    keywords: string;
+    twitterHandle: string;
+    googleVerification: string;
+    bingVerification: string;
+    yandexVerification: string;
+    noindex: boolean;
+    blockAiCrawlers: boolean;
+    robotsExtra: string;
+    sitemapCategories: boolean;
+    sitemapTags: boolean;
+    sitemapAuthors: boolean;
+    googleNewsSitemap: boolean;
+    llmsEnabled: boolean;
+    llmsSummary: string;
+    llmsArticles: number;
+  };
+  analytics: {
+    ga4Id: string;
+    gtmId: string;
+    metaPixelId: string;
+    clarityId: string;
+  };
+  ads: { adsenseClient: string; autoAds: boolean; adsTxt: string };
+}
+
+export interface SiteImageRef {
+  id: string;
+  url: string;
+  width: number | null;
+  height: number | null;
+}
+
+export interface SiteConfigView {
+  config: SiteConfigData;
+  /** The branding images, by media id. */
+  images: Record<string, SiteImageRef>;
+  updatedAt: string | null;
+}
+
 // ── Newsroom (Phase 4) ─────────────────────────────────────────────────
 
 export type ArticleStatus =
@@ -607,6 +656,25 @@ export interface SourceMapping {
   fields: Record<string, string>;
 }
 
+export type ArrivalMode = 'INBOX' | 'DRAFT' | 'PUBLISH';
+
+/** A ready-made official source with its checked terms. */
+export interface CatalogueSource {
+  key: string;
+  name: string;
+  region: 'India' | 'Global';
+  type: SourceType;
+  url: string;
+  homepage: string;
+  usage: SourceUsage;
+  pollMinutes: number;
+  attribution: string;
+  terms: string;
+  termsUrl: string;
+  caution?: string;
+  added: boolean;
+}
+
 export interface NewsSourceView {
   id: string;
   name: string;
@@ -626,6 +694,10 @@ export interface NewsSourceView {
   attribution: string;
   licenceNote: string | null;
   notifyEditors: boolean;
+  /** What happens to new items (a Super Admin's choice). */
+  arrivalMode: ArrivalMode;
+  /** Automatic stories per day; the rest wait in Incoming news. */
+  autoDailyLimit: number;
   health: SourceHealth;
   lastFetchedAt: string | null;
   lastSuccessAt: string | null;

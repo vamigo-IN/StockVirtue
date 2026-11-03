@@ -39,6 +39,7 @@ import type {
   PermissionInfo,
   RoleInfo,
   SimilarStories,
+  SiteConfigView,
   SiteSettingsView,
   SourceItemDetail,
   SourceItemPage,
@@ -65,6 +66,7 @@ export const qk = {
   mySessions: ['sessions', 'mine'] as const,
   allSessions: ['sessions', 'all'] as const,
   site: ['site-settings'] as const,
+  siteConfig: ['site-config'] as const,
   mediaStorage: ['media-storage'] as const,
   homepage: ['site-homepage'] as const,
   marketInstruments: ['market', 'instruments'] as const,
@@ -215,6 +217,13 @@ export const useSiteSettings = () =>
   useQuery({
     queryKey: qk.site,
     queryFn: () => api<SiteSettingsView>('staff/site/settings'),
+  });
+
+export const useSiteConfig = (enabled = true) =>
+  useQuery({
+    queryKey: qk.siteConfig,
+    queryFn: () => api<SiteConfigView>('staff/site/config'),
+    enabled,
   });
 
 export const useMediaStorage = () =>

@@ -757,7 +757,6 @@ export class PublicNewsService {
         name: this.directory.nameFor(s.symbol),
       })),
       sources: publicSources(a.sourceAttribution),
-      correctionNote: a.correctionNote,
       retractedAt: a.retractedAt,
       retractionNote: a.retractionNote,
       seo: {

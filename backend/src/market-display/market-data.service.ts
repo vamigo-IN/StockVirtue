@@ -20,7 +20,7 @@ import {
 } from './data-rights';
 import { MarketCache } from './market-cache';
 import { MarketClock } from './market-clock';
-import { MarketConfigService } from './market-config.service';
+import { MarketConfigService, TickerConfig } from './market-config.service';
 import { MarketSnapshotService } from './market-snapshot.service';
 import { QuoteAllowlistService } from './quote-allowlist.service';
 
@@ -187,19 +187,7 @@ export class MarketDataService {
       this.config.ticker(),
       this.snapshot(channel),
     ]);
-    let items = snap.instruments.filter((i) => i.inTicker);
-    const anyOpen =
-      snap.sessions.equity || snap.sessions.commodity || snap.sessions.currency;
-    if (!anyOpen && config.marketClosed === 'hide') items = [];
-    return {
-      config,
-      attribution: snap.attribution,
-      right: snap.right,
-      delayMinutes: snap.delayMinutes,
-      sessions: snap.sessions,
-      generatedAt: snap.generatedAt,
-      items: config.enabled ? items : [],
-    };
+    return tickerView(config, snap);
   }
 
   /**
@@ -561,6 +549,25 @@ export class MarketDataService {
       ...(q.tradeVolume !== undefined ? { volume: q.tradeVolume } : {}),
     };
   }
+}
+
+export type MarketSnapshot = Awaited<ReturnType<MarketDataService['snapshot']>>;
+
+/** The site ticker from its settings and a snapshot. */
+export function tickerView(config: TickerConfig, snap: MarketSnapshot) {
+  let items = snap.instruments.filter((i) => i.inTicker);
+  const anyOpen =
+    snap.sessions.equity || snap.sessions.commodity || snap.sessions.currency;
+  if (!anyOpen && config.marketClosed === 'hide') items = [];
+  return {
+    config,
+    attribution: snap.attribution,
+    right: snap.right,
+    delayMinutes: snap.delayMinutes,
+    sessions: snap.sessions,
+    generatedAt: snap.generatedAt,
+    items: config.enabled ? items : [],
+  };
 }
 
 export interface Candle {

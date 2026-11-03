@@ -93,7 +93,7 @@ function normalise(s: SiteSettings): SiteSettings {
   return { ...s, social };
 }
 
-export function SettingsView() {
+export function SettingsView({ embedded = false }: { embedded?: boolean }) {
   const me = usePortalMe();
   const qc = useQueryClient();
   const query = useSiteSettings();
@@ -119,7 +119,7 @@ export function SettingsView() {
   if (query.error) {
     return (
       <>
-        <PageHeader title="Site settings" />
+        {!embedded && <PageHeader title="Site settings" />}
         <QueryError error={query.error} onRetry={() => void query.refetch()} />
       </>
     );
@@ -127,7 +127,7 @@ export function SettingsView() {
   if (!form || !query.data) {
     return (
       <>
-        <PageHeader title="Site settings" />
+        {!embedded && <PageHeader title="Site settings" />}
         <RowsSkeleton rows={6} />
       </>
     );
@@ -197,21 +197,34 @@ export function SettingsView() {
 
   return (
     <div className="pb-24">
-      <PageHeader
-        title="Site settings"
-        description={
-          <>
-            What stockvirtue.com shows in search results, its footer and contact
-            details, plus code it loads on every page.
-            {query.data.updatedAt && (
-              <span title={formatDateTime(query.data.updatedAt)}>
-                {' '}
-                Last saved {timeAgo(query.data.updatedAt)}.
-              </span>
-            )}
-          </>
-        }
-      />
+      {embedded ? (
+        <p className="mb-6 text-sm text-muted-foreground">
+          What stockvirtue.com shows in search results, its footer and contact
+          details, plus code it loads on every page.
+          {query.data.updatedAt && (
+            <span title={formatDateTime(query.data.updatedAt)}>
+              {' '}
+              Last saved {timeAgo(query.data.updatedAt)}.
+            </span>
+          )}
+        </p>
+      ) : (
+        <PageHeader
+          title="Site settings"
+          description={
+            <>
+              What stockvirtue.com shows in search results, its footer and
+              contact details, plus code it loads on every page.
+              {query.data.updatedAt && (
+                <span title={formatDateTime(query.data.updatedAt)}>
+                  {' '}
+                  Last saved {timeAgo(query.data.updatedAt)}.
+                </span>
+              )}
+            </>
+          }
+        />
+      )}
 
       {!canEdit && (
         <Alert className="mb-6">

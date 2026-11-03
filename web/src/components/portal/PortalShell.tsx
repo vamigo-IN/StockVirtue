@@ -68,8 +68,8 @@ interface NavItem {
   href: string;
   label: string;
   icon: LucideIcon;
-  /** Shown only to people holding this permission. */
-  permission?: string;
+  /** Shown only to people holding this permission (or any of these). */
+  permission?: string | string[];
   /** Shows the number of incoming items waiting. */
   incomingBadge?: boolean;
 }
@@ -189,7 +189,7 @@ const NAV: { title?: string; items: NavItem[] }[] = [
         href: '/admin/settings',
         label: 'Site settings',
         icon: Globe,
-        permission: 'settings.read',
+        permission: ['settings.read', 'seo.read', 'ads.manage'],
       },
       {
         href: '/admin/storage',
@@ -253,7 +253,9 @@ function SidebarNav({
     >
       {NAV.map((section, i) => {
         const items = section.items.filter(
-          (it) => !it.permission || can(me, it.permission),
+          (it) =>
+            !it.permission ||
+            ([] as string[]).concat(it.permission).some((p) => can(me, p)),
         );
         if (items.length === 0) return null;
         return (

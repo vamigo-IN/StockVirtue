@@ -1,3 +1,4 @@
+import { getSettings } from '@/lib/settings';
 import { getSitemap } from '@/news/api';
 import { newsPath } from '@/news/routes';
 import { absolute, NEWS_NAME } from '@/news/seo';
@@ -10,7 +11,11 @@ export const revalidate = 30;
 const WINDOW_MS = 48 * 3600_000;
 
 export async function GET() {
-  const map = await getSitemap();
+  const [map, settings] = await Promise.all([getSitemap(), getSettings()]);
+  // Switched off under Site settings → Search & indexing.
+  if (!settings.config.search.googleNewsSitemap) {
+    return new Response('Not found', { status: 404 });
+  }
   const since = Date.now() - WINDOW_MS;
   const recent = map.articles
     .filter((a) => new Date(a.publishedAt).getTime() >= since)

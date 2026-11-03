@@ -404,6 +404,14 @@ export class MediaService {
     const asset = await this.find(id);
     if (asset.status === MediaStatus.DELETED) return;
     this.assertMayChange(actor, asset);
+    const branding = await this.prisma.$queryRaw<{ n: bigint }[]>`
+      SELECT count(*)::bigint AS n FROM site_settings
+      WHERE config::text LIKE ${`%${id}%`}`;
+    if (Number(branding[0]?.n ?? 0) > 0) {
+      throw new ConflictException(
+        'This image is the website’s logo, favicon or share image. Pick another one in Site settings first.',
+      );
+    }
     const uses = await this.usageCount(id);
     if (uses > 0) {
       throw new ConflictException(

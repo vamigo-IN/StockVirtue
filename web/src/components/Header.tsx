@@ -6,7 +6,7 @@ import { usePathname } from 'next/navigation';
 import { NAV, SITE } from '@/lib/site';
 import { Icon } from './Icon';
 
-export function Header() {
+export function Header({ logoUrl = '/logo.png' }: { logoUrl?: string }) {
   const [open, setOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
   const pathname = usePathname();
@@ -27,7 +27,7 @@ export function Header() {
       <div className="container header-inner">
         <Link href="/" className="brand" aria-label={`${SITE.name} home`}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo.png" alt={SITE.name} className="brand-logo" />
+          <img src={logoUrl} alt={SITE.name} className="brand-logo" />
         </Link>
 
         <nav className="nav-desktop" aria-label="Primary">

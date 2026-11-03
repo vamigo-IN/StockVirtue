@@ -17,6 +17,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import {
+  NewsArrivalMode,
   NewsFetchStatus,
   NewsItemStatus,
   NewsSourceFormat,
@@ -123,6 +124,17 @@ export class SourceDto {
   @IsOptional()
   @IsBoolean()
   notifyEditors?: boolean;
+
+  /** Super Admin only (checked by the service). */
+  @IsOptional()
+  @IsIn(Object.values(NewsArrivalMode))
+  arrivalMode?: NewsArrivalMode;
+
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(200)
+  autoDailyLimit?: number;
 }
 
 /** Try a source's settings without saving (sourceId: use that source's saved secret). */

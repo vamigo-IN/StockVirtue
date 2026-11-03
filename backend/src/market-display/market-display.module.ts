@@ -11,6 +11,7 @@ import { MarketClock } from './market-clock';
 import { MarketConfigService } from './market-config.service';
 import { MarketDataService } from './market-data.service';
 import { MarketSnapshotService } from './market-snapshot.service';
+import { MarketStreamService } from './market-stream.service';
 import {
   MarketPublicController,
   MarketStaffController,
@@ -47,6 +48,7 @@ import { WidgetPresetsService } from './widget-presets.service';
     InstrumentsService,
     QuoteAllowlistService,
     MarketDataService,
+    MarketStreamService,
     WidgetPresetsService,
   ],
 })

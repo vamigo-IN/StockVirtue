@@ -10,7 +10,8 @@ import type { TickerData } from '@/market/types';
 
 /**
  * The site-wide ticker under the news masthead. Starts from the server's
- * copy, then refreshes every 15 seconds through the site's market proxy.
+ * copy, then moves with the live price stream (polling every 15 seconds
+ * whenever the stream is unavailable).
  * Every price carries its label; the strip opens with the time they're as of.
  */
 export function MarketTicker({ initial }: { initial: TickerData | null }) {

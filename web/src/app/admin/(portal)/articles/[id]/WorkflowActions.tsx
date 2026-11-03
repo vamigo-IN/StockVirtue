@@ -116,9 +116,9 @@ const TEXTS: Record<
   },
   correct: {
     title: 'Publish a correction',
-    body: 'Save your fixes to the text first. The note is shown to readers with today’s date.',
+    body: 'Save your fixes to the text first. Readers see the corrected story; this note stays in its history and is not shown to them.',
     label: 'Publish correction',
-    field: 'Correction note for readers',
+    field: 'What was corrected',
     required: true,
     success: 'Correction published.',
   },

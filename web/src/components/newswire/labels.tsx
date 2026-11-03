@@ -2,6 +2,7 @@ import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 import type {
   AiProviderKind,
+  ArrivalMode,
   ItemStatus,
   SourceHealth,
   SourceType,
@@ -23,6 +24,27 @@ export const SOURCE_TYPES: { value: SourceType; label: string }[] = [
 
 export const sourceTypeLabel = (t: SourceType) =>
   SOURCE_TYPES.find((s) => s.value === t)?.label ?? t;
+
+/** What happens to a source's new items. */
+export const ARRIVAL: Record<
+  ArrivalMode,
+  { label: string; hint: string; badge?: string }
+> = {
+  INBOX: {
+    label: 'Wait in Incoming news',
+    hint: 'A person starts each story. The safe choice.',
+  },
+  DRAFT: {
+    label: 'Save as drafts for review',
+    hint: 'Each new item becomes a draft crediting the source. An editor checks it and publishes.',
+    badge: 'Saves drafts',
+  },
+  PUBLISH: {
+    label: 'Publish automatically',
+    hint: 'Each new item is published at once, with the source credited and linked. Only for sources whose terms allow their summary or full text.',
+    badge: 'Publishes automatically',
+  },
+};
 
 export const USAGE: Record<SourceUsage, { label: string; hint: string }> = {
   HEADLINE_ONLY: {

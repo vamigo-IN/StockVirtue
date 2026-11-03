@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
+  NewsArrivalMode,
   NewsFetchStatus,
   NewsFetchTrigger,
   NewsItemStatus,
@@ -12,6 +13,7 @@ import {
 } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
 import { AiAutoDraftService } from '../ai/ai-auto-draft.service';
+import { AutoStoryService } from './auto-stories.service';
 import { SecretBoxService, SecretUnreadableError } from '../common/secret-box';
 import { AppConfig } from '../config/configuration';
 import { PrismaService } from '../prisma/prisma.service';
@@ -37,14 +39,19 @@ import {
   parseSourceDate,
   POSSIBLE_SIMILARITY,
   sha256,
+  textSimilarity,
+  textTokens,
   titleKey,
   titleTokens,
+  DUPLICATE_TEXT_SIMILARITY,
+  POSSIBLE_TEXT_SIMILARITY,
 } from './text';
 
 const MINUTE = 60_000;
 const DAY = 24 * 60 * MINUTE;
+// Names us and a contact, as public feeds (e.g. the US SEC) ask of robots.
 const USER_AGENT =
-  'StockVirtueNewsroom/1.0 (+https://stockvirtue.com/news; news ingestion)';
+  'StockVirtueNewsroom/1.0 (+https://stockvirtue.com/news; support@stockvirtue.com)';
 const FEED_ACCEPT =
   'application/rss+xml, application/atom+xml, application/rdf+xml, application/xml;q=0.9, text/xml;q=0.9, */*;q=0.5';
 const SUMMARY_CHARS = 1500;
@@ -100,12 +107,32 @@ interface Normalised {
   title: string;
   titleKey: string;
   tokens: string[];
+  /** Words of the headline and summary, for stories told differently. */
+  text: string[];
   summary: string | null;
   content: string | null;
   author: string | null;
   publishedAt: Date | null;
   feedCategories: string[];
 }
+
+/** A recent item, as duplicate checks compare against it. */
+interface WindowItem {
+  id: string;
+  key: string;
+  tokens: string[];
+  text: Set<string>;
+  stocks: string[];
+  topics: string[];
+  sourceId: string;
+  at: number;
+}
+
+/// Topics about one company event: the same company and event from another
+/// source within a day is likely the same news.
+const EVENT_TOPICS = new Set(['ipo', 'results', 'corporate_action', 'deals']);
+/// The score such a same-event match gets: a possible repeat, never certain.
+const EVENT_SCORE = 0.5;
 
 export interface FetchSummary {
   logId: string;
@@ -157,9 +184,9 @@ function cleanAuthor(raw: string | null): string | null {
 /**
  * The ingestion pipeline (spec §8): fetch a source safely, normalise what it
  * sent, catch duplicates, map related stocks, classify, store only what the
- * licence allows, log the fetch and the source's health, then tell editors
- * and — where permitted — ask the AI for a draft. Nothing here creates or
- * publishes a story.
+ * licence allows, log the fetch and the source's health, then make stories
+ * where the source's arrival mode (a Super Admin's choice) says so, tell
+ * editors about what is left and — where permitted — ask the AI for a draft.
  */
 @Injectable()
 export class IngestService {
@@ -173,6 +200,7 @@ export class IngestService {
     private readonly matcher: StockMatcherService,
     private readonly alerts: EditorAlertsService,
     private readonly autoDraft: AiAutoDraftService,
+    private readonly autoStories: AutoStoryService,
   ) {}
 
   /** One fetch of one source. Never throws: failures are logged on the source. */
@@ -439,6 +467,7 @@ export class IngestService {
       title,
       titleKey: titleKey(title),
       tokens,
+      text: summary ? textTokens(`${title}\n${summary}`) : [],
       summary,
       content,
       author: cleanAuthor(raw.author),
@@ -521,7 +550,16 @@ export class IngestService {
           fetchedAt: { gte: new Date(now.getTime() - 3 * DAY) },
           status: { not: NewsItemStatus.DUPLICATE },
         },
-        select: { id: true, titleKey: true },
+        select: {
+          id: true,
+          titleKey: true,
+          title: true,
+          summary: true,
+          stockRefs: true,
+          topics: true,
+          sourceId: true,
+          fetchedAt: true,
+        },
         orderBy: { fetchedAt: 'desc' },
         take: 5000,
       }),
@@ -555,10 +593,15 @@ export class IngestService {
       }),
       this.matcher.matcher(),
     ]);
-    const window = recent.map((r) => ({
+    const window: WindowItem[] = recent.map((r) => ({
       id: r.id,
       key: r.titleKey,
       tokens: r.titleKey.split(' ').filter(Boolean),
+      text: new Set(r.summary ? textTokens(`${r.title}\n${r.summary}`) : []),
+      stocks: r.stockRefs,
+      topics: r.topics,
+      sourceId: r.sourceId,
+      at: r.fetchedAt.getTime(),
     }));
     const articleTokens = stories.map((s) => ({
       id: s.id,
@@ -576,17 +619,17 @@ export class IngestService {
     const rows: Prisma.NewsSourceItemCreateManyInput[] = [];
     for (const c of fresh) {
       const id = randomUUID();
-      const dup = this.duplicateOf(c, {
-        window,
-        byUrl,
-        articleTokens,
-        batchUrls,
-      });
       const stocks = matcher.match(`${c.title}\n${c.summary ?? ''}`);
       const topics = classify(
         `${c.title}\n${c.summary ?? ''}`,
         source.type,
         c.feedCategories,
+      );
+      const stockRefs = stocks.map((s) => `${s.exchange}:${s.symbol}`);
+      const dup = this.duplicateOf(
+        c,
+        { window, byUrl, articleTokens, batchUrls },
+        { stocks: stockRefs, topics, sourceId: source.id, at: now.getTime() },
       );
       rows.push({
         id,
@@ -606,7 +649,7 @@ export class IngestService {
         attribution: source.attribution || source.name,
         feedCategories: c.feedCategories,
         stocks: stocks as unknown as Prisma.InputJsonValue,
-        stockRefs: stocks.map((s) => `${s.exchange}:${s.symbol}`),
+        stockRefs,
         topics,
         suggestedCategoryId: suggestCategory(
           topics,
@@ -619,7 +662,18 @@ export class IngestService {
         duplicateScore: dup?.score ?? null,
       });
       if (c.urlHash && !batchUrls.has(c.urlHash)) batchUrls.set(c.urlHash, id);
-      if (!dup?.sure) window.push({ id, key: c.titleKey, tokens: c.tokens });
+      if (!dup?.sure) {
+        window.push({
+          id,
+          key: c.titleKey,
+          tokens: c.tokens,
+          text: new Set(c.text),
+          stocks: stockRefs,
+          topics,
+          sourceId: source.id,
+          at: now.getTime(),
+        });
+      }
     }
     // Originals first, so a repeat in the same batch can point at one.
     const originals = rows.filter((r) => !r.duplicateOfId);
@@ -648,11 +702,15 @@ export class IngestService {
     };
   }
 
-  /** The item or story this one repeats: same link, same headline, or nearly the same headline. */
+  /**
+   * The item or story this one repeats: same link, same headline, nearly the
+   * same headline or text, or (possibly) the same company event from another
+   * source within a day.
+   */
   private duplicateOf(
     c: Normalised,
     ctx: {
-      window: { id: string; key: string; tokens: string[] }[];
+      window: WindowItem[];
       byUrl: {
         id: string;
         urlHash: string | null;
@@ -661,6 +719,7 @@ export class IngestService {
       articleTokens: { id: string; tokens: string[]; urls: string[] }[];
       batchUrls: Map<string, string>;
     },
+    self: { stocks: string[]; topics: string[]; sourceId: string; at: number },
   ): {
     itemId?: string;
     articleId?: string;
@@ -700,19 +759,79 @@ export class IngestService {
       if (score >= POSSIBLE_SIMILARITY && score > (best?.score ?? 0))
         best = { articleId: a.id, score };
     }
+    if (best && best.score >= DUPLICATE_SIMILARITY) {
+      return { ...best, score: Math.round(best.score * 100) / 100, sure: true };
+    }
+    // Told in other words: much the same text, or the same company event.
+    const events = self.topics.filter((t) => EVENT_TOPICS.has(t));
+    let text: { itemId: string; score: number } | null = null;
+    for (const w of ctx.window) {
+      if (c.text.length >= 8) {
+        const score = textSimilarity(c.text, w.text);
+        if (score >= POSSIBLE_TEXT_SIMILARITY && score > (text?.score ?? 0))
+          text = { itemId: w.id, score };
+      }
+      if (
+        events.length &&
+        self.stocks.length &&
+        w.sourceId !== self.sourceId &&
+        Math.abs(self.at - w.at) <= DAY &&
+        self.stocks.some((s) => w.stocks.includes(s)) &&
+        events.some((t) => w.topics.includes(t)) &&
+        (best?.score ?? 0) < EVENT_SCORE
+      ) {
+        best = { itemId: w.id, score: EVENT_SCORE };
+      }
+    }
+    if (text?.score && text.score >= DUPLICATE_TEXT_SIMILARITY) {
+      return { ...text, score: Math.round(text.score * 100) / 100, sure: true };
+    }
+    if (text && text.score > (best?.score ?? 0)) best = text;
     if (!best) return null;
     return {
       ...best,
       score: Math.round(best.score * 100) / 100,
-      sure: best.score >= DUPLICATE_SIMILARITY,
+      sure: false,
     };
   }
 
   private async afterStore(
-    source: Pick<NewsSource, 'id' | 'name' | 'notifyEditors'>,
-    fresh: { id: string; title: string }[],
+    source: Pick<
+      NewsSource,
+      | 'id'
+      | 'name'
+      | 'notifyEditors'
+      | 'arrivalMode'
+      | 'autoDailyLimit'
+      | 'categoryId'
+    >,
+    stored: { id: string; title: string }[],
   ) {
-    if (fresh.length === 0) return;
+    if (stored.length === 0) return;
+    let fresh = stored;
+    if (source.arrivalMode !== NewsArrivalMode.INBOX) {
+      await this.autoStories
+        .handle(
+          source,
+          stored.map((s) => s.id),
+        )
+        .catch((err: unknown) =>
+          this.logger.warn(
+            `Automatic stories failed: ${(err as Error).message}`,
+          ),
+        );
+      // Editors and the AI hear only about items still waiting for a person.
+      const waiting = await this.prisma.newsSourceItem.findMany({
+        where: {
+          id: { in: stored.map((s) => s.id) },
+          status: NewsItemStatus.NEW,
+        },
+        select: { id: true },
+      });
+      const ids = new Set(waiting.map((w) => w.id));
+      fresh = stored.filter((s) => ids.has(s.id));
+      if (fresh.length === 0) return;
+    }
     if (source.notifyEditors) {
       await this.alerts
         .newItems(source, fresh)
@@ -745,7 +864,11 @@ export class IngestService {
     raw: RawItem,
   ): Promise<string | null> {
     const stored = await this.store(source, [raw], null);
-    await this.afterStore(source, stored.fresh);
+    // Typed-in tips always wait for a person.
+    await this.afterStore(
+      { ...source, arrivalMode: NewsArrivalMode.INBOX, autoDailyLimit: 0 },
+      stored.fresh,
+    );
     return stored.ids[0] ?? null;
   }
 
