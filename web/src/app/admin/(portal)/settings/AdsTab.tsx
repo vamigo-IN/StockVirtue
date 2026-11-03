@@ -71,6 +71,49 @@ export function AdsTab({
             onChange={(v) => g.set('autoAds', v)}
             disabled={off}
           />
+          <fieldset className="space-y-2">
+            <legend className="text-sm font-medium">
+              Visitors who haven&apos;t allowed advertising cookies
+            </legend>
+            <p className="text-xs text-muted-foreground">
+              Every visitor is asked first (the cookie banner). Personalised ads
+              only ever show to those who say yes.
+            </p>
+            {(
+              [
+                [
+                  'non_personalised',
+                  'See non-personalised ads',
+                  'Ads chosen from the page, not from their interests or browsing.',
+                ],
+                [
+                  'off',
+                  'See no ads',
+                  'Nothing from AdSense loads until they allow advertising cookies.',
+                ],
+              ] as const
+            ).map(([value, label, hint]) => (
+              <label
+                key={value}
+                className="flex cursor-pointer items-start gap-3 text-sm"
+              >
+                <input
+                  type="radio"
+                  name="withoutConsent"
+                  className="mt-1"
+                  checked={g.form.withoutConsent === value}
+                  onChange={() => g.set('withoutConsent', value)}
+                  disabled={off}
+                />
+                <span>
+                  {label}
+                  <span className="block text-xs text-muted-foreground">
+                    {hint}
+                  </span>
+                </span>
+              </label>
+            ))}
+          </fieldset>
           <Alert>
             <Info />
             <AlertDescription>

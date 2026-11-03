@@ -111,6 +111,11 @@ export class SourceDto {
   @IsBoolean()
   allowAiDrafts?: boolean;
 
+  /** Licensed full-text sources only (checked by the service). */
+  @IsOptional()
+  @IsBoolean()
+  useImages?: boolean;
+
   @IsOptional()
   @IsString()
   @MaxLength(200)

@@ -20,6 +20,7 @@ import {
 import { ArticlePublisher } from '../newsroom/publishing/article-publisher';
 import { freeSlug, RESERVED_ARTICLE_SLUGS, slugify } from '../newsroom/slug';
 import { PrismaService } from '../prisma/prisma.service';
+import { SourcePicturesService } from './source-pictures.service';
 import { clip } from './text';
 
 /// The byline on stories nobody wrote: made from a news source automatically.
@@ -92,8 +93,9 @@ export function istDayStart(now: Date): Date {
  * publish, or published at once through the scheduled-publishing path. Only
  * items no other item or story already covers (not even possibly), at most
  * the source's daily limit, oldest first, and only what the licence allows,
- * always with the source credited and linked. Runs in the worker after each
- * fetch; anything it leaves stays in Incoming news for a person.
+ * always with the source credited, and with its picture where the licence
+ * covers pictures. Runs in the worker after each fetch; anything it leaves
+ * stays in Incoming news for a person.
  *
  * An AI step that retells the item in our own words can sit in `make` later.
  */
@@ -105,6 +107,7 @@ export class AutoStoryService {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly publisher: ArticlePublisher,
+    private readonly pictures: SourcePicturesService,
   ) {}
 
   async handle(
@@ -212,6 +215,10 @@ export class AutoStoryService {
           (s.exchange === 'NSE' || s.exchange === 'BSE') && !!s.symbol,
       )
       .slice(0, 8);
+    const featuredImageId = await this.pictures.forItem(item, {
+      userId: null,
+      email: `automation (${source.name})`,
+    });
 
     return this.prisma.$transaction(async (tx) => {
       const created = await tx.newsArticle.create({
@@ -222,6 +229,7 @@ export class AutoStoryService {
           scheduledAt: publish ? now : null,
           authorId: author.id,
           categoryId: item.suggestedCategoryId ?? source.categoryId ?? null,
+          featuredImageId,
           summary: body.summary,
           content: doc as unknown as Prisma.InputJsonValue,
           contentHtml: html,

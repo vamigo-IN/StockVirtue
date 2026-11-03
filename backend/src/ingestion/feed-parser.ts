@@ -9,6 +9,8 @@ export interface RawItem {
   /** HTML or text, as the source sent it. */
   summary: string | null;
   content: string | null;
+  /** The item's picture, as the source gave its address. */
+  image: string | null;
   author: string | null;
   categories: string[];
 }
@@ -32,6 +34,7 @@ export const JSON_FIELDS = [
   'publishedAt',
   'summary',
   'content',
+  'image',
   'author',
   'categories',
 ] as const;
@@ -112,6 +115,96 @@ function categories(v: unknown): string[] {
     .slice(0, 12);
 }
 
+const IMAGE_FILE = /\.(?:jpe?g|png|webp|gif|avif)(?:[?#]|$)/i;
+
+/**
+ * The address on a media:content, enclosure or Atom link element when it is
+ * a picture (by medium, type or, failing both, file name). media:thumbnail is
+ * always one (`typed` false).
+ */
+function imageAt(v: unknown, typed: boolean): string | null {
+  if (typeof v !== 'object' || v === null) return null;
+  const el = v as Node;
+  const url = (text(el['@_url']) ?? text(el['@_href']))?.trim();
+  if (!url) return null;
+  if (!typed) return url;
+  const medium = text(el['@_medium'])?.trim().toLowerCase();
+  const type = text(el['@_type'])?.trim().toLowerCase();
+  if (medium === 'image' || type?.startsWith('image/')) return url;
+  return !medium && !type && IMAGE_FILE.test(url) ? url : null;
+}
+
+/** The first <img src> in HTML: a string, or XHTML the parser made into nodes. */
+function firstImg(v: unknown, depth = 0): string | null {
+  if (v == null || depth > 12) return null;
+  if (typeof v === 'string') {
+    return (
+      /<img\b[^>]*?\bsrc\s*=\s*["']([^"']+)["']/i.exec(v)?.[1]?.trim() || null
+    );
+  }
+  if (Array.isArray(v)) {
+    for (const x of v) {
+      const url = firstImg(x, depth + 1);
+      if (url) return url;
+    }
+    return null;
+  }
+  if (typeof v !== 'object') return null;
+  for (const [k, child] of Object.entries(v as Node)) {
+    if (k === 'img') {
+      for (const i of list(child)) {
+        const src = typeof i === 'object' ? text((i as Node)?.['@_src']) : null;
+        if (src?.trim()) return src.trim();
+      }
+    } else if (!k.startsWith('@_')) {
+      const url = firstImg(child, depth + 1);
+      if (url) return url;
+    }
+  }
+  return null;
+}
+
+/**
+ * An item's picture: Media RSS (media:content, then media:thumbnail, also
+ * inside media:group), an image enclosure (RSS) or enclosure link (Atom),
+ * else the first image in its HTML.
+ */
+function itemImage(item: Node, html: unknown[]): string | null {
+  const holders = [
+    item,
+    ...list(item['media:group']).filter(
+      (g): g is Node => typeof g === 'object' && g !== null,
+    ),
+  ];
+  for (const h of holders) {
+    for (const c of list(h['media:content'])) {
+      const url = imageAt(c, true);
+      if (url) return url;
+    }
+  }
+  for (const h of holders) {
+    for (const t of list(h['media:thumbnail'])) {
+      const url = imageAt(t, false);
+      if (url) return url;
+    }
+  }
+  for (const e of list(item.enclosure)) {
+    const url = imageAt(e, true);
+    if (url) return url;
+  }
+  for (const l of list(item.link)) {
+    if (typeof l === 'object' && text((l as Node)?.['@_rel']) === 'enclosure') {
+      const url = imageAt(l, true);
+      if (url) return url;
+    }
+  }
+  for (const h of html) {
+    const url = firstImg(h);
+    if (url) return url;
+  }
+  return null;
+}
+
 /** RSS <link> is text; some feeds use atom:link elements instead. */
 function rssLink(item: Node): string | null {
   for (const l of list(item.link)) {
@@ -157,6 +250,7 @@ function rssItem(item: Node): RawItem | null {
       text(item.updated),
     summary: deepText(item.description),
     content: deepText(item['content:encoded']),
+    image: itemImage(item, [item['content:encoded'], item.description]),
     author: text(item['dc:creator']) ?? text(item.author),
     categories: categories([
       ...list(item.category),
@@ -176,6 +270,7 @@ function atomEntry(entry: Node): RawItem | null {
     publishedAt: text(entry.published) ?? text(entry.updated),
     summary: deepText(entry.summary),
     content: deepText(entry.content),
+    image: itemImage(entry, [entry.content, entry.summary]),
     author: author ? text(author.name) : null,
     categories: categories(entry.category),
   };
@@ -277,6 +372,7 @@ const DEFAULT_PATHS: Record<JsonField, string> = {
   publishedAt: 'publishedAt',
   summary: 'summary',
   content: 'content',
+  image: 'image',
   author: 'author',
   categories: 'categories',
 };
@@ -308,6 +404,7 @@ export function parseJsonApi(body: string, mapping: JsonMapping): ParsedFeed {
       publishedAt: when(pick(it, path('publishedAt'))),
       summary: str(pick(it, path('summary'))),
       content: str(pick(it, path('content'))),
+      image: str(pick(it, path('image'))),
       author: str(pick(it, path('author'))),
       categories: Array.isArray(cats)
         ? cats

@@ -139,9 +139,15 @@ export class NotificationsService {
    * Admin broadcast: store a copy in every user's inbox, signal all open
    * sockets to refresh, and push via FCM. Returns the recipient count.
    */
-  async broadcast(input: CreateNotificationInput): Promise<{ recipients: number }> {
+  async broadcast(
+    input: CreateNotificationInput,
+  ): Promise<{ recipients: number }> {
     const kind = input.kind ?? 'admin';
-    const users = await this.prisma.user.findMany({ select: { id: true } });
+    // Accounts in use only: never deleted or blocked ones.
+    const users = await this.prisma.user.findMany({
+      where: { status: 'ACTIVE' },
+      select: { id: true },
+    });
     if (users.length > 0) {
       await this.prisma.notification.createMany({
         data: users.map((u) => ({
@@ -165,8 +171,10 @@ export class NotificationsService {
         createdAt: new Date().toISOString(),
       })
       .catch(() => {});
-    // FCM to every registered device.
-    const tokens = await this.prisma.deviceToken.findMany();
+    // FCM to every registered device of an account in use.
+    const tokens = await this.prisma.deviceToken.findMany({
+      where: { user: { status: 'ACTIVE' } },
+    });
     await Promise.all(
       tokens.map((t) =>
         this.sendToToken(t, {

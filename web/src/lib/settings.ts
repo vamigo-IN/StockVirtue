@@ -55,7 +55,23 @@ export interface SiteConfig {
     metaPixelId: string;
     clarityId: string;
   };
-  ads: { adsenseClient: string; autoAds: boolean; adsTxt: string };
+  ads: {
+    adsenseClient: string;
+    autoAds: boolean;
+    adsTxt: string;
+    /** Visitors who haven't allowed advertising cookies: non-personalised ads, or none. */
+    withoutConsent: 'non_personalised' | 'off';
+  };
+  /** Who answers for personal data (DPDP Act), from the Privacy tab. */
+  privacy: {
+    legalName: string;
+    postalAddress: string;
+    officerName: string;
+    officerEmail: string;
+    officerPhone: string;
+    /** Days within which requests and grievances are answered (at most 90). */
+    responseDays: number;
+  };
 }
 
 export const DEFAULT_CONFIG: SiteConfig = {
@@ -79,7 +95,20 @@ export const DEFAULT_CONFIG: SiteConfig = {
     llmsArticles: 50,
   },
   analytics: { ga4Id: '', gtmId: '', metaPixelId: '', clarityId: '' },
-  ads: { adsenseClient: '', autoAds: false, adsTxt: '' },
+  ads: {
+    adsenseClient: '',
+    autoAds: false,
+    adsTxt: '',
+    withoutConsent: 'non_personalised',
+  },
+  privacy: {
+    legalName: SITE.company,
+    postalAddress: '',
+    officerName: '',
+    officerEmail: '',
+    officerPhone: '',
+    responseDays: 30,
+  },
 };
 
 /** Saving settings in the portal refreshes everything tagged with this. */
@@ -125,6 +154,23 @@ function mergeConfig(c: Partial<SiteConfig> | undefined): SiteConfig {
     search: { ...DEFAULT_CONFIG.search, ...(c?.search ?? {}) },
     analytics: { ...DEFAULT_CONFIG.analytics, ...(c?.analytics ?? {}) },
     ads: { ...DEFAULT_CONFIG.ads, ...(c?.ads ?? {}) },
+    privacy: { ...DEFAULT_CONFIG.privacy, ...(c?.privacy ?? {}) },
+  };
+}
+
+/**
+ * The grievance officer as readers see them: until one is named, privacy
+ * questions go to the site's contact address.
+ */
+export function privacyContact(s: SiteSettings) {
+  const p = s.config.privacy;
+  return {
+    legalName: p.legalName || SITE.company,
+    postalAddress: p.postalAddress,
+    name: p.officerName,
+    email: p.officerEmail || s.contactEmail || SITE.email,
+    phone: p.officerPhone,
+    responseDays: Math.min(90, Math.max(1, p.responseDays || 30)),
   };
 }
 

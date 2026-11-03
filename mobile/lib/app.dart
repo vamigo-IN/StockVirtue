@@ -13,6 +13,7 @@ import 'features/market/company_directory_sync.dart';
 import 'features/onboarding/onboarding_storage.dart';
 import 'features/notifications/push_service.dart';
 import 'features/onboarding/screens/onboarding_screen.dart';
+import 'features/privacy/screens/privacy_notice_screen.dart';
 import 'features/profile/screens/complete_profile_screen.dart';
 import 'features/ticks/ticks_providers.dart';
 import 'widgets/error_retry_view.dart';
@@ -99,10 +100,12 @@ const _onboardingFreshWindow = Duration(minutes: 30);
 
 /// Top-level flow controller. The order of stages is:
 ///   1. No user                 → [LoginScreen]
-///   2. User without profile    → [CompleteProfileScreen]
-///   3. Freshly signed up AND   → [OnboardingScreen]
+///   2. Current privacy notice  → [PrivacyNoticeScreen]
+///      not yet accepted
+///   3. User without profile    → [CompleteProfileScreen]
+///   4. Freshly signed up AND   → [OnboardingScreen]
 ///      onboarded flag missing
-///   4. Everything ready        → [ShellScreen]
+///   5. Everything ready        → [ShellScreen]
 /// `profileComplete` flips on the backend after PATCH /auth/me so we don't
 /// need to push routes imperatively — the gate re-renders when the auth
 /// state updates and the user falls through to the next stage.
@@ -125,6 +128,7 @@ class _AuthGate extends ConsumerWidget {
       ),
       data: (user) {
         if (user == null) return const LoginScreen();
+        if (user.needsPrivacyNotice) return const PrivacyNoticeScreen();
         if (!user.profileComplete) return const CompleteProfileScreen();
         // Returning user — older than the fresh-signup window. Skip
         // onboarding even if the storage flag couldn't be read.

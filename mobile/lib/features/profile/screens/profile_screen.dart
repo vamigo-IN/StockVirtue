@@ -11,6 +11,7 @@ import '../../achievements/screens/achievements_screen.dart';
 import '../../auth/auth_controller.dart';
 import '../../glossary/screens/glossary_screen.dart';
 import '../../leaderboard/screens/leaderboard_screen.dart';
+import '../../privacy/screens/privacy_screen.dart';
 import '../../rooms/screens/rooms_landing_screen.dart';
 import '../../settings/screens/settings_screen.dart';
 import '_profile_tiles_extra.dart';
@@ -65,6 +66,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
           const SizedBox(height: 14),
           const _SettingsTile(),
           const SizedBox(height: 14),
+          const _PrivacyTile(),
+          const SizedBox(height: 14),
           const _GlossaryTile(),
           const SizedBox(height: 14),
           _PreferencesCard(),
@@ -99,7 +102,8 @@ class _ProfileScreenState extends ConsumerState<ProfileScreen> {
       builder: (ctx) => AlertDialog(
         title: const Text('Log out?'),
         content: const Text(
-          "You'll need to verify your phone again to sign back in.",
+          "You'll need to sign in again. Starred stocks, trade notes and "
+          'anything else kept only on this phone are cleared from it.',
         ),
         actions: [
           TextButton(
@@ -683,6 +687,8 @@ class _EditProfileSheetState extends ConsumerState<_EditProfileSheet> {
                 labelText: 'Name',
                 hintText: 'e.g. Asha Patel',
                 prefixIcon: Icon(Icons.person_outline),
+                helperText:
+                    'Other traders see it on leaderboards and in rooms.',
               ),
               textCapitalization: TextCapitalization.words,
               validator: (v) {
@@ -1090,6 +1096,75 @@ class _SettingsTile extends StatelessWidget {
   }
 }
 
+/// Profile entry to "Privacy & your data": the notice, the analytics choice,
+/// downloading the data, a nominee, requests and deleting the account.
+class _PrivacyTile extends StatelessWidget {
+  const _PrivacyTile();
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: () => Navigator.of(context).push(
+        MaterialPageRoute(builder: (_) => const PrivacyScreen()),
+      ),
+      child: Ink(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+        decoration: BoxDecoration(
+          color: scheme.surfaceContainerHighest.withValues(alpha: 0.4),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: scheme.outlineVariant.withValues(alpha: 0.3),
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 36,
+              height: 36,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: scheme.primary.withValues(alpha: 0.15),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(
+                Icons.privacy_tip_outlined,
+                color: scheme.primary,
+                size: 18,
+              ),
+            ),
+            const SizedBox(width: 12),
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Privacy & your data',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 14,
+                    ),
+                  ),
+                  SizedBox(height: 2),
+                  Text(
+                    'Download, correct or delete your data',
+                    style: TextStyle(fontSize: 11.5),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              Icons.chevron_right,
+              size: 18,
+              color: scheme.onSurface.withValues(alpha: 0.5),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
 /// Quick link to the in-app glossary — definitions for order types, F&O
 /// jargon, greeks, indicators. Curated client-side; updates ship with app

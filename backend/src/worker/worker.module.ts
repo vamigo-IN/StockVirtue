@@ -18,9 +18,15 @@ import {
   IngestScheduler,
 } from '../ingestion/ingest.processor';
 import { IngestService } from '../ingestion/ingest.service';
+import { SourcePicturesService } from '../ingestion/source-pictures.service';
 import { StockMatcherService } from '../ingestion/stock-matcher.service';
 import { MailModule } from '../mail/mail.module';
 import { CompanyDirectoryService } from '../market/company-directory.service';
+import { MediaService } from '../newsroom/media/media.service';
+import { AccountErasureService } from '../privacy/account-erasure.service';
+import { ConsentService } from '../privacy/consent.service';
+import { PrivacyRetentionService } from '../privacy/privacy-retention.service';
+import { PrivacyService } from '../privacy/privacy.service';
 import { NewsCache } from '../newsroom/public/news-cache';
 import { SiteRevalidator } from '../newsroom/public/site-revalidator';
 import { ArticlePublisher } from '../newsroom/publishing/article-publisher';
@@ -76,6 +82,11 @@ import {
   providers: [
     MaintenanceProcessor,
     MaintenanceScheduler,
+    // Privacy retention (DPDP Act): erasing deleted and unused accounts.
+    ConsentService,
+    PrivacyService,
+    AccountErasureService,
+    PrivacyRetentionService,
     ArticlePublisher,
     NewsCache,
     SiteRevalidator,
@@ -86,6 +97,9 @@ import {
     CompanyDirectoryService,
     StockMatcherService,
     EditorAlertsService,
+    // Pictures from licensed sources go into the media library.
+    MediaService,
+    SourcePicturesService,
     AutoStoryService,
     IngestService,
     IngestProcessor,

@@ -187,6 +187,7 @@ const STATUS_STYLES: Record<string, string> = {
 };
 
 const STATUS_LABELS: Record<string, string> = {
+  DELETED: 'Deleted',
   ACTIVE: 'Active',
   PENDING: 'Pending',
   SUSPENDED: 'Suspended',

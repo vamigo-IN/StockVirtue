@@ -5,16 +5,14 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { AbuseStatus } from '@prisma/client';
 import { AppConfig } from '../config/configuration';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 
 const FLUSH_MS = 60_000;
 const RETENTION_MS = 60 * 60_000; // hourly
-const REQUESTLOG_DAYS = 7;
+/// Route totals only (no personal data).
 const TRAFFICSTAT_DAYS = 30;
-const ABUSE_DAYS = 90;
 
 /**
  * Moves the previous minute's Redis traffic aggregation into TrafficStat every
@@ -25,6 +23,10 @@ const ABUSE_DAYS = 90;
 export class MonitoringJobsService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(MonitoringJobsService.name);
   private readonly enabled: boolean;
+  /// Request logs and abuse events (IP addresses, user agents, user ids) are
+  /// logs of processing: kept a year, then deleted (DPDP Rules 2025, rules
+  /// 6(1)(e) and 8(3)).
+  private readonly logDays: number;
   private flushTimer: NodeJS.Timeout | null = null;
   private retentionTimer: NodeJS.Timeout | null = null;
 
@@ -34,6 +36,7 @@ export class MonitoringJobsService implements OnModuleInit, OnModuleDestroy {
     config: ConfigService<AppConfig, true>,
   ) {
     this.enabled = config.get('monitoring', { infer: true }).enabled;
+    this.logDays = config.get('monitoring', { infer: true }).logRetentionDays;
   }
 
   onModuleInit() {
@@ -132,20 +135,18 @@ export class MonitoringJobsService implements OnModuleInit, OnModuleDestroy {
   private async prune(): Promise<void> {
     try {
       const now = Date.now();
+      const logCutoff = new Date(now - this.logDays * 86_400_000);
       await this.prisma.requestLog.deleteMany({
-        where: { ts: { lt: new Date(now - REQUESTLOG_DAYS * 86_400_000) } },
+        where: { ts: { lt: logCutoff } },
       });
       await this.prisma.trafficStat.deleteMany({
         where: {
           bucket: { lt: new Date(now - TRAFFICSTAT_DAYS * 86_400_000) },
         },
       });
-      // Keep OPEN flags forever; prune resolved ones after 90 days.
+      // A flag nobody acted on in a year goes too (it names an IP or user).
       await this.prisma.abuseEvent.deleteMany({
-        where: {
-          createdAt: { lt: new Date(now - ABUSE_DAYS * 86_400_000) },
-          status: { not: AbuseStatus.OPEN },
-        },
+        where: { createdAt: { lt: logCutoff } },
       });
     } catch (err) {
       this.logger.warn(`monitoring prune failed: ${(err as Error).message}`);

@@ -134,6 +134,7 @@ export class AppUsersService {
       throw new BadRequestException('Name must be at least 2 characters');
     }
     const user = await this.find(id);
+    this.assertNotDeleted(user);
     if (user.displayName !== name) {
       await this.prisma.$transaction(async (tx) => {
         await tx.user.update({ where: { id }, data: { displayName: name } });
@@ -154,6 +155,18 @@ export class AppUsersService {
     return this.detail(id);
   }
 
+  /**
+   * A deleted account is locked until it is erased for good (DPDP Rules
+   * 2025, rule 8(3)): moderation can't bring it back or change it.
+   */
+  private assertNotDeleted(user: { status: UserStatus }) {
+    if (user.status === UserStatus.DELETED) {
+      throw new BadRequestException(
+        'This account was deleted. It stays locked until it is erased for good.',
+      );
+    }
+  }
+
   async block(
     actor: StaffPrincipal,
     id: string,
@@ -161,6 +174,7 @@ export class AppUsersService {
     client: ClientInfo,
   ) {
     const user = await this.find(id);
+    this.assertNotDeleted(user);
     if (user.id === actor.userId) {
       throw new BadRequestException("You can't block your own account.");
     }

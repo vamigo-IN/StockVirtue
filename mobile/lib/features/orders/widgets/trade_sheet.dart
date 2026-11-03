@@ -285,11 +285,8 @@ class _TradeSheetState extends ConsumerState<_TradeSheet> {
       ref.invalidate(watchlistsListProvider);
       Analytics.instance.logTrade(
         side: _isBuy ? 'buy' : 'sell',
-        symbol: widget.symbol,
-        quantity: order.quantity,
         orderType: _typeLabelFor(_type),
         status: order.status.name,
-        value: order.notional,
       );
       // Push an in-app notification — MARKET fills immediately, the others
       // sit pending until the limit-watcher fires.

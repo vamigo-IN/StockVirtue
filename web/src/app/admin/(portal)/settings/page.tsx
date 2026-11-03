@@ -11,7 +11,8 @@ export default async function SettingsPage() {
   if (
     !can(me, 'settings.read') &&
     !can(me, 'seo.read') &&
-    !can(me, 'ads.manage')
+    !can(me, 'ads.manage') &&
+    !can(me, 'privacy.manage')
   ) {
     return <NoAccess permission="settings.read" />;
   }

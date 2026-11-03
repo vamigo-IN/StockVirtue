@@ -40,6 +40,10 @@ export interface SmtpConfig {
   user: string;
   pass: string;
   from: string;
+  /** The website emails link to (privacy notice, terms, contact). */
+  siteUrl: string;
+  /** Where the email logo and icon live (`logo.png`, `icon.png`). */
+  assetsUrl: string;
 }
 
 /// Admin Shield — the hardened second-factor login for the admin panel.
@@ -87,6 +91,20 @@ export interface MonitoringConfig {
   enabled: boolean;
   sampleRate: number;
   autoBlock: boolean;
+  /// Request logs (IP address, user agent) and abuse events are kept this
+  /// long, then deleted. The DPDP Rules 2025 (rules 6 and 8(3)) ask for at
+  /// least a year, so smaller values are raised to 365.
+  logRetentionDays: number;
+}
+
+/// Personal data rules (Digital Personal Data Protection Act, 2023).
+export interface PrivacySettings {
+  /// Accounts unused for this many years are erased after a 48-hour notice
+  /// (DPDP Rules 2025, rule 8). 0 = never.
+  inactiveYears: number;
+  /// New accounts must accept the privacy notice (and confirm 18+) before
+  /// they are created. Turn on once nobody uses an app older than 1.4.0.
+  requireSignupConsent: boolean;
 }
 
 /// A consuming application's credential for the public market feed. The
@@ -147,6 +165,7 @@ export interface AppConfig {
   admin: AdminConfig;
   site: SiteConfig;
   monitoring: MonitoringConfig;
+  privacy: PrivacySettings;
   feed: FeedConfig;
   /// Where the app loads company logos from ({symbol} = NSE ticker).
   logoUrlTemplate: string;
@@ -231,6 +250,17 @@ function parseFeedApiKeys(raw: string): FeedApiKey[] {
   return out;
 }
 
+/** The website: the newsroom portal's origin (stockvirtue.com). */
+function websiteOrigin(): string {
+  try {
+    return new URL(
+      process.env.NEWSROOM_PORTAL_URL || 'https://stockvirtue.com/admin',
+    ).origin;
+  } catch {
+    return 'https://stockvirtue.com';
+  }
+}
+
 /** Where to ask the website to refresh news pages (see SiteConfig). */
 function siteRevalidateUrl(): string {
   const explicit = (process.env.SITE_REVALIDATE_URL ?? '').trim();
@@ -280,6 +310,11 @@ export default (): AppConfig => ({
     user: process.env.SMTP_USER ?? '',
     pass: process.env.SMTP_PASS ?? '',
     from: process.env.SMTP_FROM ?? 'StockVirtue <no-reply@stockvirtue.com>',
+    siteUrl: websiteOrigin(),
+    // The website serves them from web/public/email (MAIL_ASSETS_URL: a CDN).
+    assetsUrl: (
+      process.env.MAIL_ASSETS_URL || `${websiteOrigin()}/email`
+    ).replace(/\/+$/, ''),
   },
   admin: {
     email: process.env.ADMIN_EMAIL ?? 'admin@stockvirtue.local',
@@ -342,6 +377,18 @@ export default (): AppConfig => ({
       parseInt(process.env.MONITORING_SAMPLE_RATE ?? '50', 10),
     ),
     autoBlock: (process.env.MONITORING_AUTO_BLOCK ?? 'false') === 'true',
+    logRetentionDays: Math.max(
+      365,
+      parseInt(process.env.MONITORING_LOG_RETENTION_DAYS ?? '365', 10) || 365,
+    ),
+  },
+  privacy: {
+    inactiveYears: Math.max(
+      0,
+      parseInt(process.env.PRIVACY_INACTIVE_YEARS ?? '3', 10) || 0,
+    ),
+    requireSignupConsent:
+      (process.env.PRIVACY_REQUIRE_SIGNUP_CONSENT ?? 'false') === 'true',
   },
   logoUrlTemplate: process.env.LOGO_URL_TEMPLATE || DEFAULT_LOGO_URL_TEMPLATE,
   feed: {

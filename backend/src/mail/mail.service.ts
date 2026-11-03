@@ -6,17 +6,20 @@ import {
 import { ConfigService } from '@nestjs/config';
 import * as nodemailer from 'nodemailer';
 import { AppConfig } from '../config/configuration';
-import { LOGO_PNG_BASE64 } from './logo-asset';
 
 /**
  * Transactional email via SMTP (nodemailer) with a shared, branded template
  * layer. Used for: email-OTP (sign-up), password reset, and high-signal
  * notifications (referral redeemed, trade fills, digests).
  *
- * The brand logo is embedded inline via a CID attachment (no static hosting /
- * CDN dependency) so it renders reliably in Gmail, Apple Mail and Outlook.
- * Templates are table-based with inline CSS — the only layout email clients
- * render consistently.
+ * The layout is one open white column, not a card inside a card: the logo,
+ * the message, a hairline, then a quiet footer with the app icon and links.
+ * The logo and icon load from the website (`<site>/email/logo.png` and
+ * `icon.png`, or MAIL_ASSETS_URL) instead of travelling as attachments, which
+ * many mail apps list as a "stockvirtue.png" file on every message. With
+ * images off the logo's alt text reads "StockVirtue". Templates are
+ * table-based with inline CSS, the only layout email clients render
+ * consistently.
  *
  * If SMTP_HOST/USER/PASS aren't configured the service runs in a dev fallback:
  * it logs a line (incl. the OTP, in dev only) to the console instead of
@@ -24,38 +27,38 @@ import { LOGO_PNG_BASE64 } from './logo-asset';
  * SMTP config makes send() throw rather than silently log secrets.
  */
 
-/** Content-ID the HTML references (`cid:`) for the inline brand logo. */
-const LOGO_CID = 'stockvirtue-logo';
-
-/** Brand palette — kept in sync with the app theme (lib/core/theme.dart). */
+/** Brand palette: the app's greens with slate text. */
 const BRAND = {
   green: '#16A34A',
-  greenLight: '#22C55E',
-  ink: '#0B0F14',
-  heading: '#18181B',
-  body: '#52525B',
-  muted: '#8B9097',
-  faint: '#A8ADB4',
-  backdrop: '#EEF1F4',
-  cardBorder: '#E6E8EB',
-  codeBg: '#F0FDF4',
-  codeBorder: '#BBF7D0',
-  codeText: '#15803D',
-  footerBg: '#FAFAFA',
+  greenDark: '#15803D',
+  greenTint: '#F0FDF4',
+  heading: '#0F172A',
+  body: '#334155',
+  muted: '#64748B',
+  faint: '#94A3B8',
+  line: '#E2E8F0',
+  surface: '#F1F5F9',
+  page: '#FFFFFF',
 };
+
+/** Who sends these emails, as on the website's footer. */
+const COMPANY = 'Vamigo Media (OPC) Pvt. Ltd.';
+const TAGLINE = 'Learn | Practice | Invest better';
 
 const FONT =
   "-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif";
+const MONO =
+  "'SF Mono',SFMono-Regular,Menlo,Consolas,'Liberation Mono','Courier New',monospace";
 
-/** Accent tones for hero cards (green = positive/buy, red = sell, neutral). */
+/** Keeps inbox previews to the preheader instead of the email's first lines. */
+const PREHEADER_PAD = '&#8199;&#65279;&#847; '.repeat(60);
+
+/** Accent tones for highlighted values (green = positive/buy, red = sell). */
 type HeroTone = 'green' | 'red' | 'neutral';
-const HERO_TONES: Record<
-  HeroTone,
-  { bg: string; border: string; accent: string }
-> = {
-  green: { bg: BRAND.codeBg, border: BRAND.codeBorder, accent: BRAND.codeText },
-  red: { bg: '#FEF2F2', border: '#FECACA', accent: '#B91C1C' },
-  neutral: { bg: '#F4F4F5', border: '#E4E4E7', accent: BRAND.heading },
+const HERO_TONES: Record<HeroTone, { bar: string; value: string }> = {
+  green: { bar: BRAND.green, value: BRAND.greenDark },
+  red: { bar: '#DC2626', value: '#B91C1C' },
+  neutral: { bar: '#CBD5E1', value: BRAND.heading },
 };
 
 @Injectable()
@@ -64,13 +67,18 @@ export class MailService {
   private readonly transporter: nodemailer.Transporter | null;
   private readonly from: string;
   private readonly isProd: boolean;
-  private readonly logoBuffer = Buffer.from(LOGO_PNG_BASE64, 'base64');
+  private readonly siteUrl: string;
+  private readonly logoUrl: string;
+  private readonly iconUrl: string;
   readonly configured: boolean;
 
   constructor(config: ConfigService<AppConfig, true>) {
     const smtp = config.get('smtp', { infer: true });
     this.isProd = config.get('nodeEnv', { infer: true }) === 'production';
     this.from = smtp.from;
+    this.siteUrl = smtp.siteUrl;
+    this.logoUrl = `${smtp.assetsUrl}/logo.png`;
+    this.iconUrl = `${smtp.assetsUrl}/icon.png`;
     if (!smtp.host || !smtp.user || !smtp.pass) {
       this.configured = false;
       this.transporter = null;
@@ -150,6 +158,29 @@ export class MailService {
     );
   }
 
+  /** Proves an email address before a privacy request is taken on the website. */
+  async sendPrivacyCode(
+    to: string,
+    code: string,
+    ttlSeconds: number,
+  ): Promise<void> {
+    const minutes = this.minutes(ttlSeconds);
+    await this.send(
+      to,
+      'Your StockVirtue privacy request code',
+      this.codeEmail({
+        heading: 'Confirm your email',
+        intro:
+          "Enter this code on stockvirtue.com to send your privacy request. If you didn't ask for it, ignore this email: nothing happens without the code.",
+        code,
+        minutes,
+        preheader: `${code} is your StockVirtue privacy request code (expires in ${minutes} min).`,
+      }),
+      `Your StockVirtue privacy request code is ${code}. It expires in ${minutes} minute(s). If you didn't ask for it, ignore this email.`,
+      `privacy code ${code}`,
+    );
+  }
+
   /** Second step of a newsroom portal sign-in. */
   async sendStaffLoginCode(
     to: string,
@@ -212,31 +243,31 @@ export class MailService {
       timeStyle: 'short',
       timeZone: 'Asia/Kolkata',
     });
+    const heading = 'Join the StockVirtue newsroom';
     const bodyHtml = [
       this.para(
         `<b>${escapeHtml(opts.inviterName)}</b> invited you to the StockVirtue newsroom as <b>${escapeHtml(roles)}</b>.`,
       ),
-      this.para(
-        `<a href="${escapeHtml(opts.acceptUrl)}" style="color:${BRAND.green};font-weight:700;">Accept the invitation</a> to set up your newsroom access. If you already use StockVirtue, use the same email and password.`,
-      ),
+      this.button('Accept the invitation', opts.acceptUrl),
       this.detailTable([
         { label: 'Role', value: roles },
         { label: 'Link expires', value: `${expires} IST` },
       ]),
       this.para(
-        "If you weren't expecting this, you can ignore this email. Nothing happens until the invitation is accepted.",
+        "If you already use StockVirtue, sign in with the same email and password. If you weren't expecting this, you can ignore this email: nothing happens until the invitation is accepted.",
       ),
     ].join('');
     const bodyText = `${opts.inviterName} invited you to the StockVirtue newsroom as ${roles}. Accept here: ${opts.acceptUrl} (expires ${expires} IST). If you weren't expecting this, ignore this email.`;
     // Same layout as notify(), but the link goes in the dev-console note so a
     // local setup without SMTP can still follow it.
-    const inner = `
-      ${this.headingHtml('Join the StockVirtue newsroom')}
-      <div style="font-size:15px;line-height:23px;color:${BRAND.body}">${bodyHtml}</div>`;
     await this.send(
       to,
       `${opts.inviterName} invited you to the StockVirtue newsroom`,
-      this.layout(inner, bodyText.slice(0, 140)),
+      this.layout(
+        this.body(heading, bodyHtml),
+        bodyText.slice(0, 140),
+        heading,
+      ),
       bodyText,
       `invite ${opts.acceptUrl}`,
     );
@@ -254,13 +285,14 @@ export class MailService {
     bodyHtml: string,
     bodyText: string,
   ): Promise<void> {
-    const inner = `
-      ${this.headingHtml(heading)}
-      <div style="font-size:15px;line-height:23px;color:${BRAND.body}">${bodyHtml}</div>`;
     await this.send(
       to,
       subject,
-      this.layout(inner, bodyText.slice(0, 140)),
+      this.layout(
+        this.body(heading, bodyHtml),
+        bodyText.slice(0, 140),
+        heading,
+      ),
       bodyText,
     );
   }
@@ -269,7 +301,7 @@ export class MailService {
   // Each returns trusted HTML; plain-text inputs are HTML-escaped here so
   // callers pass raw strings. `para()` takes trusted HTML for inline emphasis.
 
-  /** Centred highlight card for a hero value (wallet credit, trade fill…). */
+  /** A highlighted value (wallet credit, trade fill…) with an accent bar. */
   heroCard(opts: {
     eyebrow: string;
     value: string;
@@ -278,45 +310,65 @@ export class MailService {
   }): string {
     const t = HERO_TONES[opts.tone ?? 'green'];
     const caption = opts.caption
-      ? `<div style="font-family:${FONT};font-size:13px;color:${BRAND.body};margin-top:8px;">${escapeHtml(opts.caption)}</div>`
+      ? `<div style="font-family:${FONT};font-size:14px;line-height:20px;color:${BRAND.muted};margin-top:4px;">${escapeHtml(opts.caption)}</div>`
       : '';
-    return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:2px 0 4px;"><tr>
-      <td align="center" style="background:${t.bg};border:1px solid ${t.border};border-radius:14px;padding:22px 16px;">
-        <div style="font-family:${FONT};font-size:12px;font-weight:700;letter-spacing:1.1px;text-transform:uppercase;color:${t.accent};">${escapeHtml(opts.eyebrow)}</div>
-        <div style="font-family:${FONT};font-size:30px;font-weight:800;letter-spacing:-0.5px;line-height:1.15;color:${t.accent};margin-top:8px;">${escapeHtml(opts.value)}</div>
+    return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:4px 0 24px;"><tr>
+      <td style="border-left:3px solid ${t.bar};padding:4px 0 4px 18px;">
+        <div style="font-family:${FONT};font-size:12px;line-height:16px;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:${BRAND.muted};">${escapeHtml(opts.eyebrow)}</div>
+        <div style="font-family:${FONT};font-size:30px;line-height:38px;font-weight:800;letter-spacing:-0.5px;color:${t.value};margin-top:6px;">${escapeHtml(opts.value)}</div>
         ${caption}
       </td></tr></table>`;
   }
 
-  /** Clean key→value detail table (e.g. order type / product). */
+  /** Key→value rows divided by hairlines (e.g. order type / product). */
   detailTable(rows: Array<{ label: string; value: string }>): string {
     const cells = rows
-      .map((r, i) => {
-        const top = i ? 'border-top:1px solid #F1F2F4;' : '';
-        return `<tr>
-        <td style="padding:11px 2px;${top}font-family:${FONT};font-size:13px;color:${BRAND.muted};">${escapeHtml(r.label)}</td>
-        <td align="right" style="padding:11px 2px;${top}font-family:${FONT};font-size:13px;font-weight:600;color:${BRAND.heading};">${escapeHtml(r.value)}</td>
-      </tr>`;
-      })
+      .map(
+        (r) => `<tr>
+        <td valign="top" style="padding:12px 16px 12px 0;border-bottom:1px solid ${BRAND.line};font-family:${FONT};font-size:14px;line-height:20px;color:${BRAND.muted};white-space:nowrap;">${escapeHtml(r.label)}</td>
+        <td align="right" valign="top" style="padding:12px 0;border-bottom:1px solid ${BRAND.line};font-family:${FONT};font-size:14px;line-height:20px;font-weight:600;color:${BRAND.heading};word-break:break-word;">${escapeHtml(r.value)}</td>
+      </tr>`,
+      )
       .join('');
-    return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:8px 0 4px;border-top:1px solid #EEF0F2;">${cells}</table>`;
+    return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:4px 0 24px;border-top:1px solid ${BRAND.line};">${cells}</table>`;
   }
 
-  /** Circular glyph badge with a title + optional subtitle (achievements). */
+  /** A badge glyph in a soft circle beside its title (achievements). */
   badgeTile(opts: { glyph: string; title: string; subtitle?: string }): string {
     const subtitle = opts.subtitle
-      ? `<div style="font-family:${FONT};font-size:14px;line-height:21px;color:${BRAND.body};margin-top:6px;">${escapeHtml(opts.subtitle)}</div>`
+      ? `<div style="font-family:${FONT};font-size:14px;line-height:21px;color:${BRAND.muted};margin-top:2px;">${escapeHtml(opts.subtitle)}</div>`
       : '';
-    return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td align="center" style="padding:4px 0 2px;">
-      <div style="width:74px;height:74px;line-height:74px;border-radius:50%;background:${BRAND.codeBg};border:1px solid ${BRAND.codeBorder};font-size:34px;text-align:center;">${escapeHtml(opts.glyph)}</div>
-      <div style="font-family:${FONT};font-size:19px;font-weight:800;letter-spacing:-0.2px;color:${BRAND.heading};margin-top:14px;">${escapeHtml(opts.title)}</div>
-      ${subtitle}
-    </td></tr></table>`;
+    return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:4px 0 24px;"><tr>
+      <td width="60" height="60" align="center" valign="middle" bgcolor="${BRAND.greenTint}" style="width:60px;height:60px;border-radius:30px;background:${BRAND.greenTint};font-size:30px;line-height:60px;text-align:center;">${escapeHtml(opts.glyph)}</td>
+      <td valign="middle" style="padding-left:16px;">
+        <div style="font-family:${FONT};font-size:18px;line-height:24px;font-weight:700;color:${BRAND.heading};">${escapeHtml(opts.title)}</div>
+        ${subtitle}
+      </td></tr></table>`;
+  }
+
+  /** A call-to-action button that also renders in Outlook. */
+  button(label: string, url: string): string {
+    return `<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:8px 0 24px;"><tr>
+      <td align="center" bgcolor="${BRAND.green}" style="border-radius:8px;background:${BRAND.green};">
+        <a href="${escapeHtml(url)}" target="_blank" style="display:inline-block;padding:13px 24px;font-family:${FONT};font-size:15px;line-height:20px;font-weight:700;color:#FFFFFF;text-decoration:none;border-radius:8px;">${escapeHtml(label)}</a>
+      </td></tr></table>`;
+  }
+
+  /** Someone's own words (a message, a request), set apart from ours. */
+  quote(text: string): string {
+    return `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:4px 0 24px;"><tr>
+      <td style="border-left:3px solid ${BRAND.line};padding:2px 0 2px 16px;font-family:${FONT};font-size:15px;line-height:24px;color:${BRAND.muted};">${escapeHtml(text).replace(/\r?\n/g, '<br>')}</td>
+    </tr></table>`;
   }
 
   /** Standard body paragraph. `html` is trusted (allows <b>/<a> emphasis). */
   para(html: string): string {
-    return `<p style="margin:0 0 14px;font-family:${FONT};font-size:15px;line-height:23px;color:${BRAND.body};">${html}</p>`;
+    return `<p style="margin:0 0 16px;font-family:${FONT};font-size:16px;line-height:26px;color:${BRAND.body};">${html}</p>`;
+  }
+
+  /** Smaller, quieter paragraph for small print (who to contact…). */
+  note(html: string): string {
+    return `<p style="margin:8px 0 16px;font-family:${FONT};font-size:14px;line-height:22px;color:${BRAND.muted};">${html}</p>`;
   }
 
   // ── Internals ────────────────────────────────────────────────────
@@ -348,68 +400,92 @@ export class MailService {
       from: this.from,
       to,
       subject,
-      text,
+      text: `${text}\n\n-- \nStockVirtue · ${TAGLINE}\n${this.siteUrl}\nThis is an automated email, so replies aren't read. To reach us: ${this.siteUrl}/contact`,
       html,
-      attachments: [
-        {
-          filename: 'stockvirtue.png',
-          content: this.logoBuffer,
-          cid: LOGO_CID,
-          contentType: 'image/png',
-        },
-      ],
     });
   }
 
   private headingHtml(heading: string): string {
-    return `<h1 style="margin:0 0 10px;font-size:22px;font-weight:700;letter-spacing:-0.4px;color:${BRAND.heading}">${escapeHtml(heading)}</h1>`;
+    return `<h1 class="sv-h1" style="margin:0 0 16px;font-family:${FONT};font-size:24px;line-height:32px;font-weight:700;letter-spacing:-0.3px;color:${BRAND.heading};">${escapeHtml(heading)}</h1>`;
+  }
+
+  /** A heading over trusted body HTML. */
+  private body(heading: string, bodyHtml: string): string {
+    return `${this.headingHtml(heading)}
+      <div style="font-family:${FONT};font-size:16px;line-height:26px;color:${BRAND.body};">${bodyHtml}</div>`;
   }
 
   /**
    * Full branded HTML document. `inner` is the body content (already-built,
    * trusted HTML); `preheader` is the hidden inbox preview snippet.
    */
-  private layout(inner: string, preheader = ''): string {
+  private layout(inner: string, preheader = '', title = 'StockVirtue'): string {
     const year = new Date().getFullYear();
+    const site = escapeHtml(this.siteUrl);
+    const link = (path: string, label: string) =>
+      `<a href="${site}${path}" target="_blank" style="color:${BRAND.muted};text-decoration:underline;">${label}</a>`;
     return `<!DOCTYPE html>
 <html lang="en" xmlns="http://www.w3.org/1999/xhtml">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <meta http-equiv="X-UA-Compatible" content="IE=edge" />
-<meta name="color-scheme" content="light only" />
+<meta name="x-apple-disable-message-reformatting" />
+<meta name="format-detection" content="telephone=no,date=no,address=no,email=no,url=no" />
+<meta name="color-scheme" content="light" />
 <meta name="supported-color-schemes" content="light" />
-<title>StockVirtue</title>
+<title>${escapeHtml(title)}</title>
+<style>
+  @media (max-width:620px) {
+    .sv-px { padding-left:24px !important; padding-right:24px !important; }
+    .sv-h1 { font-size:22px !important; line-height:30px !important; }
+    .sv-code { font-size:30px !important; letter-spacing:6px !important; }
+  }
+</style>
 </head>
-<body style="margin:0;padding:0;width:100%;background:${BRAND.backdrop};-webkit-font-smoothing:antialiased;">
-<div style="display:none;max-height:0;overflow:hidden;opacity:0;mso-hide:all;font-size:1px;line-height:1px;color:${BRAND.backdrop};">${escapeHtml(preheader)}</div>
-<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background:${BRAND.backdrop};">
+<body style="margin:0;padding:0;width:100%;background:${BRAND.page};-webkit-font-smoothing:antialiased;-webkit-text-size-adjust:100%;">
+<div style="display:none;max-height:0;overflow:hidden;opacity:0;mso-hide:all;font-size:1px;line-height:1px;color:${BRAND.page};">${escapeHtml(preheader)}${PREHEADER_PAD}</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="${BRAND.page}" style="background:${BRAND.page};">
   <tr>
-    <td align="center" style="padding:28px 12px;">
-      <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px;background:#ffffff;border:1px solid ${BRAND.cardBorder};border-radius:16px;overflow:hidden;">
+    <td align="center">
+      <!--[if mso]><table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0"><tr><td><![endif]-->
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="width:100%;max-width:600px;">
         <tr>
-          <td style="height:4px;line-height:4px;font-size:0;background:${BRAND.green};background:linear-gradient(90deg,${BRAND.greenLight},${BRAND.green});">&nbsp;</td>
-        </tr>
-        <tr>
-          <td align="center" style="padding:36px 36px 10px;">
-            <img src="cid:${LOGO_CID}" width="56" height="56" alt="StockVirtue" style="display:block;width:56px;height:56px;border-radius:14px;border:1px solid #ECEEF1;" />
-            <div style="font-family:${FONT};font-size:20px;font-weight:800;letter-spacing:-0.3px;color:${BRAND.ink};margin-top:14px;">StockVirtue</div>
-            <div style="font-family:${FONT};font-size:12px;font-weight:500;letter-spacing:0.3px;color:${BRAND.muted};margin-top:3px;">Virtual trading. Real skills.</div>
+          <td class="sv-px" style="padding:40px 40px 0;">
+            <a href="${site}" target="_blank" style="text-decoration:none;"><img src="${escapeHtml(this.logoUrl)}" width="208" height="62" alt="StockVirtue" style="display:block;width:208px;height:62px;margin-left:-8px;border:0;outline:none;text-decoration:none;font-family:${FONT};font-size:24px;font-weight:800;line-height:62px;color:${BRAND.green};" /></a>
           </td>
         </tr>
         <tr>
-          <td style="padding:14px 36px 30px;font-family:${FONT};">
-            ${inner}
+          <td class="sv-px" style="padding:28px 40px 8px;font-family:${FONT};">
+            ${styleLinks(inner)}
           </td>
         </tr>
         <tr>
-          <td style="padding:22px 36px 26px;background:${BRAND.footerBg};border-top:1px solid #EEF0F2;font-family:${FONT};">
-            <p style="margin:0 0 6px;font-size:12px;line-height:18px;color:${BRAND.muted};">StockVirtue is a virtual stock-market simulator built for learning — all trades use virtual money, never real funds.</p>
-            <p style="margin:0;font-size:11px;line-height:17px;color:${BRAND.faint};">This is an automated message — please don't reply. &copy; ${year} StockVirtue. All rights reserved.</p>
+          <td class="sv-px" style="padding:24px 40px 44px;">
+            <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr>
+                <td style="border-top:1px solid ${BRAND.line};padding-top:24px;">
+                  <table role="presentation" cellpadding="0" cellspacing="0" border="0">
+                    <tr>
+                      <td valign="middle" style="padding-right:12px;">
+                        <a href="${site}" target="_blank"><img src="${escapeHtml(this.iconUrl)}" width="32" height="32" alt="" style="display:block;width:32px;height:32px;border:0;border-radius:8px;" /></a>
+                      </td>
+                      <td valign="middle" style="font-family:${FONT};">
+                        <div style="font-size:14px;line-height:18px;font-weight:700;color:${BRAND.heading};">StockVirtue</div>
+                        <div style="font-size:10px;line-height:16px;font-weight:600;letter-spacing:1.5px;text-transform:uppercase;color:${BRAND.muted};">${TAGLINE}</div>
+                      </td>
+                    </tr>
+                  </table>
+                  <p style="margin:16px 0 0;font-family:${FONT};font-size:12px;line-height:19px;color:${BRAND.muted};">StockVirtue is a stock-market simulator for learning: every trade uses virtual money, never real funds, and nothing here is investment advice.</p>
+                  <p style="margin:12px 0 0;font-family:${FONT};font-size:12px;line-height:19px;color:${BRAND.muted};">${link('/privacy', 'Privacy notice')}&nbsp;&nbsp;&middot;&nbsp;&nbsp;${link('/terms', 'Terms')}&nbsp;&nbsp;&middot;&nbsp;&nbsp;${link('/contact', 'Contact us')}</p>
+                  <p style="margin:12px 0 0;font-family:${FONT};font-size:11px;line-height:17px;color:${BRAND.faint};">This is an automated email, so replies aren't read. &copy; ${year} ${COMPANY}</p>
+                </td>
+              </tr>
+            </table>
           </td>
         </tr>
       </table>
-      <div style="font-family:${FONT};font-size:11px;color:${BRAND.faint};margin-top:16px;">You're receiving this because you have a StockVirtue account.</div>
+      <!--[if mso]></td></tr></table><![endif]-->
     </td>
   </tr>
 </table>
@@ -427,18 +503,25 @@ export class MailService {
     const { heading, intro, code, minutes, preheader } = opts;
     const inner = `
       ${this.headingHtml(heading)}
-      <p style="margin:0 0 26px;font-size:15px;line-height:23px;color:${BRAND.body};">${escapeHtml(intro)}</p>
-      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+      ${this.para(escapeHtml(intro))}
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:8px 0 24px;">
         <tr>
-          <td align="center" style="background:${BRAND.codeBg};border:1px solid ${BRAND.codeBorder};border-radius:14px;padding:24px 16px;">
-            <div style="font-family:${FONT};font-size:12px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase;color:${BRAND.green};margin-bottom:10px;">Your code</div>
-            <div style="font-family:${FONT};font-size:38px;font-weight:800;letter-spacing:10px;line-height:1;color:${BRAND.codeText};padding-left:10px;">${escapeHtml(code)}</div>
+          <td align="center" bgcolor="${BRAND.surface}" style="background:${BRAND.surface};border-radius:12px;padding:24px 12px;">
+            <div class="sv-code" style="font-family:${MONO};font-size:36px;line-height:44px;font-weight:700;letter-spacing:10px;color:${BRAND.heading};padding-left:10px;">${escapeHtml(code)}</div>
           </td>
         </tr>
       </table>
-      <p style="margin:20px 0 0;font-size:13px;line-height:20px;color:#71717A;">This code expires in <strong style="color:${BRAND.heading};">${minutes} minute${minutes === 1 ? '' : 's'}</strong>. For your security, never share it with anyone — StockVirtue staff will never ask you for it.</p>`;
-    return this.layout(inner, preheader);
+      <p style="margin:0;font-family:${FONT};font-size:14px;line-height:22px;color:${BRAND.muted};">This code expires in <strong style="color:${BRAND.body};">${minutes} minute${minutes === 1 ? '' : 's'}</strong>. Never share it with anyone: StockVirtue staff will never ask you for it.</p>`;
+    return this.layout(inner, preheader, heading);
   }
+}
+
+/** Gives links without a style of their own the brand colour. */
+function styleLinks(html: string): string {
+  return html.replace(
+    /<a\s(?![^>]*\bstyle=)/gi,
+    `<a style="color:${BRAND.green};font-weight:600;text-decoration:underline;" `,
+  );
 }
 
 /// HTML-escape interpolated values so a crafted displayName / symbol can't

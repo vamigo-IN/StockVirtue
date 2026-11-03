@@ -4,6 +4,11 @@ import 'package:flutter/widgets.dart';
 
 /// Thin, crash-safe wrapper around Firebase Analytics.
 ///
+/// Collection is OFF until the signed-in person allows app analytics (DPDP
+/// Act 2023: consent per purpose). It is never linked to their account and
+/// never records their trades; the advertising ID is not collected (see
+/// AndroidManifest.xml).
+///
 /// Every call is guarded so the app behaves identically when Firebase isn't
 /// configured (the dev / email-OTP fallback in [initFirebase]) — analytics
 /// simply no-ops instead of throwing or blanking the UI. Initialise once in
@@ -27,7 +32,8 @@ class Analytics {
   Future<void> init() async {
     try {
       final fa = FirebaseAnalytics.instance;
-      await fa.setAnalyticsCollectionEnabled(true);
+      // Off until [setCollection] says the person agreed.
+      await fa.setAnalyticsCollectionEnabled(false);
       _fa = fa;
       _observer = FirebaseAnalyticsObserver(analytics: fa);
       if (kDebugMode) debugPrint('[analytics] enabled');
@@ -37,9 +43,12 @@ class Analytics {
     }
   }
 
-  /// Associates subsequent events with a stable user id (our backend user id,
-  /// not PII). Pass null on logout to detach.
-  Future<void> setUser(String? id) => _guard(() => _fa!.setUserId(id: id));
+  /// Turns collection on only with the person's consent. Turning it off also
+  /// clears what this phone collected so far.
+  Future<void> setCollection(bool allowed) => _guard(() async {
+        await _fa!.setAnalyticsCollectionEnabled(allowed);
+        if (!allowed) await _fa!.resetAnalyticsData();
+      });
 
   /// Standard `login` event.
   Future<void> logLogin(String method) =>
@@ -51,22 +60,16 @@ class Analytics {
 
   Future<void> logLogout() => logEvent('logout');
 
-  /// A placed order (filled or queued). Params must be String/num for GA4.
+  /// A placed order: only its kind, never what was traded or for how much.
   Future<void> logTrade({
     required String side,
-    required String symbol,
-    required int quantity,
     required String orderType,
     required String status,
-    double? value,
   }) {
     return logEvent('order_placed', {
       'side': side,
-      'symbol': symbol,
-      'quantity': quantity,
       'order_type': orderType,
       'status': status,
-      'value': ?value,
     });
   }
 

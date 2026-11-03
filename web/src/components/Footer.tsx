@@ -1,4 +1,6 @@
 import Link from 'next/link';
+import { CookieSettingsButton } from '@/components/consent/CookieSettingsButton';
+import { hasOptionalServices } from '@/lib/consent-services';
 import { FOOTER_LINKS, SITE } from '@/lib/site';
 import { logoUrl, type SiteSettings } from '@/lib/settings';
 import { Sparkline } from './motion/Sparkline';
@@ -13,6 +15,7 @@ export function Footer({ settings }: { settings: SiteSettings }) {
     { label: 'YouTube', href: settings.social.youtube },
     { label: 'Facebook', href: settings.social.facebook },
   ].filter((s) => s.href);
+  const cookieChoice = hasOptionalServices(settings.config);
 
   return (
     <footer className="footer terminal">
@@ -69,6 +72,11 @@ export function Footer({ settings }: { settings: SiteSettings }) {
                   )}
                 </div>
               ))}
+              {col.title === 'Legal' && cookieChoice && (
+                <div className="footer-cookie">
+                  <CookieSettingsButton className="footer-link" />
+                </div>
+              )}
             </div>
           ))}
         </div>

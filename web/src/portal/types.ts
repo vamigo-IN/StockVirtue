@@ -201,7 +201,20 @@ export interface SiteConfigData {
     metaPixelId: string;
     clarityId: string;
   };
-  ads: { adsenseClient: string; autoAds: boolean; adsTxt: string };
+  ads: {
+    adsenseClient: string;
+    autoAds: boolean;
+    adsTxt: string;
+    withoutConsent: 'non_personalised' | 'off';
+  };
+  privacy: {
+    legalName: string;
+    postalAddress: string;
+    officerName: string;
+    officerEmail: string;
+    officerPhone: string;
+    responseDays: number;
+  };
 }
 
 export interface SiteImageRef {
@@ -568,6 +581,8 @@ export interface Category {
   parentId: string | null;
   position: number;
   isActive: boolean;
+  /** Its stories stay out of Top stories and the latest-news list. */
+  keepSeparate: boolean;
   articleCount: number;
 }
 
@@ -672,6 +687,8 @@ export interface CatalogueSource {
   terms: string;
   termsUrl: string;
   caution?: string;
+  /** A government body or regulator: its stories go in Official updates. */
+  official: boolean;
   added: boolean;
 }
 
@@ -691,6 +708,8 @@ export interface NewsSourceView {
   category: { id: string; name: string } | null;
   usage: SourceUsage;
   allowAiDrafts: boolean;
+  /** Its licence covers its pictures (full-text sources only). */
+  useImages: boolean;
   attribution: string;
   licenceNote: string | null;
   notifyEditors: boolean;
@@ -721,6 +740,7 @@ export interface SourcePreview {
     publishedAt: string | null;
     summary: string | null;
     hasFullText: boolean;
+    hasImage: boolean;
     author: string | null;
   }[];
 }
@@ -976,4 +996,53 @@ export interface AiJob {
   article: { id: string; title: string } | null;
   sourceItem: { id: string; title: string } | null;
   input?: unknown;
+}
+
+// ─── Privacy requests (DPDP Act) ────────────────────────────────────────
+
+export type PrivacyRequestType =
+  | 'ACCESS'
+  | 'CORRECTION'
+  | 'ERASURE'
+  | 'NOMINATION'
+  | 'WITHDRAW_CONSENT'
+  | 'GRIEVANCE'
+  | 'OTHER';
+export type PrivacyRequestStatus =
+  'OPEN' | 'IN_PROGRESS' | 'RESOLVED' | 'REJECTED';
+
+export interface PrivacyRequestView {
+  id: string;
+  reference: string;
+  type: PrivacyRequestType;
+  details: string;
+  /** app | web | staff */
+  channel: string;
+  status: PrivacyRequestStatus;
+  name: string | null;
+  email: string | null;
+  phone: string | null;
+  dueAt: string;
+  response: string | null;
+  respondedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+  /** The matched account, if any. */
+  user: {
+    id: string;
+    displayName: string | null;
+    status: string;
+    createdAt: string;
+    eraseAfter: string | null;
+  } | null;
+  handledBy: { id: string; displayName: string } | null;
+}
+
+export interface PrivacyRequestsPage {
+  items: PrivacyRequestView[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+  counts: { open: number; overdue: number };
 }

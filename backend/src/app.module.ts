@@ -13,6 +13,7 @@ import { PrismaModule } from './prisma/prisma.module';
 import { RedisModule } from './redis/redis.module';
 import { UsersModule } from './users/users.module';
 import { AppUsersModule } from './app-users/app-users.module';
+import { PrivacyModule } from './privacy/privacy.module';
 import { AuthModule } from './auth/auth.module';
 import { AiModule } from './ai/ai.module';
 import { IngestionModule } from './ingestion/ingestion.module';
@@ -89,6 +90,7 @@ import { StorageModule } from './storage/storage.module';
     AuditModule,
     StaffModule,
     AppUsersModule,
+    PrivacyModule,
     NewsroomModule,
     MarketDisplayModule,
     IngestionModule,

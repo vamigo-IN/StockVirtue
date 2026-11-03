@@ -83,24 +83,28 @@ function text(v: unknown): string | null {
   return typeof v === 'string' && v.trim() ? v.trim() : null;
 }
 
-/** The public reading of `sourceAttribution`: names, web links, notes. */
-function publicSources(raw: Prisma.JsonValue) {
+/**
+ * The public reading of `sourceAttribution`: who is credited, and any note.
+ * Links to the sources stay in the newsroom (duplicate checks, the editor);
+ * readers get names only.
+ */
+export function publicSources(raw: Prisma.JsonValue) {
   if (!Array.isArray(raw)) return [];
   return raw.flatMap((s) => {
     if (!s || typeof s !== 'object' || Array.isArray(s)) return [];
     const name = text((s as Record<string, unknown>).name);
     if (!name) return [];
-    const url = text((s as Record<string, unknown>).url);
-    const note = text((s as Record<string, unknown>).note);
-    return [
-      {
-        name,
-        url: url && /^https?:\/\//i.test(url) ? url : null,
-        note,
-      },
-    ];
+    return [{ name, note: text((s as Record<string, unknown>).note) }];
   });
 }
+
+/**
+ * The main news: stories in no category, or in one that isn't kept separate
+ * (Official updates has its own homepage section and page instead).
+ */
+const MAIN_NEWS: Prisma.NewsArticleWhereInput = {
+  OR: [{ categoryId: null }, { category: { keepSeparate: false } }],
+};
 
 /// Who a story is shaped for: the website (HTML blocks) or the app's native reader.
 export type ArticleFormat = 'web' | 'app';
@@ -160,6 +164,10 @@ export class PublicNewsService {
     const key = `list:${q.category ?? ''}:${q.tag ?? ''}:${q.author ?? ''}:${sort}:${page}:${size}`;
     return this.cache.get(key, async () => {
       const and: Prisma.NewsArticleWhereInput[] = [listedWhere()];
+      // The plain latest list is the main news; a filter shows all it matches.
+      if (sort === 'latest' && !q.category && !q.tag && !q.author) {
+        and.push(MAIN_NEWS);
+      }
       const context: Record<string, unknown> = {};
       if (q.category) {
         const c = await this.categoryContext(q.category);
@@ -401,17 +409,16 @@ export class PublicNewsService {
             items = await this.trendingCards(limit);
             break;
           case 'featured':
-            // Featured stories first, topped up with the latest ones.
+            // Featured stories first, topped up with the latest main news.
             items = fresh([
               ...(await this.cards({ isFeatured: true }, limit)),
-              ...(await this.cards({}, limit + shown.size + limit)),
+              ...(await this.cards(MAIN_NEWS, limit + shown.size + limit)),
             ]).slice(0, limit);
             break;
           case 'latest':
-            items = fresh(await this.cards({}, limit + shown.size)).slice(
-              0,
-              limit,
-            );
+            items = fresh(
+              await this.cards(MAIN_NEWS, limit + shown.size),
+            ).slice(0, limit);
             break;
           case 'category': {
             const cat = await this.prisma.newsCategory.findFirst({

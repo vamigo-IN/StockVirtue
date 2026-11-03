@@ -352,6 +352,8 @@ export class ArticlesService {
       summary?: string;
       content?: Record<string, unknown> | null;
       categoryId?: string | null;
+      /** The source's picture, already in the media library. */
+      featuredImageId?: string | null;
       stocks: { exchange: 'NSE' | 'BSE'; symbol: string }[];
       sourceAttribution: { name: string; url?: string; note?: string }[];
       editorialNotes?: string;
@@ -398,6 +400,7 @@ export class ArticlesService {
           createdById: actor.staffId,
           authorId: author.id,
           categoryId,
+          featuredImageId: d.featuredImageId ?? null,
           subtitle: d.subtitle?.trim() || null,
           summary: d.summary?.trim() ?? '',
           content: (rendered?.doc ?? {

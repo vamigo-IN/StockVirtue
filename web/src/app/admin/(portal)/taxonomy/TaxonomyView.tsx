@@ -82,6 +82,7 @@ function CategoryDialog({
   const [description, setDescription] = useState(category?.description ?? '');
   const [parentId, setParentId] = useState(category?.parentId ?? 'none');
   const [active, setActive] = useState(category?.isActive ?? true);
+  const [separate, setSeparate] = useState(category?.keepSeparate ?? false);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -96,6 +97,7 @@ function CategoryDialog({
         description: description.trim(),
         parentId: parentId === 'none' ? null : parentId,
         isActive: active,
+        keepSeparate: separate,
       };
       if (category)
         await api(`staff/categories/${category.id}`, { method: 'PUT', body });
@@ -178,6 +180,22 @@ function CategoryDialog({
               id="cat-active"
               checked={active}
               onCheckedChange={setActive}
+            />
+          </div>
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <Label htmlFor="cat-separate" className="font-normal">
+                Keep separate from the main news
+              </Label>
+              <p className="text-xs text-muted-foreground">
+                Its stories show in its own homepage section and page, not in
+                Top stories or the latest news. For Official updates.
+              </p>
+            </div>
+            <Switch
+              id="cat-separate"
+              checked={separate}
+              onCheckedChange={setSeparate}
             />
           </div>
           {error && <p className="text-sm text-destructive">{error}</p>}
@@ -272,16 +290,21 @@ function Categories({ manage }: { manage: boolean }) {
                     {c.articleCount}
                   </TableCell>
                   <TableCell>
-                    {c.isActive ? (
-                      <Badge
-                        variant="outline"
-                        className="border-success/30 bg-success/10 text-success"
-                      >
-                        On
-                      </Badge>
-                    ) : (
-                      <Badge variant="outline">Off</Badge>
-                    )}
+                    <div className="flex flex-wrap gap-1.5">
+                      {c.isActive ? (
+                        <Badge
+                          variant="outline"
+                          className="border-success/30 bg-success/10 text-success"
+                        >
+                          On
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline">Off</Badge>
+                      )}
+                      {c.keepSeparate && (
+                        <Badge variant="outline">Own section</Badge>
+                      )}
+                    </div>
                   </TableCell>
                   {manage && (
                     <TableCell className="pr-4 text-right">

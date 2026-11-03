@@ -68,6 +68,14 @@ export const DEFAULT_HOMEPAGE: HomepageConfig = {
     { id: 'featured', type: 'featured', enabled: true, title: 'Featured' },
     { id: 'latest', type: 'latest', enabled: true, title: 'Top stories' },
     { id: 'trending', type: 'trending', enabled: true, title: 'Trending' },
+    // Government and regulator news, kept out of Top stories.
+    {
+      id: 'official',
+      type: 'category',
+      enabled: true,
+      title: 'Official updates',
+      categorySlug: 'official-updates',
+    },
     {
       id: 'markets',
       type: 'category',

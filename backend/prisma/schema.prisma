@@ -14,6 +14,10 @@ enum UserStatus {
   ACTIVE
   BLOCKED
   PENDING
+  /// The person deleted their account (or it was erased for inactivity). It
+  /// can't sign in and is hidden everywhere; a restricted copy is kept for a
+  /// year (DPDP Rules 2025, rule 8(3)) and then erased for good.
+  DELETED
 }
 
 /// Backend dashboard operator. Completely separate from [User] — admins
@@ -333,6 +337,24 @@ model User {
   /// redemption and never changed. Each user can redeem at most one
   /// code in their lifetime.
   referredById String?
+  /// The privacy notice version this person last accepted (null: accounts
+  /// from before notices were recorded) and when.
+  noticeVersion    String?
+  noticeAcceptedAt DateTime?
+  /// When they confirmed being 18 or older (the service is for adults only).
+  adultConfirmedAt DateTime?
+  /// Consent to app usage analytics. Off unless they say yes.
+  analyticsConsent Boolean   @default(false)
+  /// Account deletion: when it was asked for, and when the restricted copy
+  /// is erased for good (a year later).
+  deletionRequestedAt DateTime?
+  eraseAfter          DateTime?
+  /// What identified them ({ email, phone, displayName, firebaseUid }), kept
+  /// out of use for that year so the address and number are free again.
+  retainedIdentity    Json?
+  /// Inactive accounts are erased after a notice at least 48 hours ahead
+  /// (rule 8(2)); this is when the notice went out.
+  inactivityNoticeAt  DateTime?
 
   watchlists Watchlist[]
   wallet     Wallet?
@@ -356,10 +378,123 @@ model User {
   roles           UserRole[]
   newsBookmarks   NewsBookmark[]
   newsAlerts      NewsAlertPreference?
+  consents        ConsentRecord[]
+  privacyNominee  PrivacyNominee?
+  privacyRequests PrivacyRequest[]
 
   @@index([phone])
   @@index([referredById])
+  @@index([status, eraseAfter])
+  @@index([status, lastLoginAt])
   @@map("users")
+}
+
+// ─── Privacy (Digital Personal Data Protection Act, 2023) ───────────────────
+
+/// What a person agreed to, and when (DPDP Act s.6(10): the Data Fiduciary
+/// must be able to show the notice it gave and the consent it got). One row
+/// per decision; the newest row for a person is their current choice.
+model ConsentRecord {
+  id            String   @id @default(uuid()) @db.Uuid
+  /// The app account, or null for a website visitor.
+  userId        String?
+  /// Website visitors: the random id kept in their consent cookie.
+  visitorId     String?
+  /// The privacy notice (or cookie notice) version they were shown.
+  noticeVersion String
+  /// Purposes agreed to ("account", "analytics", "advertising").
+  granted       String[] @default([])
+  /// Purposes refused or withdrawn.
+  refused       String[] @default([])
+  /// They confirmed being 18 or older (app accounts).
+  adultDeclared Boolean?
+  /// Where: app.signup, app.notice, app.settings, app.delete, web.banner,
+  /// web.settings.
+  source        String
+  createdAt     DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([visitorId, createdAt])
+  @@index([createdAt])
+  @@map("consent_records")
+}
+
+/// Someone an account holder names to exercise their privacy rights if they
+/// die or can't act for themselves (DPDP Act s.14).
+model PrivacyNominee {
+  userId       String   @id
+  name         String
+  email        String?
+  phone        String?
+  relationship String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("privacy_nominees")
+}
+
+enum PrivacyRequestType {
+  /// A summary of their data and who it was shared with (s.11).
+  ACCESS
+  /// Correct, complete or update their data (s.12).
+  CORRECTION
+  /// Erase their data (s.12).
+  ERASURE
+  /// Name, change or remove a nominee (s.14).
+  NOMINATION
+  /// Withdraw a consent (s.6(4)).
+  WITHDRAW_CONSENT
+  /// A complaint about how their data was handled (s.13).
+  GRIEVANCE
+  OTHER
+}
+
+enum PrivacyRequestStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  REJECTED
+}
+
+/// A request to exercise a privacy right, or a grievance. Answered within the
+/// published response time, never more than 90 days (DPDP Rules 2025, rule
+/// 14(3)); every answer names the grievance officer (rule 9) and the right to
+/// complain to the Data Protection Board.
+model PrivacyRequest {
+  id          String               @id @default(uuid()) @db.Uuid
+  /// Short code the person quotes, e.g. PR-7K3Q9X.
+  reference   String               @unique
+  /// The account, when it is known (app requests, or a web request from an
+  /// address that matches one).
+  userId      String?
+  name        String?
+  /// Where answers go: the account's email, or the address a web form verified.
+  email       String?
+  phone       String?
+  type        PrivacyRequestType
+  details     String               @db.Text
+  /// app | web | staff
+  channel     String
+  status      PrivacyRequestStatus @default(OPEN)
+  /// The answer is due by then.
+  dueAt       DateTime
+  response    String?              @db.Text
+  respondedAt DateTime?
+  handledById String?              @db.Uuid
+  createdAt   DateTime             @default(now())
+  updatedAt   DateTime             @updatedAt
+
+  user      User?         @relation(fields: [userId], references: [id], onDelete: SetNull)
+  handledBy StaffProfile? @relation(fields: [handledById], references: [id], onDelete: SetNull)
+
+  @@index([status, dueAt])
+  @@index([userId, createdAt])
+  @@index([createdAt])
+  @@map("privacy_requests")
 }
 
 model DeviceToken {
@@ -825,6 +960,7 @@ model StaffProfile {
   uploads         MediaAsset[]
   handledItems    NewsSourceItem[]      @relation("ItemHandledBy")
   aiJobs          AiJob[]               @relation("AiJobRequestedBy")
+  privacyRequests PrivacyRequest[]
 
   @@index([status])
   @@map("staff_profiles")
@@ -993,16 +1129,19 @@ enum NewsStatus {
 }
 
 model NewsCategory {
-  id          String   @id @default(uuid()) @db.Uuid
-  slug        String   @unique
-  name        String
-  description String   @default("")
-  parentId    String?  @db.Uuid
-  position    Int      @default(0)
-  isActive    Boolean  @default(true)
-  seo         Json     @default("{}")
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id           String   @id @default(uuid()) @db.Uuid
+  slug         String   @unique
+  name         String
+  description  String   @default("")
+  parentId     String?  @db.Uuid
+  position     Int      @default(0)
+  isActive     Boolean  @default(true)
+  /// Its stories stay out of Top stories and the latest-news list (they show
+  /// in its own homepage section and page), e.g. Official updates.
+  keepSeparate Boolean  @default(false)
+  seo          Json     @default("{}")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   parent         NewsCategory?    @relation("CategoryTree", fields: [parentId], references: [id], onDelete: SetNull)
   children       NewsCategory[]   @relation("CategoryTree")
@@ -1084,6 +1223,8 @@ model MediaAsset {
   featuredInArticles NewsArticle[]
 
   @@index([status, createdAt])
+  // A picture a news source sends again reuses its asset.
+  @@index([sha256])
   @@map("media_assets")
 }
 
@@ -1657,6 +1798,9 @@ model NewsSource {
   usage               NewsSourceUsage  @default(HEADLINE_ONLY)
   /// Whether the source's terms allow AI-assisted drafts from its items.
   allowAiDrafts       Boolean          @default(false)
+  /// Whether its licence covers the pictures in its feed: they are copied
+  /// into the media library for stories made from its items. FULL_TEXT only.
+  useImages           Boolean          @default(false)
   /// Credit shown on stories, e.g. "Reserve Bank of India".
   attribution         String           @default("")
   licenceNote         String?          @db.Text
@@ -1704,6 +1848,9 @@ model NewsSourceItem {
   summary              String?         @db.Text
   /// Full text, from licensed (FULL_TEXT) sources only.
   content              String?         @db.Text
+  /// The item's picture (an http(s) address), kept only when its source's
+  /// licence covers pictures (useImages).
+  imageUrl             String?
   author               String?
   /// When the source says it published the story.
   publishedAt          DateTime?

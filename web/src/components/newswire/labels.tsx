@@ -41,7 +41,7 @@ export const ARRIVAL: Record<
   },
   PUBLISH: {
     label: 'Publish automatically',
-    hint: 'Each new item is published at once, with the source credited and linked. Only for sources whose terms allow their summary or full text.',
+    hint: 'Each new item is published at once, with the source credited by name. Only for sources whose terms allow their summary or full text.',
     badge: 'Publishes automatically',
   },
 };

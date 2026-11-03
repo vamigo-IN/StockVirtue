@@ -1,5 +1,7 @@
 import { Rss, Search } from 'lucide-react';
 import Link from 'next/link';
+import { CookieSettingsButton } from '@/components/consent/CookieSettingsButton';
+import { hasOptionalServices } from '@/lib/consent-services';
 import { logoUrl, type SiteSettings } from '@/lib/settings';
 import { FOOTER_LINKS, SITE } from '@/lib/site';
 import { newsPath } from '@/news/routes';
@@ -186,6 +188,9 @@ export function NewsFooter({
                 {l.label}
               </a>
             ))}
+            {col.title === 'Legal' && hasOptionalServices(settings.config) && (
+              <CookieSettingsButton className="text-sm text-ink-muted hover:text-glow" />
+            )}
           </FooterColumn>
         ))}
       </Container>

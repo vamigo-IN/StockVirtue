@@ -94,25 +94,10 @@ export function PreviewDialog({
               dangerouslySetInnerHTML={{ __html: article.contentHtml }}
             />
             {article.sourceAttribution.length > 0 && (
+              // As readers see it: names only, no links to the sources.
               <p className="mt-6 text-sm text-muted-foreground">
                 Sources:{' '}
-                {article.sourceAttribution.map((s, i) => (
-                  <span key={i}>
-                    {i > 0 && ', '}
-                    {s.url ? (
-                      <a
-                        href={s.url}
-                        target="_blank"
-                        rel="noopener noreferrer nofollow"
-                        className="underline"
-                      >
-                        {s.name}
-                      </a>
-                    ) : (
-                      s.name
-                    )}
-                  </span>
-                ))}
+                {article.sourceAttribution.map((s) => s.name).join(', ')}
               </p>
             )}
             {article.tags.length > 0 && (

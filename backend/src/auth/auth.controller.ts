@@ -10,6 +10,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { User } from '@prisma/client';
+import { ConsentService } from '../privacy/consent.service';
 import { UsersService } from '../users/users.service';
 import { FeatureFlagsService } from '../feature-flags/feature-flags.service';
 import { AuthService } from './auth.service';
@@ -31,6 +32,7 @@ export class AuthController {
     private readonly auth: AuthService,
     private readonly users: UsersService,
     private readonly flags: FeatureFlagsService,
+    private readonly consent: ConsentService,
   ) {}
 
   /// Public: tells the app which sign-in methods to offer. The Mobile-OTP
@@ -45,7 +47,7 @@ export class AuthController {
   @Post('email/register')
   @HttpCode(HttpStatus.OK)
   registerEmail(@Ip() ip: string, @Body() dto: EmailRegisterDto) {
-    return this.auth.registerEmail(ip, dto.email, dto.password);
+    return this.auth.registerEmail(ip, dto.email, dto.password, dto.consent);
   }
 
   @Post('email/verify')
@@ -104,13 +106,15 @@ export class AuthController {
       // Full stats (count, bonus, redeem-window) live on /referrals/stats.
       referralCode: user.referralCode,
       referredById: user.referredById,
+      // The notice they accepted; the app asks again when it changed.
+      privacy: this.consent.view(user),
     };
   }
 
   @Post('firebase/login')
   @HttpCode(HttpStatus.OK)
   firebaseLogin(@Ip() ip: string, @Body() dto: FirebaseLoginDto) {
-    return this.auth.loginWithFirebaseIdToken(ip, dto.idToken);
+    return this.auth.loginWithFirebaseIdToken(ip, dto.idToken, dto.consent);
   }
 
   @Post('refresh')

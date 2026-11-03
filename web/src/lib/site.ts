@@ -63,7 +63,8 @@ export const FOOTER_LINKS: {
     title: 'Legal',
     links: [
       { href: '/terms', label: 'Terms & Conditions' },
-      { href: '/privacy', label: 'Privacy Policy' },
+      { href: '/privacy', label: 'Privacy notice' },
+      { href: '/privacy/requests', label: 'Privacy requests & grievances' },
       { href: '/disclaimer', label: 'Risk Disclaimer' },
     ],
   },

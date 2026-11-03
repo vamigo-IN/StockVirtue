@@ -25,6 +25,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ClientInfo, StaffPrincipal } from '../staff/staff-request';
 import { IngestService } from './ingest.service';
 import { ItemsQuery, ManualItemDto, StartStoryDto } from './ingestion.dto';
+import { SourcePicturesService } from './source-pictures.service';
 import { canonicalUrl, headlineSimilarity, titleTokens } from './text';
 
 const PAGE_SIZE = 30;
@@ -83,6 +84,7 @@ export class SourceItemsService {
     private readonly audit: AuditService,
     private readonly articles: ArticlesService,
     private readonly ingest: IngestService,
+    private readonly pictures: SourcePicturesService,
   ) {}
 
   private where(
@@ -304,6 +306,10 @@ export class SourceItemsService {
         (s): s is { exchange: 'NSE'; symbol: string } =>
           s.exchange === 'NSE' && !!s.symbol,
       );
+    const featuredImageId = await this.pictures.forItem(item, {
+      userId: actor.userId,
+      email: actor.email,
+    });
     const now = new Date();
     const created = await this.articles.createFromSource(
       actor,
@@ -313,6 +319,7 @@ export class SourceItemsService {
         summary: draft?.summary || undefined,
         content: draft ? draftDoc(draft) : null,
         categoryId: item.suggestedCategoryId ?? item.source.categoryId,
+        featuredImageId,
         stocks,
         sourceAttribution: [
           {
@@ -386,6 +393,7 @@ export class SourceItemsService {
       publishedAt: dto.publishedAt ?? new Date().toISOString(),
       summary: dto.summary ?? null,
       content: null,
+      image: null,
       author: null,
       categories: [],
     });

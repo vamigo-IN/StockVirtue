@@ -45,8 +45,13 @@ const JSON_FIELDS: { key: string; label: string; placeholder: string }[] = [
   { key: 'publishedAt', label: 'Published time', placeholder: 'publishedAt' },
   { key: 'summary', label: 'Summary', placeholder: 'summary' },
   { key: 'content', label: 'Full text', placeholder: 'content' },
+  { key: 'image', label: 'Picture', placeholder: 'image' },
   { key: 'author', label: 'Author', placeholder: 'author' },
 ];
+
+/** Government bodies and regulators: their stories go in Official updates. */
+const OFFICIAL_TYPES: readonly SourceType[] = ['RBI', 'SEBI', 'GOVERNMENT'];
+const OFFICIAL_CATEGORY_SLUG = 'official-updates';
 
 /** Official feeds checked to work with the newsroom's fetcher. */
 const PRESETS: {
@@ -94,6 +99,7 @@ interface Form {
   categoryId: string;
   usage: SourceUsage;
   allowAiDrafts: boolean;
+  useImages: boolean;
   attribution: string;
   licenceNote: string;
   notifyEditors: boolean;
@@ -118,6 +124,7 @@ function toForm(s?: NewsSourceView | null): Form {
     categoryId: s?.category?.id ?? 'none',
     usage: s?.usage ?? 'HEADLINE_ONLY',
     allowAiDrafts: s?.allowAiDrafts ?? false,
+    useImages: s?.useImages ?? false,
     attribution: s?.attribution ?? '',
     licenceNote: s?.licenceNote ?? '',
     notifyEditors: s?.notifyEditors ?? false,
@@ -151,6 +158,7 @@ function toBody(f: Form) {
     categoryId: f.categoryId === 'none' ? null : f.categoryId,
     usage: f.usage,
     allowAiDrafts: f.usage === 'HEADLINE_ONLY' ? false : f.allowAiDrafts,
+    useImages: f.usage === 'FULL_TEXT' && f.useImages,
     attribution: f.attribution.trim(),
     licenceNote: f.licenceNote.trim(),
     notifyEditors: f.notifyEditors,
@@ -196,6 +204,18 @@ export function SourceDialog({
   const set = <K extends keyof Form>(k: K, v: Form[K]) =>
     setF((cur) => ({ ...cur, [k]: v }));
   const manual = f.type === 'MANUAL';
+  const official = categories.data?.find(
+    (c) => c.slug === OFFICIAL_CATEGORY_SLUG && c.isActive,
+  );
+  /** Government and regulator sources file in Official updates unless told otherwise. */
+  const withType = (cur: Form, type: SourceType): Form => ({
+    ...cur,
+    type,
+    categoryId:
+      official && OFFICIAL_TYPES.includes(type) && cur.categoryId === 'none'
+        ? official.id
+        : cur.categoryId,
+  });
 
   async function test() {
     setTesting(true);
@@ -269,9 +289,8 @@ export function SourceDialog({
                     size="sm"
                     onClick={() =>
                       setF((cur) => ({
-                        ...cur,
+                        ...withType(cur, p.type),
                         name: p.name,
-                        type: p.type,
                         format: 'FEED',
                         url: p.url,
                         attribution: p.attribution,
@@ -303,7 +322,7 @@ export function SourceDialog({
               id="src-type"
               label="Kind of source"
               value={f.type}
-              onChange={(v) => set('type', v)}
+              onChange={(v) => setF((cur) => withType(cur, v))}
               choices={SOURCE_TYPES}
             />
           </div>
@@ -499,6 +518,7 @@ export function SourceDialog({
                               </>
                             )}
                             {i.hasFullText && ' · full text'}
+                            {i.hasImage && ' · picture'}
                           </p>
                           {i.summary && (
                             <p className="line-clamp-2 text-xs text-muted-foreground">
@@ -683,6 +703,20 @@ export function SourceDialog({
               disabled={f.usage === 'HEADLINE_ONLY'}
               onChange={(v) => set('allowAiDrafts', v)}
             />
+            {!manual && (
+              <SwitchRow
+                id="src-images"
+                label="Use the pictures in its feed"
+                hint={
+                  f.usage === 'FULL_TEXT'
+                    ? 'Copied into the media library and shown on stories made from it. Only if your licence covers photos.'
+                    : 'Only for licensed full text: summaries and headlines never bring pictures.'
+                }
+                checked={f.usage === 'FULL_TEXT' && f.useImages}
+                disabled={f.usage !== 'FULL_TEXT'}
+                onChange={(v) => set('useImages', v)}
+              />
+            )}
             {!manual && (
               <SwitchRow
                 id="src-notify"

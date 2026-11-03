@@ -40,6 +40,9 @@ src/
   lib/
     site.ts        static brand/nav/content config
     settings.ts    runtime settings (fetched from the backend) + contact helper
+public/
+  email/           logo.png and icon.png: every StockVirtue email loads them from
+                   here (the API's MailService), so keep them when the site changes
 ```
 
 ## How it talks to the backend
@@ -176,7 +179,8 @@ that buffers) in front of those two paths.
   connection that R2 images still load through can't be removed.
 - **News homepage** (`site.manage`, Super Admin and Admin): which sections
   `/news` shows and in what order: breaking banner, featured, top stories,
-  trending, one block per chosen category, app promotion.
+  trending, one block per chosen category (Official updates by default), app
+  promotion.
 - **Incoming news** (`sources.read`; acting on items needs `news.create`):
   items from the news sources, checked for duplicates, matched to listed
   companies and labelled by topic. Start a story from one (blank, or from an
@@ -187,22 +191,28 @@ that buffers) in front of those two paths.
   (JSON, with a field mapping), exchange, company, RBI, SEBI and government
   announcements, and manual submissions. Per source: schedule, default
   category, what its terms let us keep (headline only, summary, licensed full
-  text), whether AI drafts are allowed, the credit, licence notes and email
-  alerts to editors. Test fetches without storing; every fetch is in the
-  history with Retry for failures.
+  text), whether AI drafts are allowed, whether its pictures may be used
+  (licensed full text only: they are copied into the media library, checked
+  like an upload and credited to the source), the credit, licence notes and
+  email alerts to editors. Test fetches without storing and shows which items
+  bring a picture; every fetch is in the history with Retry for failures.
 - **When news arrives** (per source, Super Admin only): new items wait in
   Incoming news (the default), become drafts for an editor to check, or are
   published at once — with a daily limit per source, after which the rest
   wait in Incoming news. Automatic stories run under the "StockVirtue News
-  Desk" byline with the source credited and linked, and say only what the
-  source's terms allow; a headline-only source can't publish automatically.
+  Desk" byline with the source credited by name, carry its picture when its
+  licence covers pictures, and say only what the source's terms allow; a
+  headline-only source can't publish automatically.
   Anything that may repeat another source or an existing story always waits
   for a person.
 - **Official sources**: a ready-made list of government, regulator and
   central-bank feeds (PIB, RBI, SEBI, NITI Aayog, the exchanges; the US Fed,
   SEC, BLS, BEA and EIA, the ECB and the Bank of England), each with its
   terms summarised and linked, set to the usage those terms clearly allow.
-  Exchange feeds are headline-only and marked for legal sign-off.
+  Exchange feeds are headline-only and marked for legal sign-off. Government
+  bodies and regulators (PIB, RBI, SEBI and the like) file their stories in
+  Official updates; so does a new RBI, SEBI or government source added by
+  hand, unless you pick another category.
 - **Stock mapping**: how items are matched to companies — names and capitalised
   NSE tickers automatically, plus aliases ("RIL") and blocked phrases
   ("Reserve Bank of India") staff manage, with a tester.
@@ -228,12 +238,59 @@ that buffers) in front of those two paths.
   `/news/education` are the fronts for the categories with those addresses;
   other categories live at `/news/category/<slug>`. Listings page as
   `…/page/2`.
+- **Official updates** (`/news/category/official-updates`): news from
+  government bodies and regulators, kept apart from the main news. A category
+  set to "Keep separate from the main news" (Categories & tags) stays out of
+  Top stories, the featured block's top-up, the latest list (website, app and
+  RSS) and shows in its own homepage section and page instead; search, tags,
+  stock pages, trending and the sitemaps still include it. Switch it off and
+  its stories are main news again.
+- Stories name their sources ("Sources: Press Information Bureau ·
+  Published …") without linking to them; the newsroom keeps the links for
+  duplicate checks and editors.
 - SEO: canonical and Open Graph tags on every page, `NewsArticle` and
   breadcrumb structured data on stories, `/news/sitemap.xml`, a Google News
   sitemap (last 48 hours) at `/news/news-sitemap.xml`, RSS at `/news/feed.xml`,
-  and `robots.txt` lists them. Search results are `noindex`.
+  and `robots.txt` lists them. Search results are `noindex`, and the
+  site-wide "noindex" in Site settings applies to stories and listings too.
+- Story share images: `/news/<slug>/image/og.jpg` is the featured picture
+  cropped to 1200×630 around its most interesting part (Open Graph and X),
+  and `16x9.jpg`, `4x3.jpg` and `1x1.jpg` are Google's three article shapes,
+  all 1200 px wide. They are made on first request and cached for a day.
+- Story structured data: a person's byline is a `Person`, the News Desk
+  byline (`news-desk`) an `Organization`; dates are Indian time (`+05:30`);
+  keywords come from the tags, companies and category; companies in the
+  story are listed under `about` with their ticker; the publisher logo is the
+  one in Site settings → Branding.
 - "Trending" counts each reader once a day per story from an anonymous, salted
   hash that is never stored in the database; bots aren't counted.
+
+## Privacy: the notice, cookies and requests
+
+- `/privacy` and `/privacy/hi` are the privacy notice (DPDP Act 2023) in
+  English and Hindi. The grievance officer, company name and address, and the
+  answer time come from Site settings → Privacy, so they change without a
+  deploy. `NOTICE_VERSION` in `src/lib/privacy-notice.ts` must match the
+  API's notice version.
+- `/privacy/requests` takes requests and complaints from people without the
+  app: an emailed six-digit code first (so nobody acts on someone else's
+  data), then the request. The person gets a reference by email and the
+  grievance officer is told.
+- **Cookie banner.** It appears only when Site settings has something
+  optional switched on (Google Analytics, Tag Manager, Clarity, Meta Pixel,
+  AdSense Auto ads). Nothing optional loads before a choice. "Reject all" is
+  as big and as easy as "Accept all", "Choose" goes purpose by purpose, and
+  the banner reads in English or Hindi. "Cookie settings" in every footer
+  opens it again. The choice lasts 180 days in the `sv_consent` cookie (a
+  random id and the two answers, nothing else) and is recorded through
+  `/api/consent` as proof (kept two years). Taking consent back deletes the
+  analytics or ad cookies and reloads the page. Google's consent mode starts
+  at "denied". Without advertising consent AdSense shows non-personalised ads,
+  or none (Site settings → Advertising).
+- In the portal, **Privacy requests** (permission `privacy.manage`, which Super
+  Admins and Admins have) lists every request with its due date and flags
+  overdue ones. An answer is emailed to the person; staff can also download
+  the person's data or delete their account from the request.
 
 ## Market data on the site
 

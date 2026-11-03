@@ -1525,6 +1525,41 @@ p {
   padding: 5px 13px;
 }
 
+/* Tables in the legal pages (privacy notice): scroll sideways on phones. */
+.legal-table {
+  overflow-x: auto;
+  margin: 1em 0 1.4em;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.legal-table table {
+  width: 100%;
+  min-width: 560px;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+}
+.legal-table th,
+.legal-table td {
+  padding: 10px 12px;
+  text-align: left;
+  vertical-align: top;
+  border-bottom: 1px solid var(--line);
+  color: var(--fg-muted);
+}
+.legal-table th {
+  color: var(--fg);
+  font-weight: 700;
+  background: var(--panel-2);
+}
+.legal-table tr:last-child td {
+  border-bottom: 0;
+}
+.inline-link {
+  color: var(--green-600);
+  font-weight: 600;
+  text-decoration: underline;
+}
+
 /* ── Legal document layout (TOC + prose) ────────────────────────────────── */
 .legal-grid {
   display: grid;
@@ -1534,6 +1569,8 @@ p {
 }
 .legal-body {
   max-width: 68ch;
+  /* Lets wide tables scroll inside .legal-table instead of widening the page. */
+  min-width: 0;
   margin: 0;
 }
 .legal-body h2 {
@@ -1755,6 +1792,18 @@ p {
   transition: color 0.15s ease;
 }
 .footer a:hover {
+  color: var(--green-400);
+}
+/* "Cookie settings" opens the banner, so it is a button dressed as a link. */
+.footer-cookie {
+  font-size: 0.92rem;
+  line-height: 2;
+}
+.footer .footer-link {
+  color: rgba(231, 243, 236, 0.7);
+  transition: color 0.15s ease;
+}
+.footer .footer-link:hover {
   color: var(--green-400);
 }
 .footer-top {

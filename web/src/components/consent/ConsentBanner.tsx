@@ -1,0 +1,262 @@
+'use client';
+
+import { useEffect, useId, useState } from 'react';
+import {
+  type Consent,
+  CONSENT_VERSION,
+  OPEN_SETTINGS_EVENT,
+  readConsent,
+  saveConsent,
+} from '@/lib/consent';
+import styles from './ConsentBanner.module.css';
+
+type Lang = 'en' | 'hi';
+
+/** The banner's words, in English and Hindi (the notice's other language). */
+const TEXT = {
+  en: {
+    title: 'Your choice about cookies',
+    intro:
+      'We use necessary cookies to run this site and to remember this choice. With your consent we would also use cookies for:',
+    analytics: 'Analytics',
+    analyticsWhy: 'to learn which pages are read, so we can improve them.',
+    advertising: 'Advertising',
+    advertisingWhy: 'to show ads that suit your interests and to measure them.',
+    necessary: 'Necessary',
+    necessaryWhy:
+      'signing in, security and remembering this choice. Always on.',
+    change:
+      'Say no and the site works just the same. You can change your mind at any time from “Cookie settings” at the bottom of every page.',
+    notice: 'Privacy notice',
+    accept: 'Accept all',
+    reject: 'Reject all',
+    choose: 'Choose',
+    save: 'Save my choices',
+    on: 'On',
+    language: 'हिंदी',
+  },
+  hi: {
+    title: 'कुकीज़ के बारे में आपकी पसंद',
+    intro:
+      'यह साइट चलाने और आपकी पसंद याद रखने के लिए हम ज़रूरी कुकीज़ का उपयोग करते हैं। आपकी सहमति से हम इनके लिए भी कुकीज़ का उपयोग करेंगे:',
+    analytics: 'विश्लेषण',
+    analyticsWhy:
+      'यह जानने के लिए कि कौन-से पेज पढ़े जाते हैं, ताकि हम उन्हें बेहतर बना सकें।',
+    advertising: 'विज्ञापन',
+    advertisingWhy: 'आपकी रुचि के विज्ञापन दिखाने और उन्हें मापने के लिए।',
+    necessary: 'ज़रूरी',
+    necessaryWhy: 'साइन-इन, सुरक्षा और आपकी पसंद याद रखने के लिए। हमेशा चालू।',
+    change:
+      'मना करने पर भी साइट वैसे ही चलेगी। आप हर पेज के नीचे “कुकी सेटिंग्स” से कभी भी अपनी पसंद बदल सकते हैं।',
+    notice: 'गोपनीयता सूचना',
+    accept: 'सभी स्वीकार करें',
+    reject: 'सभी अस्वीकार करें',
+    choose: 'चुनें',
+    save: 'मेरी पसंद सहेजें',
+    on: 'चालू',
+    language: 'English',
+  },
+} satisfies Record<Lang, Record<string, string>>;
+
+/** Records the choice (no IP address, no cookie other than its own id). */
+function log(c: Consent, source: string) {
+  void fetch('/api/consent', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      id: c.id,
+      version: CONSENT_VERSION,
+      analytics: c.analytics,
+      advertising: c.advertising,
+      source,
+    }),
+    keepalive: true,
+  }).catch(() => undefined);
+}
+
+/**
+ * Asks each visitor, before any optional cookie is set, whether the site may
+ * use analytics and advertising cookies: one tap to accept or to refuse, or a
+ * choice per purpose, in English or Hindi. Shows again when the choice lapses,
+ * when the purposes change, or from "Cookie settings" in the footer.
+ */
+export function ConsentBanner({
+  analytics,
+  advertising,
+}: {
+  /** The analytics services in use (names), if any. */
+  analytics: string[];
+  /** The advertising services in use (names), if any. */
+  advertising: string[];
+}) {
+  const [open, setOpen] = useState(false);
+  const [choosing, setChoosing] = useState(false);
+  const [lang, setLang] = useState<Lang>('en');
+  const [choice, setChoice] = useState({
+    analytics: false,
+    advertising: false,
+  });
+  const titleId = useId();
+  const t = TEXT[lang];
+
+  useEffect(() => {
+    const saved = readConsent();
+    if (saved) {
+      setChoice({ analytics: saved.analytics, advertising: saved.advertising });
+    } else {
+      setOpen(true);
+    }
+    if (navigator.language?.toLowerCase().startsWith('hi')) setLang('hi');
+    const reopen = () => {
+      const now = readConsent();
+      setChoice({
+        analytics: !!now?.analytics,
+        advertising: !!now?.advertising,
+      });
+      setChoosing(true);
+      setOpen(true);
+    };
+    window.addEventListener(OPEN_SETTINGS_EVENT, reopen);
+    return () => window.removeEventListener(OPEN_SETTINGS_EVENT, reopen);
+  }, []);
+
+  if (!open) return null;
+
+  const decide = (
+    next: { analytics: boolean; advertising: boolean },
+    how: string,
+  ) => {
+    log(saveConsent(next), how);
+    setOpen(false);
+    setChoosing(false);
+  };
+  const purposes = [
+    analytics.length > 0 && {
+      key: 'analytics' as const,
+      name: t.analytics,
+      why: t.analyticsWhy,
+      services: analytics,
+    },
+    advertising.length > 0 && {
+      key: 'advertising' as const,
+      name: t.advertising,
+      why: t.advertisingWhy,
+      services: advertising,
+    },
+  ].filter((p): p is Exclude<typeof p, false> => !!p);
+
+  return (
+    <div
+      className={styles.banner}
+      role="dialog"
+      aria-modal="false"
+      aria-labelledby={titleId}
+      lang={lang}
+    >
+      <div className={styles.head}>
+        <p id={titleId} className={styles.title}>
+          {t.title}
+        </p>
+        <button
+          type="button"
+          className={styles.lang}
+          onClick={() => setLang(lang === 'en' ? 'hi' : 'en')}
+          lang={lang === 'en' ? 'hi' : 'en'}
+        >
+          {t.language}
+        </button>
+      </div>
+      <p className={styles.text}>{t.intro}</p>
+      <ul
+        className={
+          choosing ? `${styles.purposes} ${styles.choosing}` : styles.purposes
+        }
+      >
+        {purposes.map((p) => (
+          <li key={p.key}>
+            {choosing ? (
+              <label className={styles.toggle}>
+                <input
+                  type="checkbox"
+                  checked={choice[p.key]}
+                  onChange={(e) =>
+                    setChoice((c) => ({ ...c, [p.key]: e.target.checked }))
+                  }
+                />
+                <span>
+                  <strong>{p.name}</strong> ({p.services.join(', ')}): {p.why}
+                </span>
+              </label>
+            ) : (
+              <span>
+                <strong>{p.name}</strong> ({p.services.join(', ')}): {p.why}
+              </span>
+            )}
+          </li>
+        ))}
+        {choosing && (
+          <li>
+            <label className={styles.toggle}>
+              <input type="checkbox" checked disabled />
+              <span>
+                <strong>{t.necessary}</strong>: {t.necessaryWhy}
+              </span>
+            </label>
+          </li>
+        )}
+      </ul>
+      <p className={styles.small}>
+        {t.change}{' '}
+        <a href="/privacy#cookies" className={styles.link}>
+          {t.notice}
+        </a>
+      </p>
+      <div className={styles.actions}>
+        {choosing ? (
+          <button
+            type="button"
+            className={styles.primary}
+            onClick={() => decide(choice, 'web.settings')}
+          >
+            {t.save}
+          </button>
+        ) : (
+          <>
+            {/* Refusing is exactly as easy and as visible as accepting. */}
+            <button
+              type="button"
+              className={styles.primary}
+              onClick={() =>
+                decide({ analytics: false, advertising: false }, 'web.banner')
+              }
+            >
+              {t.reject}
+            </button>
+            <button
+              type="button"
+              className={styles.secondary}
+              onClick={() => setChoosing(true)}
+            >
+              {t.choose}
+            </button>
+            <button
+              type="button"
+              className={styles.primary}
+              onClick={() =>
+                decide(
+                  {
+                    analytics: analytics.length > 0,
+                    advertising: advertising.length > 0,
+                  },
+                  'web.banner',
+                )
+              }
+            >
+              {t.accept}
+            </button>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
