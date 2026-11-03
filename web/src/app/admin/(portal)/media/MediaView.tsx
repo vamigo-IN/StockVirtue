@@ -29,7 +29,11 @@ import { cn } from '@/lib/utils';
 import { can } from '@/portal/access';
 import { api, errorMessage } from '@/portal/api';
 import { formatBytes, formatDateTime } from '@/portal/format';
-import { IMAGE_TYPES } from '@/portal/media-upload';
+import {
+  IMAGE_TYPES,
+  optimisationNote,
+  uploadedMessage,
+} from '@/portal/media-upload';
 import { useMedia } from '@/portal/queries';
 import type { MediaAsset } from '@/portal/types';
 
@@ -46,6 +50,7 @@ function Details({
   const [caption, setCaption] = useState(asset.caption ?? '');
   const [credit, setCredit] = useState(asset.credit ?? '');
   const [busy, setBusy] = useState(false);
+  const note = optimisationNote(asset);
   const [deleting, setDeleting] = useState(false);
   const mayChange = asset.uploadedBy?.id === me.id || can(me, 'media.manage');
 
@@ -82,6 +87,7 @@ function Details({
                 : 'uploaded by someone'}{' '}
             on {formatDateTime(asset.createdAt)} · stored{' '}
             {asset.store === 'R2' ? 'in Cloudflare R2' : 'on this server'}
+            {note && <span className="mt-1 block">{note}</span>}
           </SheetDescription>
         </SheetHeader>
         <div className="flex-1 space-y-4 overflow-y-auto p-4">
@@ -198,9 +204,7 @@ export function MediaView() {
     );
     if (done.length) {
       void qc.invalidateQueries({ queryKey: ['media'] });
-      toast.success(
-        `Uploaded ${done.length} image${done.length === 1 ? '' : 's'}.`,
-      );
+      toast.success(uploadedMessage(done));
     }
   }
 
@@ -210,8 +214,8 @@ export function MediaView() {
         title="Media library"
         description={
           <>
-            Images for stories. Each upload is checked, cleaned of location and
-            camera details, and resized for fast pages.
+            Images for stories. Each upload is checked, stored as WebP without
+            location or camera details, and resized for fast pages.
             {first &&
               (first.store === 'R2'
                 ? ' New uploads go to Cloudflare R2.'

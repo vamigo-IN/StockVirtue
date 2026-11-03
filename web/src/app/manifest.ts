@@ -13,16 +13,13 @@ export default async function manifest(): Promise<MetadataRoute.Manifest> {
     display: 'standalone',
     background_color: '#ffffff',
     theme_color: themeColor || '#16a34a',
-    icons: favicon
-      ? [
-          {
-            src: favicon.url,
-            sizes:
-              favicon.width && favicon.height
-                ? `${favicon.width}x${favicon.height}`
-                : 'any',
-          },
-        ]
-      : [{ src: '/icon.png', sizes: '256x256', type: 'image/png' }],
+    icons: [
+      {
+        // A favicon from the media library comes as PNG through /brand.
+        src: favicon ? `/brand/icon.png?v=${favicon.id}` : '/icon.png',
+        sizes: '256x256',
+        type: 'image/png',
+      },
+    ],
   };
 }

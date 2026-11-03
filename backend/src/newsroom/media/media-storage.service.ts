@@ -33,7 +33,7 @@ import type {
   MediaStorageSaveDto,
 } from './media-storage.dto';
 
-export type CheckStepKey = 'connect' | 'write' | 'read' | 'cors' | 'delete';
+export type CheckStepKey = 'connect' | 'write' | 'read' | 'delete';
 
 export interface CheckStep {
   key: CheckStepKey;
@@ -53,7 +53,6 @@ const STEPS: Record<CheckStepKey, string> = {
   connect: 'Connect to the bucket',
   write: 'Write a test file',
   read: 'Read it back',
-  cors: 'Browser uploads allowed (CORS)',
   delete: 'Delete the test file',
 };
 const STEP_TIMEOUT_MS = 10_000;
@@ -73,17 +72,12 @@ interface Draft extends R2Connection {
   savedSecretUnreadable: boolean;
 }
 
-export class CorsRefused extends Error {}
-
 /** A failed check step in words staff can act on (never with any secret). */
 export function explainFailure(
   key: CheckStepKey,
   err: unknown,
-  at: { endpoint: string; bucket: string; origin: string },
+  at: { endpoint: string; bucket: string },
 ): string {
-  if (err instanceof CorsRefused) {
-    return `The bucket does not allow uploads from ${at.origin}: add it to the bucket's CORS rules (PUT, GET; header content-type).`;
-  }
   const e = err as
     | (Error & {
         code?: string;
@@ -116,15 +110,6 @@ export function explainFailure(
   }
   const what = e?.name && e.name !== 'Error' ? `${e.name}: ` : '';
   return `${what}${e?.message || String(err)}`.slice(0, 300);
-}
-
-/** Where the portal runs, so where browser uploads come from. */
-function portalOrigin(portalUrl: string): string {
-  try {
-    return new URL(portalUrl).origin;
-  } catch {
-    return 'https://stockvirtue.com';
-  }
 }
 
 /** The S3 API address as Cloudflare shows it, taken apart. */
@@ -164,13 +149,11 @@ const visible = (r: {
 /**
  * Media storage settings (portal: Media storage, media.storage). The R2
  * connection is checked the way Bulava's storage check works (sign in, write
- * a file, read it back, ask the bucket whether the portal may upload, delete
- * the file) and the secret key is sealed before it is stored. A connection
+ * a file, read it back, delete it) and the secret key is sealed before it is stored. A connection
  * that R2-stored images still load through can't be removed or broken.
  */
 @Injectable()
 export class MediaStorageService {
-  private readonly uploadOrigin: string;
   private readonly production: boolean;
 
   constructor(
@@ -180,9 +163,6 @@ export class MediaStorageService {
     private readonly audit: AuditService,
     config: ConfigService<AppConfig, true>,
   ) {
-    this.uploadOrigin = portalOrigin(
-      config.get('newsroom', { infer: true }).portalUrl,
-    );
     this.production = config.get('nodeEnv', { infer: true }) === 'production';
   }
 
@@ -223,7 +203,6 @@ export class MediaStorageService {
           : null,
       server,
       images: { r2: count(MediaStore.R2), server: count(MediaStore.LOCAL) },
-      uploadOrigin: this.uploadOrigin,
       publicBaseUrl: this.storage.publicBaseUrl,
       maxUploadBytes: this.storage.maxUploadBytes,
       updatedAt: row?.updatedAt ?? null,
@@ -278,9 +257,7 @@ export class MediaStorageService {
     let check: CheckResult | null = null;
     if (conn && (draft.changed || input.uploadToR2)) {
       check = await this.runCheck(conn);
-      const failed = check.steps.find(
-        (s) => s.ok === false && (s.key !== 'cors' || input.uploadToR2),
-      );
+      const failed = check.steps.find((s) => s.ok === false);
       if (failed) {
         throw new BadRequestException({
           message: `Not saved. ${failed.label}: ${failed.detail}`,
@@ -533,7 +510,6 @@ export class MediaStorageService {
         step.detail = explainFailure(key, err, {
           endpoint: store.endpoint,
           bucket: store.bucket,
-          origin: this.uploadOrigin,
         });
       }
       return step.ok;
@@ -553,7 +529,6 @@ export class MediaStorageService {
           );
           if (back !== text) throw new Error('mismatch');
         });
-        await attempt('cors', (signal) => this.corsPreflight(store, signal));
         await attempt('delete', (signal) => store.delete(probe, signal));
       }
     } finally {
@@ -564,27 +539,5 @@ export class MediaStorageService {
       steps,
       checkedAt: new Date().toISOString(),
     };
-  }
-
-  /** Asks the bucket, as a browser on the portal would, to accept an upload. */
-  private async corsPreflight(store: R2Store, signal: AbortSignal) {
-    const url = await store.presignPut(
-      `health/cors-${randomUUID()}.jpg`,
-      'image/jpeg',
-      60,
-    );
-    const res = await fetch(url, {
-      method: 'OPTIONS',
-      headers: {
-        Origin: this.uploadOrigin,
-        'Access-Control-Request-Method': 'PUT',
-        'Access-Control-Request-Headers': 'content-type',
-      },
-      signal,
-    });
-    const allowed = res.headers.get('access-control-allow-origin');
-    if (!res.ok || (allowed !== '*' && allowed !== this.uploadOrigin)) {
-      throw new CorsRefused();
-    }
   }
 }

@@ -16,7 +16,11 @@ import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { errorMessage } from '@/portal/api';
 import { formatBytes } from '@/portal/format';
-import { IMAGE_TYPES, uploadImage } from '@/portal/media-upload';
+import {
+  IMAGE_TYPES,
+  uploadedMessage,
+  uploadImage,
+} from '@/portal/media-upload';
 import { useMedia } from '@/portal/queries';
 import type { MediaAsset } from '@/portal/types';
 
@@ -79,14 +83,12 @@ export function MediaPicker({
       (n) => setUploading((u) => [...u, n]),
       (n) => setUploading((u) => u.filter((x) => x !== n)),
     );
-    if (done.length) void qc.invalidateQueries({ queryKey: ['media'] });
+    if (!done.length) return;
+    void qc.invalidateQueries({ queryKey: ['media'] });
+    toast.success(uploadedMessage(done));
     if (done.length === 1 && files.length === 1) {
       onPick(done[0]);
       onOpenChange(false);
-    } else if (done.length) {
-      toast.success(
-        `Uploaded ${done.length} image${done.length === 1 ? '' : 's'}.`,
-      );
     }
   }
 

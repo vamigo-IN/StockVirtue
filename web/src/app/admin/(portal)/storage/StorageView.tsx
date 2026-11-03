@@ -5,7 +5,6 @@ import {
   AlertTriangle,
   CheckCircle2,
   Cloud,
-  Copy,
   HardDrive,
   Loader2,
   MinusCircle,
@@ -85,22 +84,6 @@ function connection(f: Form) {
     endpoint: f.endpoint.trim(),
     ...(secret ? { secretAccessKey: secret } : {}),
   };
-}
-
-/** What to paste under the bucket's Settings → CORS policy. */
-function corsPolicy(origin: string) {
-  return JSON.stringify(
-    [
-      {
-        AllowedOrigins: [origin],
-        AllowedMethods: ['PUT', 'GET'],
-        AllowedHeaders: ['content-type'],
-        MaxAgeSeconds: 3600,
-      },
-    ],
-    null,
-    2,
-  );
 }
 
 function StepIcon({ ok }: { ok: boolean | null }) {
@@ -281,14 +264,6 @@ export function StorageView() {
     );
   }
 
-  async function copyPolicy() {
-    try {
-      await navigator.clipboard.writeText(corsPolicy(view!.uploadOrigin));
-      toast.success('CORS policy copied.');
-    } catch {
-      toast.error("Couldn't copy. Select the text and copy it instead.");
-    }
-  }
 
   const saved = view.r2.connected || view.r2.hasSecret || !!view.r2.bucket;
   // Images in R2 load from the saved bucket, so it can't change under them.
@@ -546,26 +521,34 @@ export function StorageView() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Bucket CORS policy</CardTitle>
+          <CardTitle>How images are stored</CardTitle>
           <CardDescription>
-            Browsers upload straight to the bucket from{' '}
-            <span className="font-mono text-xs">{view.uploadOrigin}</span>, so
-            the bucket must allow it. In Cloudflare open R2, then your bucket,
-            then Settings, and under CORS policy add:
+            Every upload comes to this server, is checked, and is turned into
+            WebP before it is stored. The file as uploaded is never kept, in
+            the bucket or here.
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-3">
-          <pre className="overflow-x-auto rounded-lg border bg-muted/50 p-4 font-mono text-xs leading-relaxed">
-            {corsPolicy(view.uploadOrigin)}
-          </pre>
-          <Button variant="outline" size="sm" onClick={() => void copyPolicy()}>
-            <Copy /> Copy policy
-          </Button>
-          <p className="text-xs text-muted-foreground">
-            Optional: under the bucket&apos;s object lifecycle rules, delete
-            objects with the prefix <code className="font-mono">incoming/</code>{' '}
-            after 1 day. That clears uploads that were started but never
-            finished.
+        <CardContent>
+          <ul className="list-disc space-y-1.5 pl-5 text-sm text-muted-foreground">
+            <li>
+              JPEG, PNG, GIF and AVIF images become WebP: photos at quality 80,
+              and graphics such as charts and screenshots without any loss
+              when that is about as small.
+            </li>
+            <li>
+              A WebP is kept as uploaded, minus hidden camera and location
+              data.
+            </li>
+            <li>
+              Images wider or taller than 2,400 pixels are scaled down, and
+              each image gets 480 and 1,200 pixel copies for phones and pages.
+            </li>
+            <li>Animated GIFs stay animated.</li>
+          </ul>
+          <p className="mt-3 text-xs text-muted-foreground">
+            Uploads pass through nginx on the way, so on both stockvirtue.com
+            and api.stockvirtue.com its client_max_body_size must allow at
+            least {formatBytes(view.maxUploadBytes)}.
           </p>
         </CardContent>
       </Card>
@@ -592,10 +575,7 @@ export function StorageView() {
             <dd>{formatBytes(view.maxUploadBytes)}</dd>
           </dl>
           <p className="text-xs text-muted-foreground">
-            Include this folder in the server&apos;s backups. These uploads pass
-            through nginx, so on both stockvirtue.com and api.stockvirtue.com
-            its client_max_body_size must allow at least{' '}
-            {formatBytes(view.maxUploadBytes)}.
+            Include this folder in the server&apos;s backups.
           </p>
         </CardContent>
       </Card>
