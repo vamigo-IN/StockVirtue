@@ -42,12 +42,13 @@ export async function generateMetadata(): Promise<Metadata> {
   const { branding, search, ads } = s.config;
   const title = s.siteTitle || SITE.name;
   const description = s.siteDescription || SITE.description;
+  // Library images go through /brand as PNG/JPEG (the library keeps WebP).
   const share = branding.shareImage;
   const image = share
     ? {
-        url: share.url,
-        width: share.width ?? undefined,
-        height: share.height ?? undefined,
+        url: `/brand/share.jpg?v=${share.id}`,
+        width: 1200,
+        height: 630,
         alt: title,
       }
     : { url: '/og.png', width: 1200, height: 630, alt: SITE.name };
@@ -55,7 +56,7 @@ export async function generateMetadata(): Promise<Metadata> {
     .split(',')
     .map((k) => k.trim())
     .filter(Boolean);
-  const favicon = branding.favicon?.url;
+  const favicon = branding.favicon?.id;
   const indexing = !search.noindex;
   return {
     metadataBase: new URL(SITE.url),
@@ -69,7 +70,10 @@ export async function generateMetadata(): Promise<Metadata> {
     applicationName: SITE.name,
     keywords: keywords.length > 0 ? keywords : DEFAULT_KEYWORDS,
     icons: favicon
-      ? { icon: [{ url: favicon }], apple: [{ url: favicon }] }
+      ? {
+          icon: [{ url: `/brand/icon.png?v=${favicon}`, type: 'image/png' }],
+          apple: [{ url: `/brand/apple-icon.png?v=${favicon}` }],
+        }
       : {
           icon: [
             { url: '/favicon.ico', sizes: 'any' },

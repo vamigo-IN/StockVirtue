@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
-import type { Readable } from 'node:stream';
+import { Writable, type Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import {
   BadRequestException,
   ConflictException,
@@ -12,7 +13,6 @@ import {
   PayloadTooLargeException,
 } from '@nestjs/common';
 import { MediaAsset, MediaStatus, MediaStore, Prisma } from '@prisma/client';
-import sharp from 'sharp';
 import { AuditActor, AuditService } from '../../audit/audit.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ClientInfo, StaffPrincipal } from '../../staff/staff-request';
@@ -23,21 +23,13 @@ import { has } from '../articles/article-access';
 import { RenderMedia } from '../content/article-content';
 import { NewsCache } from '../public/news-cache';
 import { PublicImage } from '../public/public-articles';
-import {
-  IMAGE_EXT,
-  IMAGE_MIME,
-  ImageKind,
-  KIND_BY_MIME,
-  sniffImage,
-} from './image-sniff';
+import { OptimizedImage, optimizeImage } from './image-optimizer';
+import { IMAGE_MIME, KIND_BY_MIME, sniffImage } from './image-sniff';
 
-/** Smaller WebP copies for responsive pages and the library grid. */
-const VARIANT_WIDTHS = [480, 1200] as const;
-/// ~60 megapixels: far beyond any news photo, and stops decompression bombs.
-const MAX_PIXELS = 60_000_000;
-/// Uploads kept on this server must leave this much disk free (the API and
+/// Images kept on this server must leave this much disk free (the API and
 /// the trading engine share it).
 const MIN_FREE_BYTES = 1024 ** 3;
+const WEBP = 'image/webp';
 /// A news source's "picture" smaller than this is a tracking pixel or an icon.
 const MIN_IMPORT_WIDTH = 200;
 const MIN_IMPORT_HEIGHT = 100;
@@ -55,12 +47,12 @@ const ASSET_INCLUDE = {
 type AssetRow = Prisma.MediaAssetGetPayload<{ include: typeof ASSET_INCLUDE }>;
 
 /**
- * The newsroom media library. An upload goes to Cloudflare R2 (straight from
- * the browser with a short-lived signed URL) when R2 is connected, otherwise
- * to this server through the portal; either way it waits under an "incoming"
- * key. On "complete" the server checks the file really is an image (by its
- * bytes, not its name), re-encodes it so camera metadata such as GPS location
- * is gone, and stores it with smaller copies for responsive pages.
+ * The newsroom media library. An upload comes to this server through the
+ * portal and stays in memory: the server checks it really is an image (by its
+ * bytes, not its name), turns it into WebP (image-optimizer.ts) and stores
+ * only that, with smaller copies for responsive pages, in Cloudflare R2 when
+ * it is connected or else on this server. The file as sent is never stored,
+ * so camera metadata such as GPS location never is either.
  */
 @Injectable()
 export class MediaService {
@@ -84,6 +76,9 @@ export class MediaService {
       store: a.store,
       mimeType: a.mimeType,
       bytes: a.bytes,
+      /** What was uploaded, before it became WebP (null for older images). */
+      sourceType: a.sourceType,
+      sourceBytes: a.sourceBytes,
       width: a.width,
       height: a.height,
       alt: a.alt,
@@ -144,7 +139,7 @@ export class MediaService {
     };
   }
 
-  /** Step 1: where the browser sends the file (R2 or this server). */
+  /** Step 1: a pending image, and where the portal sends the file. */
   async startUpload(
     actor: StaffPrincipal,
     dto: { filename: string; contentType: string; bytes: number },
@@ -163,7 +158,7 @@ export class MediaService {
     const store = await this.storage.uploadStore();
     const asset = await this.prisma.mediaAsset.create({
       data: {
-        storageKey: this.storage.newKey('media', IMAGE_EXT[kind]),
+        storageKey: this.storage.newKey('media', 'webp'),
         store,
         originalName: dto.filename.slice(0, 200),
         mimeType: IMAGE_MIME[kind],
@@ -173,30 +168,26 @@ export class MediaService {
       },
       include: ASSET_INCLUDE,
     });
-    const upload = await this.storage.uploadTarget(
-      store,
-      asset.id,
-      IMAGE_MIME[kind],
-    );
+    const upload = this.storage.uploadTarget(IMAGE_MIME[kind]);
     return { asset: this.view(asset), upload };
   }
 
-  /** Step 1b, uploads kept on this server: the file's bytes, via the portal. */
+  /**
+   * Step 2: the file itself, via the portal. It is read into memory (never
+   * written anywhere as sent), turned into WebP and stored, so the upload is
+   * finished when this returns.
+   */
   async receive(
     actor: StaffPrincipal,
     id: string,
     body: Readable,
     declaredBytes: number | null,
+    client: ClientInfo,
   ) {
     const asset = await this.find(id);
     if (asset.status !== MediaStatus.PENDING) {
       throw new ConflictException(
         'This upload is already finished or was cancelled.',
-      );
-    }
-    if (asset.store !== MediaStore.LOCAL) {
-      throw new BadRequestException(
-        'This upload goes straight to Cloudflare R2. Upload the image again.',
       );
     }
     this.assertMayChange(actor, asset);
@@ -206,22 +197,35 @@ export class MediaService {
         `Images can be up to ${Math.round(max / 1048576)} MB.`,
       );
     if (declaredBytes !== null && declaredBytes > max) throw tooLarge();
-    const free = await this.storage.local.freeBytes();
-    if (free !== null && free - (declaredBytes ?? max) < MIN_FREE_BYTES) {
-      throw new HttpException(
-        "This server is nearly out of disk space, so it can't keep more uploads. Free some space, or connect Cloudflare R2 under Media storage.",
-        HttpStatus.INSUFFICIENT_STORAGE,
-      );
+    if (asset.store === MediaStore.LOCAL) {
+      // Room for the WebP files, which are smaller than the upload.
+      const free = await this.storage.local.freeBytes();
+      if (free !== null && free - (declaredBytes ?? max) < MIN_FREE_BYTES) {
+        throw new HttpException(
+          "This server is nearly out of disk space, so it can't keep more images. Free some space, or connect Cloudflare R2 under Media storage.",
+          HttpStatus.INSUFFICIENT_STORAGE,
+        );
+      }
     }
+    let original: Buffer;
     try {
-      return { bytes: await this.storage.receive(id, body, max) };
+      original = await readBody(body, max);
     } catch (err) {
       if (err instanceof TooLargeError) throw tooLarge();
       throw err;
     }
+    if (original.length === 0) {
+      await this.discard(asset);
+      throw new BadRequestException('That file is empty. Upload it again.');
+    }
+    return this.finish(actor, asset, original, client);
   }
 
-  /** Step 2: verify, clean and resize the uploaded file. */
+  /**
+   * Step 3: the finished image. Uploads now finish when the file arrives;
+   * one sent straight to the bucket before that changed still waits under
+   * an "incoming" key, and is turned into WebP here.
+   */
   async completeUpload(actor: StaffPrincipal, id: string, client: ClientInfo) {
     const asset = await this.find(id);
     if (asset.status === MediaStatus.READY) return this.view(asset);
@@ -257,6 +261,22 @@ export class MediaService {
       await this.discard(asset);
       throw new BadRequestException(limit);
     }
+    const view = await this.finish(actor, asset, original, client);
+    await this.storage
+      .delete(asset.store, incoming)
+      .catch((err: Error) =>
+        this.logger.warn(`Couldn't delete ${incoming}: ${err.message}`),
+      );
+    return view;
+  }
+
+  /** Checks an upload's bytes, stores its WebP files and marks it ready. */
+  private async finish(
+    actor: StaffPrincipal,
+    asset: AssetRow,
+    original: Buffer,
+    client: ClientInfo,
+  ) {
     const kind = sniffImage(original);
     if (!kind) {
       await this.discard(asset);
@@ -264,32 +284,23 @@ export class MediaService {
         "That file isn't a JPEG, PNG, WebP, GIF or AVIF image.",
       );
     }
-    let processed: Awaited<ReturnType<MediaService['processImage']>>;
+    let image: OptimizedImage;
     try {
-      processed = await this.processImage(original, kind);
+      image = await optimizeImage(original, kind);
     } catch (err) {
-      this.logger.warn(`Image ${id} rejected: ${(err as Error).message}`);
+      this.logger.warn(`Image ${asset.id} rejected: ${(err as Error).message}`);
       await this.discard(asset);
       throw new BadRequestException(
         "That image couldn't be read. It may be damaged or too large.",
       );
     }
-    // Named for what the file really is, whatever the browser called it, so
-    // /media serves it with the right type.
     const base = asset.storageKey.replace(/\.[a-z0-9]+$/i, '');
-    const storageKey = `${base}.${IMAGE_EXT[kind]}`;
-    await this.storage.put(
+    const { storageKey, variants } = await this.writeFiles(
       asset.store,
-      storageKey,
-      processed.data,
-      IMAGE_MIME[kind],
+      base,
+      image,
     );
-    const variants: Variants = {};
-    for (const v of processed.variants) {
-      const key = `${base}-w${v.width}.webp`;
-      await this.storage.put(asset.store, key, v.data, 'image/webp');
-      variants[`w${v.target}`] = { key, width: v.width, height: v.height };
-    }
+    const id = asset.id;
     let updated: AssetRow;
     try {
       updated = await this.prisma.$transaction(async (tx) => {
@@ -300,11 +311,13 @@ export class MediaService {
           data: {
             storageKey,
             status: MediaStatus.READY,
-            mimeType: IMAGE_MIME[kind],
-            bytes: processed.data.length,
-            width: processed.width,
-            height: processed.height,
-            sha256: createHash('sha256').update(processed.data).digest('hex'),
+            mimeType: WEBP,
+            bytes: image.data.length,
+            sourceType: IMAGE_MIME[kind],
+            sourceBytes: original.length,
+            width: image.width,
+            height: image.height,
+            sha256: createHash('sha256').update(image.data).digest('hex'),
             variants: variants as unknown as Prisma.InputJsonValue,
           },
         });
@@ -327,9 +340,12 @@ export class MediaService {
             entityId: id,
             after: {
               name: asset.originalName,
-              mimeType: IMAGE_MIME[kind],
-              width: processed.width,
-              height: processed.height,
+              uploaded: IMAGE_MIME[kind],
+              uploadedBytes: original.length,
+              stored: image.method === 'kept' ? 'WebP as sent' : 'WebP',
+              bytes: image.data.length,
+              width: image.width,
+              height: image.height,
             },
             ...client,
           },
@@ -347,12 +363,34 @@ export class MediaService {
       }
       throw err;
     }
-    await this.storage
-      .delete(asset.store, incoming)
-      .catch((err: Error) =>
-        this.logger.warn(`Couldn't delete ${incoming}: ${err.message}`),
-      );
     return this.view(updated);
+  }
+
+  /** Writes an image's WebP and its smaller copies; on failure, none. */
+  private async writeFiles(
+    store: MediaStore,
+    base: string,
+    image: OptimizedImage,
+  ) {
+    const storageKey = `${base}.webp`;
+    const written: string[] = [];
+    try {
+      await this.storage.put(store, storageKey, image.data, WEBP);
+      written.push(storageKey);
+      const variants: Variants = {};
+      for (const v of image.variants) {
+        const key = `${base}-w${v.width}.webp`;
+        await this.storage.put(store, key, v.data, WEBP);
+        written.push(key);
+        variants[`w${v.target}`] = { key, width: v.width, height: v.height };
+      }
+      return { storageKey, variants };
+    } catch (err) {
+      for (const key of written) {
+        await this.storage.delete(store, key).catch(() => undefined);
+      }
+      throw err;
+    }
   }
 
   /** Largest picture a news source may send (the upload limit). */
@@ -383,16 +421,13 @@ export class MediaService {
     if (!kind) {
       throw new Error("the picture isn't a JPEG, PNG, WebP, GIF or AVIF image");
     }
-    const processed = await this.processImage(original, kind);
-    if (
-      processed.width < MIN_IMPORT_WIDTH ||
-      processed.height < MIN_IMPORT_HEIGHT
-    ) {
+    const image = await optimizeImage(original, kind);
+    if (image.width < MIN_IMPORT_WIDTH || image.height < MIN_IMPORT_HEIGHT) {
       throw new Error(
-        `the picture is too small (${processed.width}×${processed.height})`,
+        `the picture is too small (${image.width}×${image.height})`,
       );
     }
-    const sha256 = createHash('sha256').update(processed.data).digest('hex');
+    const sha256 = createHash('sha256').update(image.data).digest('hex');
     const known = await this.prisma.mediaAsset.findFirst({
       where: { sha256, status: MediaStatus.READY },
     });
@@ -400,38 +435,25 @@ export class MediaService {
     const store = await this.storage.uploadStore();
     if (store === MediaStore.LOCAL) {
       const free = await this.storage.local.freeBytes();
-      if (free !== null && free - processed.data.length < MIN_FREE_BYTES) {
+      if (free !== null && free - image.data.length < MIN_FREE_BYTES) {
         throw new Error('this server is nearly out of disk space');
       }
     }
-    const storageKey = this.storage.newKey('media', IMAGE_EXT[kind]);
-    const base = storageKey.replace(/\.[a-z0-9]+$/i, '');
-    const written: string[] = [];
+    const base = this.storage.newKey('media', '');
+    const { storageKey, variants } = await this.writeFiles(store, base, image);
     try {
-      await this.storage.put(
-        store,
-        storageKey,
-        processed.data,
-        IMAGE_MIME[kind],
-      );
-      written.push(storageKey);
-      const variants: Variants = {};
-      for (const v of processed.variants) {
-        const key = `${base}-w${v.width}.webp`;
-        await this.storage.put(store, key, v.data, 'image/webp');
-        written.push(key);
-        variants[`w${v.target}`] = { key, width: v.width, height: v.height };
-      }
       return await this.prisma.$transaction(async (tx) => {
         const asset = await tx.mediaAsset.create({
           data: {
             storageKey,
             store,
             originalName: meta.name.slice(0, 200),
-            mimeType: IMAGE_MIME[kind],
-            bytes: processed.data.length,
-            width: processed.width,
-            height: processed.height,
+            mimeType: WEBP,
+            bytes: image.data.length,
+            sourceType: IMAGE_MIME[kind],
+            sourceBytes: original.length,
+            width: image.width,
+            height: image.height,
             sha256,
             alt: meta.alt.trim().slice(0, 300),
             credit: meta.credit.trim().slice(0, 200) || null,
@@ -459,7 +481,8 @@ export class MediaService {
       });
     } catch (err) {
       // Files written for an asset that was never recorded belong to nothing.
-      for (const key of written) {
+      const keys = [storageKey, ...Object.values(variants).map((v) => v.key)];
+      for (const key of keys) {
         await this.storage.delete(store, key).catch(() => undefined);
       }
       throw err;
@@ -586,63 +609,6 @@ export class MediaService {
     return row;
   }
 
-  private async processImage(input: Buffer, kind: ImageKind) {
-    const opts = {
-      limitInputPixels: MAX_PIXELS,
-      animated: true,
-      failOn: 'error' as const,
-    };
-    const meta = await sharp(input, opts).metadata();
-    const animated = (meta.pages ?? 1) > 1;
-    // Re-encoding drops EXIF (GPS, camera serials), XMP and comments: sharp
-    // writes no metadata unless asked to. rotate() applies EXIF orientation.
-    let image = sharp(input, opts);
-    if (!animated) image = image.rotate();
-    switch (kind) {
-      case 'jpeg':
-        image = image.jpeg({ quality: 85, mozjpeg: true });
-        break;
-      case 'png':
-        image = image.png({ compressionLevel: 9 });
-        break;
-      case 'webp':
-        image = image.webp({ quality: 85 });
-        break;
-      case 'gif':
-        image = image.gif();
-        break;
-      case 'avif':
-        image = image.avif({ quality: 60 });
-        break;
-    }
-    const { data, info } = await image.toBuffer({ resolveWithObject: true });
-    const width = info.width;
-    const height = animated ? (meta.pageHeight ?? info.height) : info.height;
-    const variants: {
-      target: number;
-      width: number;
-      height: number;
-      data: Buffer;
-    }[] = [];
-    if (!animated) {
-      for (const target of VARIANT_WIDTHS) {
-        if (target >= width) continue;
-        const v = await sharp(input, opts)
-          .rotate()
-          .resize({ width: target, withoutEnlargement: true })
-          .webp({ quality: 80 })
-          .toBuffer({ resolveWithObject: true });
-        variants.push({
-          target,
-          width: v.info.width,
-          height: v.info.height,
-          data: v.data,
-        });
-      }
-    }
-    return { data, width, height, variants };
-  }
-
   /** Articles that show this image (featured, social preview or in the body). */
   private async usageCount(id: string): Promise<number> {
     const rows = await this.prisma.$queryRaw<{ n: bigint }[]>`
@@ -703,4 +669,22 @@ export class MediaService {
       .sort((x, y) => x.width - y.width)
       .map((v) => ({ url: this.storage.publicUrl(v.key), width: v.width }));
   }
+}
+
+/** A request body in memory; past maxBytes it throws TooLargeError. */
+async function readBody(body: Readable, maxBytes: number): Promise<Buffer> {
+  const chunks: Buffer[] = [];
+  let bytes = 0;
+  await pipeline(
+    body,
+    new Writable({
+      write(chunk: Buffer, _encoding, done) {
+        bytes += chunk.length;
+        if (bytes > maxBytes) return done(new TooLargeError());
+        chunks.push(chunk);
+        done();
+      },
+    }),
+  );
+  return Buffer.concat(chunks, bytes);
 }

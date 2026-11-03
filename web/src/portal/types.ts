@@ -303,6 +303,9 @@ export interface MediaAsset {
   store: MediaStoreName;
   mimeType: string;
   bytes: number;
+  /** What was uploaded before it became WebP; null for older images. */
+  sourceType: string | null;
+  sourceBytes: number | null;
   width: number | null;
   height: number | null;
   alt: string;
@@ -323,7 +326,7 @@ export interface MediaPage {
 }
 
 export interface StorageCheckStep {
-  key: 'connect' | 'write' | 'read' | 'cors' | 'delete';
+  key: 'connect' | 'write' | 'read' | 'delete';
   label: string;
   /** null = not run, because an earlier step failed. */
   ok: boolean | null;
@@ -356,8 +359,6 @@ export interface MediaStorageView {
     problem: string | null;
   };
   images: { r2: number; server: number };
-  /** Where the portal uploads from: the bucket's CORS rule must allow it. */
-  uploadOrigin: string;
   publicBaseUrl: string;
   maxUploadBytes: number;
   updatedAt: string | null;

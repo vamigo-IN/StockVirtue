@@ -7,7 +7,6 @@ import {
   PutObjectCommand,
   S3Client,
 } from '@aws-sdk/client-s3';
-import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
 export interface R2Connection {
   accountId: string;
@@ -58,8 +57,7 @@ export class R2Store {
       endpoint: this.endpoint,
       // Bucket in the path (as Bulava does): no per-bucket host names.
       forcePathStyle: true,
-      // SDK v3 otherwise signs a checksum of the (empty) body into presigned
-      // PUT URLs, so the browser's real upload fails with BadDigest.
+      // SDK v3 otherwise adds checksums R2 may refuse (BadDigest).
       // Cloudflare's R2 docs ask for exactly these two settings.
       requestChecksumCalculation: 'WHEN_REQUIRED',
       responseChecksumValidation: 'WHEN_REQUIRED',
@@ -69,22 +67,6 @@ export class R2Store {
         secretAccessKey: conn.secretAccessKey,
       },
     });
-  }
-
-  presignPut(
-    key: string,
-    contentType: string,
-    ttlSeconds: number,
-  ): Promise<string> {
-    return getSignedUrl(
-      this.client,
-      new PutObjectCommand({
-        Bucket: this.bucket,
-        Key: key,
-        ContentType: contentType,
-      }),
-      { expiresIn: ttlSeconds },
-    );
   }
 
   /** Size of a stored object, or null when it isn't there. */

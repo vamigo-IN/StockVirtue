@@ -1207,6 +1207,10 @@ model MediaAsset {
   originalName String?
   mimeType     String
   bytes        Int
+  /// What was uploaded before it became WebP (e.g. image/png), and its size.
+  /// The file as sent is never kept. Null for images stored before that.
+  sourceType   String?
+  sourceBytes  Int?
   width        Int?
   height       Int?
   sha256       String?

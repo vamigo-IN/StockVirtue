@@ -165,18 +165,31 @@ that buffers) in front of those two paths.
   phones, market-closed behaviour) with a live preview, and the **data
   licence** — live, delayed (by N minutes), end-of-day or off, for the website
   and the app separately, plus the attribution shown with every price.
-- **Media library**: with Cloudflare R2 connected, images upload from the
-  browser straight to the bucket; otherwise they go to the API server through
-  the portal (`PUT staff/media/:id/content`, passed through unchanged). The API
-  then checks the file, strips its metadata, makes resized copies and serves
-  every image at `api.stockvirtue.com/media/...`.
+- **Media library**: images go to the API server through the portal (`PUT
+  staff/media/:id/content`, passed through unchanged) and stay in memory there:
+  the API checks the bytes and stores **only WebP**, in Cloudflare R2 when it is
+  connected or else on its disk. The file as uploaded is never stored.
+  - JPEG, PNG, GIF and AVIF are re-encoded: photos lossy at quality 80;
+    graphics such as charts and screenshots lossless when that is within 10%
+    of lossy.
+  - A WebP is kept byte for byte, minus EXIF/XMP (camera, GPS location) and
+    anything that isn't the picture.
+  - Images are made upright and at most 2,400 px on the long side, with 480
+    and 1,200 px WebP copies. Animated GIFs become animated WebP.
+  - The library shows each image's saving ("PNG 3.2 MB → WebP 410 KB").
+  - The API serves every image at `api.stockvirtue.com/media/...`. The tuning
+    lives in `backend/src/newsroom/media/image-optimizer.ts`.
 - **Media storage** (`media.storage`, Super Admin): connect Cloudflare R2
   (account ID, bucket, access key; the secret is stored encrypted) and run the
-  connection check: sign in, write a file, read it back, ask the bucket whether
-  this site may upload (CORS), delete the file. The page shows the CORS policy
-  to paste into the bucket. Until R2 is connected and switched on, uploads are
-  kept on the API server's disk. Files never move between stores, and a
-  connection that R2 images still load through can't be removed.
+  connection check: sign in, write a file, read it back, delete it. The bucket
+  needs no CORS rule (browsers never talk to it). Until R2 is connected and
+  switched on, images are kept on the API server's disk. Files never move
+  between stores, and a connection that R2 images still load through can't be
+  removed.
+- **Branding images from the library**: a favicon or share image picked in
+  Site settings → Branding is WebP like everything else, so the site serves it
+  through `/brand/icon.png`, `/brand/apple-icon.png` (iPhones) and
+  `/brand/share.jpg` (1200×630 for link previews), converted on the fly.
 - **News homepage** (`site.manage`, Super Admin and Admin): which sections
   `/news` shows and in what order: breaking banner, featured, top stories,
   trending, one block per chosen category (Official updates by default), app

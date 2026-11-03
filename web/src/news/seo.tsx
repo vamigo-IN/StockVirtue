@@ -39,14 +39,9 @@ const siteIndexable = (s: SiteSettings) => !s.config.search.noindex;
 /** The site's default share image, for pages without their own. */
 function defaultShareImage(s: SiteSettings) {
   const share = s.config.branding.shareImage;
-  return share
-    ? {
-        url: share.url,
-        width: share.width ?? undefined,
-        height: share.height ?? undefined,
-        alt: SITE.name,
-      }
-    : { url: absolute('/og.png'), width: 1200, height: 630, alt: SITE.name };
+  // A library image comes as a JPEG crop through /brand (the library keeps WebP).
+  const url = share ? `/brand/share.jpg?v=${share.id}` : '/og.png';
+  return { url: absolute(url), width: 1200, height: 630, alt: SITE.name };
 }
 
 export function absolute(path: string): string {

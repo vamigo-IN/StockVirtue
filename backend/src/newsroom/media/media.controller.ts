@@ -41,7 +41,7 @@ export class MediaController {
     return this.media.startUpload(actor, dto);
   }
 
-  /** The file itself, for uploads kept on this server (raw image body). */
+  /** The file itself (raw image body): stored as WebP when this returns. */
   @StaffOnly('media.upload')
   @Put(':id/content')
   @HttpCode(200)
@@ -57,6 +57,7 @@ export class MediaController {
       id,
       req,
       length && Number.isFinite(declared) ? declared : null,
+      this.client(req),
     );
   }
 

@@ -1,5 +1,4 @@
 import { randomUUID } from 'node:crypto';
-import type { Readable } from 'node:stream';
 import {
   Injectable,
   Logger,
@@ -12,13 +11,10 @@ import { SecretBoxService, SecretUnreadableError } from '../common/secret-box';
 import { AppConfig, StorageConfig } from '../config/configuration';
 import { PrismaService } from '../prisma/prisma.service';
 import { LocalStore, TooLargeError } from './local-store';
-import { incomingKey } from './media-keys';
 import { R2Connection, R2Store } from './r2-store';
 
 export const MEDIA_STORAGE_ID = 'default';
 
-/// Short on purpose: the URL is a bearer credential for one upload.
-const UPLOAD_TTL_SEC = 300;
 /// How long a process trusts its copy of the saved connection. A save applies
 /// at once in the process that made it; others catch up within this.
 const SETTINGS_TTL_MS = 30_000;
@@ -27,23 +23,16 @@ export interface StoredObject {
   bytes: number;
 }
 
-/** How the browser sends an upload's bytes. */
-export type UploadTarget =
-  | {
-      /** Straight to the bucket with a signed link (needs its CORS rule). */
-      target: 'r2';
-      method: 'PUT';
-      url: string;
-      /** Headers the uploader must send exactly as given (they are signed). */
-      headers: Record<string, string>;
-      expiresAt: Date;
-    }
-  | {
-      /** To this server through the portal: PUT staff/media/:id/content. */
-      target: 'server';
-      method: 'PUT';
-      headers: Record<string, string>;
-    };
+/**
+ * How the browser sends an upload's bytes: always to this server, through
+ * the portal (PUT staff/media/:id/content), which keeps only the WebP it
+ * makes from them, in R2 or on disk.
+ */
+export interface UploadTarget {
+  target: 'server';
+  method: 'PUT';
+  headers: Record<string, string>;
+}
 
 export interface SavedConnection {
   row: MediaStorageSettings | null;
@@ -155,33 +144,12 @@ export class StorageService implements OnModuleInit {
     return c.r2 && c.row?.uploadToR2 ? MediaStore.R2 : MediaStore.LOCAL;
   }
 
-  async uploadTarget(
-    store: MediaStore,
-    assetId: string,
-    contentType: string,
-  ): Promise<UploadTarget> {
-    const headers = { 'Content-Type': contentType };
-    if (store === MediaStore.LOCAL) {
-      return { target: 'server', method: 'PUT', headers };
-    }
-    const r2 = await this.r2();
-    const url = await r2.presignPut(
-      incomingKey(assetId),
-      contentType,
-      UPLOAD_TTL_SEC,
-    );
+  uploadTarget(contentType: string): UploadTarget {
     return {
-      target: 'r2',
+      target: 'server',
       method: 'PUT',
-      url,
-      headers,
-      expiresAt: new Date(Date.now() + UPLOAD_TTL_SEC * 1000),
+      headers: { 'Content-Type': contentType },
     };
-  }
-
-  /** A server upload's bytes, written while they arrive (LOCAL only). */
-  receive(assetId: string, body: Readable, maxBytes: number): Promise<number> {
-    return this.local.putStream(incomingKey(assetId), body, maxBytes);
   }
 
   async head(store: MediaStore, key: string): Promise<StoredObject | null> {
