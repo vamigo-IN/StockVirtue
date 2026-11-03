@@ -18,6 +18,7 @@ import {
   StockMappingController,
 } from './ingestion.controllers';
 import { SourceItemsService } from './source-items.service';
+import { SourcePicturesService } from './source-pictures.service';
 import { SourcesService } from './sources.service';
 import { StockMappingService } from './stock-mapping.service';
 import { StockMatcherService } from './stock-matcher.service';
@@ -47,6 +48,7 @@ import { StockMatcherService } from './stock-matcher.service';
     StockMatcherService,
     EditorAlertsService,
     ArticlePublisher,
+    SourcePicturesService,
     AutoStoryService,
     IngestService,
     IngestQueue,

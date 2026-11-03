@@ -66,6 +66,7 @@ export class CloseReminderService implements OnModuleInit, OnModuleDestroy {
       // Users holding an open intraday (MIS) position OR any F&O position.
       const positions = await this.prisma.position.findMany({
         where: {
+          user: { status: 'ACTIVE' },
           quantity: { not: 0 },
           OR: [
             { product: OrderProduct.INTRADAY },

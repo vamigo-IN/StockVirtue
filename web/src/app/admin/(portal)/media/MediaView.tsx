@@ -74,9 +74,13 @@ function Details({
             {asset.originalName ?? 'Image'}
           </SheetTitle>
           <SheetDescription>
-            {asset.width}×{asset.height} · {formatBytes(asset.bytes)} · uploaded
-            by {asset.uploadedBy?.displayName ?? 'someone'} on{' '}
-            {formatDateTime(asset.createdAt)} · stored{' '}
+            {asset.width}×{asset.height} · {formatBytes(asset.bytes)} ·{' '}
+            {asset.uploadedBy
+              ? `uploaded by ${asset.uploadedBy.displayName}`
+              : asset.credit
+                ? `from ${asset.credit}`
+                : 'uploaded by someone'}{' '}
+            on {formatDateTime(asset.createdAt)} · stored{' '}
             {asset.store === 'R2' ? 'in Cloudflare R2' : 'on this server'}
           </SheetDescription>
         </SheetHeader>

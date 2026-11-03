@@ -78,8 +78,9 @@ export class EditorAlertsService {
         list.map((i) => `• ${escapeHtml(i.title)}`).join('<br>') +
           (n > list.length ? `<br>…and ${n - list.length} more.` : ''),
       ),
+      this.mail.button('Open Incoming news', link),
       this.mail.para(
-        `<a href="${escapeHtml(link)}" style="font-weight:700;">Open Incoming news</a> to start a story or dismiss them. Nothing is published until an editor approves it.`,
+        'Start a story from them or dismiss them there. Nothing is published until an editor approves it.',
       ),
     ].join('');
     const text = `${source.name} delivered ${n} new items:\n${list

@@ -77,7 +77,9 @@ export default async function ArticlePage({ params }: Props) {
     <>
       <JsonLdScript
         data={[
-          newsArticleJsonLd(a),
+          newsArticleJsonLd(a, {
+            logoUrl: settings.config.branding.logo?.url,
+          }),
           breadcrumbJsonLd([
             ...trail,
             { name: a.title, path: newsPath.article(a.slug) },
@@ -154,20 +156,9 @@ export default async function ArticlePage({ params }: Props) {
                   Sources
                 </h2>
                 <ul className="mt-2 space-y-1 text-sm text-muted-foreground">
-                  {a.sources.map((s) => (
-                    <li key={`${s.name}-${s.url ?? ''}`}>
-                      {s.url ? (
-                        <a
-                          href={s.url}
-                          target="_blank"
-                          rel="noopener noreferrer nofollow"
-                          className="text-primary underline-offset-2 hover:underline"
-                        >
-                          {s.name}
-                        </a>
-                      ) : (
-                        s.name
-                      )}
+                  {a.sources.map((s, i) => (
+                    <li key={`${i}-${s.name}`}>
+                      {s.name}
                       {s.note && <span> · {s.note}</span>}
                     </li>
                   ))}

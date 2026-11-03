@@ -48,6 +48,11 @@ export default async function ContactPage() {
           <Reveal>
             <div className="card">
               <ContactForm />
+              <p className="muted" style={{ fontSize: '0.85rem', marginTop: 14 }}>
+                We use your name, email and message only to reply to you, and
+                delete them a year after our last reply. See our{' '}
+                <a href="/privacy">privacy notice</a>.
+              </p>
             </div>
           </Reveal>
 

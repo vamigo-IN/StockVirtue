@@ -16,9 +16,11 @@ import {
   AdsDto,
   AnalyticsDto,
   BrandingDto,
+  PrivacyContactDto,
   SearchSettingsDto,
   UpdateSiteSettingsDto,
 } from './site.dto';
+import type { SiteConfig } from './site-config';
 import { SiteService } from './site.service';
 
 /** Website settings, edited from the newsroom portal. */
@@ -52,10 +54,11 @@ export class SiteStaffController {
     if (
       !has(actor, 'settings.read') &&
       !has(actor, 'seo.read') &&
-      !has(actor, 'ads.manage')
+      !has(actor, 'ads.manage') &&
+      !has(actor, 'privacy.manage')
     ) {
       throw new ForbiddenException(
-        'Viewing website settings needs the settings.read, seo.read or ads.manage permission.',
+        'Viewing website settings needs the settings.read, seo.read, ads.manage or privacy.manage permission.',
       );
     }
     return this.site.getConfigForStaff();
@@ -118,7 +121,29 @@ export class SiteStaffController {
     @Body() dto: AdsDto,
     @Req() req: Request,
   ) {
-    return this.site.updateConfig(actor, 'ads', { ...dto }, this.client(req));
+    // A missing withoutConsent (older portal) keeps the saved choice.
+    return this.site.updateConfig(
+      actor,
+      'ads',
+      { ...dto } as SiteConfig['ads'],
+      this.client(req),
+    );
+  }
+
+  /** The grievance officer and response time (Privacy tab). */
+  @StaffOnly('privacy.manage')
+  @Put('config/privacy')
+  privacy(
+    @CurrentStaff() actor: StaffPrincipal,
+    @Body() dto: PrivacyContactDto,
+    @Req() req: Request,
+  ) {
+    return this.site.updateConfig(
+      actor,
+      'privacy',
+      { ...dto },
+      this.client(req),
+    );
   }
 
   private client(req: Request) {

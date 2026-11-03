@@ -66,7 +66,9 @@ export function CatalogueDialog({
           <DialogDescription>
             Government, regulator and central-bank feeds. Each is set to what
             its publisher&apos;s terms clearly allow, with the terms linked.
-            Check them yourself before showing more.
+            Check them yourself before showing more. Stories from government
+            bodies and regulators go in Official updates, apart from the main
+            news.
           </DialogDescription>
         </DialogHeader>
         {catalogue.error ? (
@@ -88,7 +90,14 @@ export function CatalogueDialog({
                       <li key={c.key} className="space-y-1.5 p-3">
                         <div className="flex flex-wrap items-start gap-2">
                           <div className="min-w-0 flex-1">
-                            <p className="text-sm font-medium">{c.name}</p>
+                            <p className="text-sm font-medium">
+                              {c.name}
+                              {c.official && (
+                                <span className="ml-2 text-xs font-normal text-muted-foreground">
+                                  Official updates
+                                </span>
+                              )}
+                            </p>
                             <p className="text-xs text-muted-foreground">
                               {c.terms}{' '}
                               <a

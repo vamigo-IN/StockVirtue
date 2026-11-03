@@ -13,7 +13,7 @@ import {
 } from '@nestjs/common';
 import { MediaAsset, MediaStatus, MediaStore, Prisma } from '@prisma/client';
 import sharp from 'sharp';
-import { AuditService } from '../../audit/audit.service';
+import { AuditActor, AuditService } from '../../audit/audit.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ClientInfo, StaffPrincipal } from '../../staff/staff-request';
 import { TooLargeError } from '../../storage/local-store';
@@ -38,6 +38,9 @@ const MAX_PIXELS = 60_000_000;
 /// Uploads kept on this server must leave this much disk free (the API and
 /// the trading engine share it).
 const MIN_FREE_BYTES = 1024 ** 3;
+/// A news source's "picture" smaller than this is a tracking pixel or an icon.
+const MIN_IMPORT_WIDTH = 200;
+const MIN_IMPORT_HEIGHT = 100;
 
 interface Variant {
   key: string;
@@ -350,6 +353,117 @@ export class MediaService {
         this.logger.warn(`Couldn't delete ${incoming}: ${err.message}`),
       );
     return this.view(updated);
+  }
+
+  /** Largest picture a news source may send (the upload limit). */
+  get maxImportBytes(): number {
+    return this.storage.maxUploadBytes;
+  }
+
+  /**
+   * A picture from a news source whose licence covers pictures, for a story
+   * made from one of its items: checked and cleaned exactly like an upload,
+   * credited to the source, and kept wherever uploads go now. The same
+   * picture again reuses its asset. Throws when it can't be used.
+   */
+  async importImage(
+    original: Buffer,
+    meta: {
+      name: string;
+      alt: string;
+      credit: string;
+      /** Who made the story: a person, or the automation. */
+      actor: AuditActor;
+    },
+  ): Promise<MediaAsset> {
+    if (!original.length || original.length > this.maxImportBytes) {
+      throw new Error('the picture is empty or too large');
+    }
+    const kind = sniffImage(original);
+    if (!kind) {
+      throw new Error("the picture isn't a JPEG, PNG, WebP, GIF or AVIF image");
+    }
+    const processed = await this.processImage(original, kind);
+    if (
+      processed.width < MIN_IMPORT_WIDTH ||
+      processed.height < MIN_IMPORT_HEIGHT
+    ) {
+      throw new Error(
+        `the picture is too small (${processed.width}×${processed.height})`,
+      );
+    }
+    const sha256 = createHash('sha256').update(processed.data).digest('hex');
+    const known = await this.prisma.mediaAsset.findFirst({
+      where: { sha256, status: MediaStatus.READY },
+    });
+    if (known) return known;
+    const store = await this.storage.uploadStore();
+    if (store === MediaStore.LOCAL) {
+      const free = await this.storage.local.freeBytes();
+      if (free !== null && free - processed.data.length < MIN_FREE_BYTES) {
+        throw new Error('this server is nearly out of disk space');
+      }
+    }
+    const storageKey = this.storage.newKey('media', IMAGE_EXT[kind]);
+    const base = storageKey.replace(/\.[a-z0-9]+$/i, '');
+    const written: string[] = [];
+    try {
+      await this.storage.put(
+        store,
+        storageKey,
+        processed.data,
+        IMAGE_MIME[kind],
+      );
+      written.push(storageKey);
+      const variants: Variants = {};
+      for (const v of processed.variants) {
+        const key = `${base}-w${v.width}.webp`;
+        await this.storage.put(store, key, v.data, 'image/webp');
+        written.push(key);
+        variants[`w${v.target}`] = { key, width: v.width, height: v.height };
+      }
+      return await this.prisma.$transaction(async (tx) => {
+        const asset = await tx.mediaAsset.create({
+          data: {
+            storageKey,
+            store,
+            originalName: meta.name.slice(0, 200),
+            mimeType: IMAGE_MIME[kind],
+            bytes: processed.data.length,
+            width: processed.width,
+            height: processed.height,
+            sha256,
+            alt: meta.alt.trim().slice(0, 300),
+            credit: meta.credit.trim().slice(0, 200) || null,
+            variants: variants as unknown as Prisma.InputJsonValue,
+            status: MediaStatus.READY,
+          },
+        });
+        await this.audit.record(
+          {
+            actor: meta.actor,
+            action: 'media.import',
+            entityType: 'MediaAsset',
+            entityId: asset.id,
+            after: {
+              name: asset.originalName,
+              credit: asset.credit,
+              mimeType: asset.mimeType,
+              width: asset.width,
+              height: asset.height,
+            },
+          },
+          tx,
+        );
+        return asset;
+      });
+    } catch (err) {
+      // Files written for an asset that was never recorded belong to nothing.
+      for (const key of written) {
+        await this.storage.delete(store, key).catch(() => undefined);
+      }
+      throw err;
+    }
   }
 
   async update(

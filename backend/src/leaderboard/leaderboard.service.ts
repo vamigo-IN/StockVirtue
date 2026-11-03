@@ -47,10 +47,7 @@ export class LeaderboardService implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   onModuleInit() {
-    this.bootTimer = setTimeout(
-      () => void this.recompute(),
-      STARTUP_DELAY_MS,
-    );
+    this.bootTimer = setTimeout(() => void this.recompute(), STARTUP_DELAY_MS);
     this.timer = setInterval(
       () => void this.recompute(),
       RECOMPUTE_INTERVAL_MS,
@@ -98,8 +95,13 @@ export class LeaderboardService implements OnModuleInit, OnModuleDestroy {
     const start = Date.now();
     try {
       const [wallets, users, credits] = await Promise.all([
-        this.prisma.wallet.findMany({ select: { userId: true } }),
+        // Deleted and blocked accounts never appear on the leaderboard.
+        this.prisma.wallet.findMany({
+          where: { user: { status: 'ACTIVE' } },
+          select: { userId: true },
+        }),
         this.prisma.user.findMany({
+          where: { status: 'ACTIVE' },
           select: { id: true, displayName: true },
         }),
         this.prisma.walletCredit.groupBy({
@@ -119,7 +121,9 @@ export class LeaderboardService implements OnModuleInit, OnModuleDestroy {
 
       const rows = Array.from(totals.entries()).map(([userId, t]) => {
         const tradingPnLP =
-          t.totalEquityP - INITIAL_BALANCE_P - (creditsByUser.get(userId) ?? 0n);
+          t.totalEquityP -
+          INITIAL_BALANCE_P -
+          (creditsByUser.get(userId) ?? 0n);
         return { userId, equityP: t.totalEquityP, tradingPnLP };
       });
       rows.sort((a, b) => {

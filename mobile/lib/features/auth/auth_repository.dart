@@ -46,10 +46,16 @@ class AuthRepository {
   /// sign-in) for our own access + refresh JWTs. The backend verifies the
   /// token via firebase-admin and upserts the User row — this is the single
   /// sign-in path for every method.
-  Future<AuthResult> firebaseLogin(String idToken) async {
+  ///
+  /// [consent] is the accepted privacy notice ({noticeVersion, adult}); the
+  /// server records it when this sign-in creates the account.
+  Future<AuthResult> firebaseLogin(
+    String idToken, {
+    Map<String, dynamic>? consent,
+  }) async {
     final res = await _dio.post<Map<String, dynamic>>(
       '/auth/firebase/login',
-      data: {'idToken': idToken},
+      data: {'idToken': idToken, 'consent': ?consent},
     );
     final data = res.data!;
     return AuthResult(
@@ -62,10 +68,14 @@ class AuthRepository {
 
   /// Step 1 of sign-up: create the (unverified) account and trigger an
   /// email OTP. Throws on failure (e.g. email already registered).
-  Future<void> registerEmail(String email, String password) async {
+  Future<void> registerEmail(
+    String email,
+    String password, {
+    Map<String, dynamic>? consent,
+  }) async {
     await _dio.post(
       '/auth/email/register',
-      data: {'email': email, 'password': password},
+      data: {'email': email, 'password': password, 'consent': ?consent},
     );
   }
 

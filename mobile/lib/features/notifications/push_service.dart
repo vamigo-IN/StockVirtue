@@ -164,6 +164,17 @@ class PushService {
     } catch (_) {}
   }
 
+  /// Deletes this phone's FCM token, so a token the server still holds stops
+  /// working (signing out with an expired session, or after deleting the
+  /// account). Never throws.
+  Future<void> dropLocalToken() async {
+    try {
+      await FirebaseMessaging.instance
+          .deleteToken()
+          .timeout(const Duration(seconds: 3));
+    } catch (_) {}
+  }
+
   /// Request notification permission and return the FCM token (or null when
   /// messaging isn't available — web/desktop/unconfigured).
   Future<String?> requestAndGetToken() async {

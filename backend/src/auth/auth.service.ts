@@ -2,6 +2,8 @@ import * as crypto from 'node:crypto';
 import {
   BadRequestException,
   ConflictException,
+  HttpException,
+  HttpStatus,
   Injectable,
   Logger,
   NotFoundException,
@@ -21,6 +23,7 @@ import {
 import { FirebaseAdminService } from '../firebase/firebase-admin.service';
 import type { DecodedIdToken } from 'firebase-admin/auth';
 import { MailService } from '../mail/mail.service';
+import { ConsentService, NoticeAcceptance } from '../privacy/consent.service';
 import { RedisService } from '../redis/redis.service';
 import { UsersService } from '../users/users.service';
 
@@ -57,6 +60,10 @@ export class AuthService {
   private readonly refreshSecret: string;
   private readonly accessTtl: number;
   private readonly refreshTtl: number;
+  /// HMAC key for emailed codes: Redis holds digests, never the codes.
+  private readonly otpKey: string;
+  /// New accounts must come with an accepted privacy notice.
+  private readonly requireConsent: boolean;
 
   constructor(
     config: ConfigService<AppConfig, true>,
@@ -66,12 +73,41 @@ export class AuthService {
     private readonly firebase: FirebaseAdminService,
     private readonly mail: MailService,
     private readonly flags: FeatureFlagsService,
+    private readonly consent: ConsentService,
   ) {
     const jwtCfg = config.get('jwt', { infer: true });
     this.accessSecret = jwtCfg.accessSecret;
     this.refreshSecret = jwtCfg.refreshSecret;
     this.accessTtl = jwtCfg.accessTtl;
     this.refreshTtl = jwtCfg.refreshTtl;
+    this.otpKey = crypto
+      .createHmac('sha256', jwtCfg.accessSecret)
+      .update('stockvirtue:app:email-code:v1')
+      .digest('hex');
+    this.requireConsent = config.get('privacy', {
+      infer: true,
+    }).requireSignupConsent;
+  }
+
+  /// The privacy notice has to come with a new account once strict mode is on.
+  private consentMissing(): HttpException {
+    return new HttpException(
+      {
+        statusCode: HttpStatus.PRECONDITION_REQUIRED,
+        message:
+          'Please read and accept our privacy notice, and confirm you are 18 or older, to create an account. Update the app if you don\u2019t see it.',
+        code: 'consent_required',
+      },
+      HttpStatus.PRECONDITION_REQUIRED,
+    );
+  }
+
+  /// Digest of an emailed code, bound to the address it was sent to.
+  private otpDigest(email: string, code: string): string {
+    return crypto
+      .createHmac('sha256', this.otpKey)
+      .update(`${email}:${code}`)
+      .digest('hex');
   }
 
   /// Per-IP throttle for the auth surface. The existing limits are keyed by
@@ -108,10 +144,14 @@ export class AuthService {
     ip: string | undefined,
     rawEmail: string,
     password: string,
+    consent?: NoticeAcceptance,
   ) {
     // Per-IP cap BEFORE the 32MB scrypt + user create + email send, so a single
     // IP can't burn CPU / spam accounts / email-bomb arbitrary addresses.
     await this.ipLimit(ip, 'register', 10, 15 * 60);
+    // The notice is accepted before anything is stored (DPDP Act s.6).
+    if (consent) this.consent.check(consent);
+    else if (this.requireConsent) throw this.consentMissing();
     const email = this.normalizeEmail(rawEmail);
     const existing = await this.users.findByEmail(email);
     if (existing?.emailVerified) {
@@ -132,11 +172,11 @@ export class AuthService {
       await this.users.releaseUnverifiedAlias(email);
     }
     const passwordHash = await hashPassword(password);
-    if (resumable && existing) {
-      await this.users.setPassword(existing.id, passwordHash);
-    } else {
-      await this.users.createEmailUser({ email, passwordHash });
-    }
+    const account =
+      resumable && existing
+        ? await this.users.setPassword(existing.id, passwordHash)
+        : await this.users.createEmailUser({ email, passwordHash });
+    if (consent) await this.consent.accept(account.id, consent, 'app.signup');
     await this.sendEmailOtp(email);
     return { email, ttl: EMAIL_OTP_TTL, requiresVerification: true };
   }
@@ -153,7 +193,7 @@ export class AuthService {
       'Too many attempts. Request a new code.',
     );
     const stored = await this.redis.client.get(this.emailOtpKey(email));
-    if (!stored || !timingSafeEqualStr(stored, code)) {
+    if (!stored || !timingSafeEqualStr(stored, this.otpDigest(email, code))) {
       throw new UnauthorizedException('Invalid or expired code');
     }
     await this.redis.client.del(this.emailOtpKey(email));
@@ -254,7 +294,7 @@ export class AuthService {
     const code = this.generateEmailOtp();
     await this.redis.client.set(
       this.resetOtpKey(email),
-      code,
+      this.otpDigest(email, code),
       'EX',
       EMAIL_OTP_TTL,
     );
@@ -283,7 +323,7 @@ export class AuthService {
       'Too many attempts. Request a new reset code.',
     );
     const stored = await this.redis.client.get(this.resetOtpKey(email));
-    if (!stored || !timingSafeEqualStr(stored, code)) {
+    if (!stored || !timingSafeEqualStr(stored, this.otpDigest(email, code))) {
       throw new UnauthorizedException('Invalid or expired code');
     }
     const user = await this.users.findByEmail(email);
@@ -321,7 +361,7 @@ export class AuthService {
     const code = this.generateEmailOtp();
     await this.redis.client.set(
       this.emailOtpKey(email),
-      code,
+      this.otpDigest(email, code),
       'EX',
       EMAIL_OTP_TTL,
     );
@@ -365,11 +405,13 @@ export class AuthService {
     // A blocked (or deleted) user must not be able to keep minting access
     // tokens from a still-valid 30-day refresh token.
     const user = await this.users.findById(payload.sub);
-    if (!user || user.status === 'BLOCKED') {
+    if (!user || user.status === 'BLOCKED' || user.status === 'DELETED') {
       await this.redis.client.del(key);
       throw new UnauthorizedException('Account is not active');
     }
     await this.redis.client.del(key);
+    // Using the app counts as activity (inactive accounts are erased).
+    await this.users.markActive(payload.sub);
     return this.issueTokens(payload.sub);
   }
 
@@ -380,8 +422,13 @@ export class AuthService {
    * in the Firebase console: the client authenticates with Firebase, then
    * exchanges the resulting ID token here for app tokens + a persisted User.
    */
-  async loginWithFirebaseIdToken(ip: string | undefined, idToken: string) {
+  async loginWithFirebaseIdToken(
+    ip: string | undefined,
+    idToken: string,
+    consent?: NoticeAcceptance,
+  ) {
     await this.ipLimit(ip, 'firebase', 30, 60);
+    if (consent) this.consent.check(consent);
     if (!this.firebase.configured) {
       throw new UnauthorizedException('Firebase not configured on backend');
     }
@@ -425,13 +472,28 @@ export class AuthService {
       typeof decoded.picture === 'string' && decoded.picture.length > 0
         ? decoded.picture
         : null;
-    const user = await this.users.findOrCreateByFirebase({
+    if (
+      !consent &&
+      this.requireConsent &&
+      !(await this.users.findFirebaseAccount({
+        firebaseUid: decoded.uid,
+        phone,
+        email,
+      }))
+    ) {
+      throw this.consentMissing();
+    }
+    let user = await this.users.findOrCreateByFirebase({
       firebaseUid: decoded.uid,
       phone,
       email,
       displayName,
       avatarUrl,
     });
+    // A new account, or the notice changed since they last accepted it.
+    if (consent && this.consent.needsNotice(user)) {
+      user = await this.consent.accept(user.id, consent, 'app.signup');
+    }
     await this.users.markLoggedIn(user.id);
     const tokens = await this.issueTokens(user.id);
     this.logger.log(
@@ -537,6 +599,7 @@ export class AuthService {
       lastLoginAt: user.lastLoginAt,
       referralCode: user.referralCode,
       referredById: user.referredById,
+      privacy: this.consent.view(user),
     };
   }
 }

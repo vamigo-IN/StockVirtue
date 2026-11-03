@@ -24,6 +24,7 @@ export const PERMISSION_GROUPS: Record<string, string> = {
   staff: 'Staff',
   roles: 'Roles',
   users: 'App users',
+  privacy: 'Privacy',
   site: 'Website',
   ads: 'Ads',
   settings: 'Website settings',

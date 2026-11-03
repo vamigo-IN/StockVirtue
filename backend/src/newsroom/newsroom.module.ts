@@ -74,6 +74,12 @@ import { TaxonomyService } from './taxonomy/taxonomy.service';
     NewsBookmarksService,
     NewsAlertsService,
   ],
-  exports: [ArticlesService, NewsCache, SiteRevalidator, WidgetValidation],
+  exports: [
+    ArticlesService,
+    MediaService,
+    NewsCache,
+    SiteRevalidator,
+    WidgetValidation,
+  ],
 })
 export class NewsroomModule {}

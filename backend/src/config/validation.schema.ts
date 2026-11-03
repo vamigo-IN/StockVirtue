@@ -49,6 +49,10 @@ export const validationSchema = Joi.object({
   SMTP_SECURE: Joi.string().valid('true', 'false').default('false'),
   SMTP_USER: prodRequiredString(),
   SMTP_PASS: prodRequiredString(),
+  MAIL_ASSETS_URL: Joi.string()
+    .uri({ scheme: ['http', 'https'] })
+    .allow('')
+    .default(''),
   SMTP_FROM: Joi.string()
     .allow('')
     .default('StockVirtue <no-reply@stockvirtue.com>'),
@@ -99,6 +103,15 @@ export const validationSchema = Joi.object({
   MONITORING_ENABLED: Joi.string().valid('true', 'false').default('true'),
   MONITORING_SAMPLE_RATE: Joi.number().min(1).default(50),
   MONITORING_AUTO_BLOCK: Joi.string().valid('true', 'false').default('false'),
+  // At least a year (DPDP Rules 2025); smaller values are raised to 365.
+  MONITORING_LOG_RETENTION_DAYS: Joi.number().min(1).default(365),
+
+  // Personal data (DPDP Act): erase accounts unused for N years (0 = never);
+  // require the privacy notice before an account is created.
+  PRIVACY_INACTIVE_YEARS: Joi.number().min(0).max(20).default(3),
+  PRIVACY_REQUIRE_SIGNUP_CONSENT: Joi.string()
+    .valid('true', 'false')
+    .default('false'),
 
   // ─── Public market feed (the /fincalc WebSocket namespace) ─────────────
   // Every value is optional-with-default, deliberately: ConfigModule

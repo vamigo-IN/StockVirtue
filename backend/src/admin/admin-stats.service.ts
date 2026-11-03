@@ -280,6 +280,8 @@ export class AdminStatsService {
   async setUserBlocked(userId: string, blocked: boolean) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new Error('User not found');
+    // A deleted account stays locked until it is erased for good.
+    if (user.status === 'DELETED') return user;
     const updated = await this.prisma.user.update({
       where: { id: userId },
       data: { status: blocked ? 'BLOCKED' : 'ACTIVE' },

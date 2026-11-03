@@ -59,6 +59,31 @@ export interface AdsConfig {
   autoAds: boolean;
   /** Extra ads.txt lines for other ad networks. */
   adsTxt: string;
+  /**
+   * What visitors who haven't allowed advertising cookies get: AdSense's
+   * non-personalised ads, or no ads at all.
+   */
+  withoutConsent: AdsWithoutConsent;
+}
+
+export const ADS_WITHOUT_CONSENT = ['non_personalised', 'off'] as const;
+export type AdsWithoutConsent = (typeof ADS_WITHOUT_CONSENT)[number];
+
+/**
+ * Who answers for personal data (DPDP Act s.8(9); DPDP Rules 2025, rule 9):
+ * shown in the privacy notice, the app and every answer to a privacy request.
+ */
+export interface PrivacyConfig {
+  /** The company responsible for personal data (the Data Fiduciary). */
+  legalName: string;
+  /** Postal address for letters about privacy. */
+  postalAddress: string;
+  /** The grievance officer: answers privacy questions and complaints. */
+  officerName: string;
+  officerEmail: string;
+  officerPhone: string;
+  /** Days within which requests and grievances are answered (at most 90). */
+  responseDays: number;
 }
 
 export interface SiteConfig {
@@ -66,6 +91,7 @@ export interface SiteConfig {
   search: SearchConfig;
   analytics: AnalyticsConfig;
   ads: AdsConfig;
+  privacy: PrivacyConfig;
 }
 
 export type SiteConfigGroup = keyof SiteConfig;
@@ -96,7 +122,20 @@ export const DEFAULT_CONFIG: SiteConfig = {
     llmsArticles: 50,
   },
   analytics: { ga4Id: '', gtmId: '', metaPixelId: '', clarityId: '' },
-  ads: { adsenseClient: '', autoAds: false, adsTxt: '' },
+  ads: {
+    adsenseClient: '',
+    autoAds: false,
+    adsTxt: '',
+    withoutConsent: 'non_personalised',
+  },
+  privacy: {
+    legalName: 'Vamigo Media (OPC) Pvt. Ltd.',
+    postalAddress: '',
+    officerName: '',
+    officerEmail: '',
+    officerPhone: '',
+    responseDays: 30,
+  },
 };
 
 /** The stored document over the defaults; unknown or wrong-typed keys drop. */
@@ -121,11 +160,21 @@ export function readConfig(stored: unknown): SiteConfig {
     }
     return out as T;
   };
+  const ads = merge(DEFAULT_CONFIG.ads, src.ads);
+  if (!ADS_WITHOUT_CONSENT.includes(ads.withoutConsent)) {
+    ads.withoutConsent = DEFAULT_CONFIG.ads.withoutConsent;
+  }
+  const privacy = merge(DEFAULT_CONFIG.privacy, src.privacy);
+  privacy.responseDays = Math.min(
+    90,
+    Math.max(1, Math.round(privacy.responseDays) || 30),
+  );
   return {
     branding: merge(DEFAULT_CONFIG.branding, src.branding),
     search: merge(DEFAULT_CONFIG.search, src.search),
     analytics: merge(DEFAULT_CONFIG.analytics, src.analytics),
-    ads: merge(DEFAULT_CONFIG.ads, src.ads),
+    ads,
+    privacy,
   };
 }
 

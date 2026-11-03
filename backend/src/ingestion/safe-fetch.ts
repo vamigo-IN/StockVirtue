@@ -18,6 +18,10 @@ import { createBrotliDecompress, createGunzip, createInflate } from 'node:zlib';
  *  - one deadline covers the whole request, redirects included.
  */
 
+// Names us and a contact, as public feeds (e.g. the US SEC) ask of robots.
+export const NEWSROOM_USER_AGENT =
+  'StockVirtueNewsroom/1.0 (+https://stockvirtue.com/news; support@stockvirtue.com)';
+
 const BLOCKED = new BlockList();
 const V4: [string, number][] = [
   ['0.0.0.0', 8],

@@ -3,15 +3,17 @@ import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { MediaStatus, MediaStore, StaffChallengeStatus } from '@prisma/client';
 import { Job, Queue } from 'bullmq';
 import { PrismaService } from '../prisma/prisma.service';
+import { PrivacyRetentionService } from '../privacy/privacy-retention.service';
 import { QUEUES } from '../queue/queue.module';
 import { incomingKey } from '../storage/media-keys';
 import { StorageService } from '../storage/storage.service';
 
 const DAY_MS = 86_400_000;
-/// Sign-in codes are useless once expired; failures are in the audit log.
-const CHALLENGE_RETENTION_DAYS = 7;
-/// Ended sessions stay listed on the security page for a month.
-const SESSION_RETENTION_DAYS = 30;
+/// Sign-in attempts (who, from where) and ended sessions are logs of access
+/// to personal data: kept a year, then deleted (DPDP Rules 2025, rules
+/// 6(1)(e) and 8(3)).
+const CHALLENGE_RETENTION_DAYS = 365;
+const SESSION_RETENTION_DAYS = 365;
 /// An upload not completed within a day was abandoned (tab closed mid-way).
 const ABANDONED_UPLOAD_HOURS = 24;
 
@@ -22,9 +24,10 @@ export interface CleanupResult {
 }
 
 /**
- * Newsroom housekeeping, run hourly by the worker: expires stale sign-in codes
- * and deletes old codes and ended sessions so those tables stay small, and
- * removes abandoned uploads so they don't fill the server's disk.
+ * Housekeeping, run by the worker: hourly, expires stale sign-in codes,
+ * deletes sign-in records and ended sessions after a year and removes
+ * abandoned uploads; daily, the privacy retention sweep (deleted and unused
+ * accounts, and every other record past its retention period).
  */
 @Processor(QUEUES.maintenance)
 export class MaintenanceProcessor extends WorkerHost {
@@ -33,11 +36,15 @@ export class MaintenanceProcessor extends WorkerHost {
   constructor(
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
+    private readonly retention: PrivacyRetentionService,
   ) {
     super();
   }
 
-  async process(job: Job): Promise<CleanupResult | number | void> {
+  async process(job: Job): Promise<unknown> {
+    if (job.name === 'privacy-retention') {
+      return this.retention.sweep(new Date());
+    }
     if (job.name === 'media-cleanup') {
       const removed = await this.cleanupUploads(new Date());
       if (removed) {
@@ -143,6 +150,17 @@ export class MaintenanceScheduler implements OnApplicationBootstrap {
         opts: { removeOnComplete: 50, removeOnFail: 100 },
       },
     );
-    this.logger.log('Scheduled staff-cleanup and media-cleanup every hour');
+    // 03:30 IST, after the night's settlement jobs.
+    await this.queue.upsertJobScheduler(
+      'privacy-retention-daily',
+      { pattern: '0 22 * * *', tz: 'UTC' },
+      {
+        name: 'privacy-retention',
+        opts: { removeOnComplete: 30, removeOnFail: 60 },
+      },
+    );
+    this.logger.log(
+      'Scheduled staff-cleanup and media-cleanup every hour, privacy-retention daily',
+    );
   }
 }

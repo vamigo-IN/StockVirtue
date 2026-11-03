@@ -6,10 +6,15 @@ import 'package:google_sign_in/google_sign_in.dart';
 
 import '../../core/analytics.dart';
 import '../../core/firebase_init.dart';
+import '../../core/local_data.dart';
 import '../../data/auth_storage.dart';
 import '../../data/models/user.dart';
+import '../bookmarks/bookmarks_storage.dart';
+import '../home/recently_viewed_storage.dart';
 import '../notifications/notifications_repository.dart';
 import '../notifications/push_service.dart';
+import '../orders/trade_notes_storage.dart';
+import '../privacy/privacy_repository.dart';
 import 'auth_repository.dart';
 
 class AuthController extends AsyncNotifier<AppUser?> {
@@ -18,6 +23,24 @@ class AuthController extends AsyncNotifier<AppUser?> {
   /// step claims it once the account exists. Cleared after it's consumed.
   String? pendingReferralCode;
 
+  /// Ticked on the sign-in screen: "I'm 18 or older and I agree to the
+  /// privacy notice and terms". Sent with sign-up so the server records the
+  /// consent before the account exists (DPDP Act 2023 s.6).
+  bool consentGiven = false;
+
+  /// The notice the person agreed to: the server's current version.
+  Future<Map<String, dynamic>?> _consent() async {
+    if (!consentGiven) return null;
+    var version = kPrivacyNoticeVersion;
+    try {
+      version = (await ref
+              .read(privacyInfoProvider.future)
+              .timeout(const Duration(seconds: 5)))
+          .noticeVersion;
+    } catch (_) {}
+    return {'noticeVersion': version, 'adult': true};
+  }
+
   @override
   Future<AppUser?> build() async {
     final storage = ref.read(authStorageProvider);
@@ -25,7 +48,7 @@ class AuthController extends AsyncNotifier<AppUser?> {
     if (tokens == null) return null;
     try {
       final user = await ref.read(authRepositoryProvider).me();
-      Analytics.instance.setUser(user.id);
+      Analytics.instance.setCollection(user.analyticsConsent);
       return user;
     } catch (_) {
       // Either expired or invalid. The Dio interceptor will already have
@@ -40,8 +63,10 @@ class AuthController extends AsyncNotifier<AppUser?> {
   /// Sign-up step 1: create the account + trigger an email OTP. No auth-state
   /// change yet — the UI routes to the verify screen on success. Throws on
   /// failure (e.g. email already registered) for the screen to surface.
-  Future<void> registerWithEmail(String email, String password) {
-    return ref.read(authRepositoryProvider).registerEmail(email, password);
+  Future<void> registerWithEmail(String email, String password) async {
+    await ref
+        .read(authRepositoryProvider)
+        .registerEmail(email, password, consent: await _consent());
   }
 
   /// Verify the emailed OTP and exchange it for app tokens (signs in).
@@ -51,9 +76,8 @@ class AuthController extends AsyncNotifier<AppUser?> {
       final result =
           await ref.read(authRepositoryProvider).verifyEmail(email, code);
       await ref.read(authStorageProvider).write(result.tokens);
-      Analytics.instance
-        ..setUser(result.user.id)
-        ..logSignUp('email');
+      await Analytics.instance.setCollection(result.user.analyticsConsent);
+      Analytics.instance.logSignUp('email');
       return result.user;
     });
   }
@@ -66,9 +90,8 @@ class AuthController extends AsyncNotifier<AppUser?> {
     final auth = outcome.auth;
     if (auth == null) return true; // requires verification
     await ref.read(authStorageProvider).write(auth.tokens);
-    Analytics.instance
-      ..setUser(auth.user.id)
-      ..logLogin('password');
+    await Analytics.instance.setCollection(auth.user.analyticsConsent);
+    Analytics.instance.logLogin('password');
     state = AsyncData<AppUser?>(auth.user);
     return false;
   }
@@ -90,9 +113,8 @@ class AuthController extends AsyncNotifier<AppUser?> {
           .read(authRepositoryProvider)
           .resetPassword(email, code, newPassword);
       await ref.read(authStorageProvider).write(result.tokens);
-      Analytics.instance
-        ..setUser(result.user.id)
-        ..logLogin('password_reset');
+      await Analytics.instance.setCollection(result.user.analyticsConsent);
+      Analytics.instance.logLogin('password_reset');
       return result.user;
     });
   }
@@ -179,12 +201,12 @@ class AuthController extends AsyncNotifier<AppUser?> {
     if (idToken == null) {
       throw StateError('Firebase did not return an ID token');
     }
-    final result =
-        await ref.read(authRepositoryProvider).firebaseLogin(idToken);
+    final result = await ref
+        .read(authRepositoryProvider)
+        .firebaseLogin(idToken, consent: await _consent());
     await ref.read(authStorageProvider).write(result.tokens);
-    Analytics.instance
-      ..setUser(result.user.id)
-      ..logLogin(method);
+    await Analytics.instance.setCollection(result.user.analyticsConsent);
+    Analytics.instance.logLogin(method);
     return result.user;
   }
 
@@ -213,6 +235,75 @@ class AuthController extends AsyncNotifier<AppUser?> {
     state = AsyncData<AppUser?>(updated);
   }
 
+  // ── Privacy ──────────────────────────────────────────────────────
+
+  /// Accepts the current privacy notice (and confirms 18+), with the
+  /// optional analytics choice.
+  Future<void> acceptPrivacyNotice({required bool analytics}) async {
+    var version = kPrivacyNoticeVersion;
+    try {
+      version = (await ref.read(privacyRepositoryProvider).info()).noticeVersion;
+    } catch (_) {}
+    final status = await ref.read(privacyRepositoryProvider).acceptNotice(
+          noticeVersion: version,
+          adult: true,
+          analytics: analytics,
+        );
+    await Analytics.instance.setCollection(status.analytics);
+    final current = state.value;
+    if (current != null) {
+      state = AsyncData<AppUser?>(current.copyWith(
+        needsPrivacyNotice: status.needsNotice,
+        analyticsConsent: status.analytics,
+      ));
+    }
+  }
+
+  /// Gives or withdraws consent to app analytics.
+  Future<void> setAnalyticsConsent(bool allowed) async {
+    final status =
+        await ref.read(privacyRepositoryProvider).setAnalytics(allowed);
+    await Analytics.instance.setCollection(status.analytics);
+    final current = state.value;
+    if (current != null) {
+      state = AsyncData<AppUser?>(
+        current.copyWith(analyticsConsent: status.analytics),
+      );
+    }
+  }
+
+  /// Deletes the account on the server, then everything about it here.
+  Future<DateTime?> deleteAccount({String? reason}) async {
+    final eraseAfter = await ref
+        .read(privacyRepositoryProvider)
+        .deleteAccount(reason: reason);
+    // The server already dropped this phone's push token and every session.
+    await _signOutLocally();
+    return eraseAfter;
+  }
+
+  /// Signs out of Firebase and Google and clears this phone: tokens, the
+  /// person's cached data, the push token and analytics.
+  Future<void> _signOutLocally() async {
+    try {
+      await FirebaseAuth.instance.signOut();
+    } catch (_) {}
+    try {
+      await _ensureGoogleInitialized();
+      await GoogleSignIn.instance.signOut();
+    } catch (_) {}
+    await ref.read(authStorageProvider).clear();
+    await ref.read(pushServiceProvider).dropLocalToken();
+    await clearPersonalData();
+    ref
+      ..invalidate(bookmarksProvider)
+      ..invalidate(recentlyViewedProvider)
+      ..invalidate(tradeNotesProvider);
+    await Analytics.instance.setCollection(false);
+    consentGiven = false;
+    state = const AsyncData<AppUser?>(null);
+  }
+
   // ── Logout ───────────────────────────────────────────────────────
 
   Future<void> logout() async {
@@ -230,18 +321,8 @@ class AuthController extends AsyncNotifier<AppUser?> {
         // ignore network errors — we still want to clear local state
       }
     }
-    try {
-      await FirebaseAuth.instance.signOut();
-    } catch (_) {}
-    try {
-      await _ensureGoogleInitialized();
-      await GoogleSignIn.instance.signOut();
-    } catch (_) {}
-    await storage.clear();
-    Analytics.instance
-      ..logLogout()
-      ..setUser(null);
-    state = const AsyncData<AppUser?>(null);
+    Analytics.instance.logLogout();
+    await _signOutLocally();
   }
 }
 

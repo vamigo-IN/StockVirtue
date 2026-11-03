@@ -19,6 +19,20 @@ export interface CatalogueSource {
   caution?: string;
 }
 
+/** Government bodies and regulators: their stories go in Official updates. */
+export const OFFICIAL_TYPES: ReadonlySet<NewsSourceType> = new Set([
+  NewsSourceType.RBI,
+  NewsSourceType.SEBI,
+  NewsSourceType.GOVERNMENT,
+]);
+
+/**
+ * The Official updates category (made by the official-updates migration,
+ * kept apart from the main news). Sources added from the catalogue file
+ * there while it exists and is switched on.
+ */
+export const OFFICIAL_CATEGORY_SLUG = 'official-updates';
+
 const EXCHANGE_CAUTION =
   'The exchange reserves all rights, including links and redistribution: get legal sign-off before showing these on the site.';
 

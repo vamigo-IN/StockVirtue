@@ -38,6 +38,7 @@ export class TaxonomyService {
       parentId: r.parentId,
       position: r.position,
       isActive: r.isActive,
+      keepSeparate: r.keepSeparate,
       articleCount: r._count.articles,
     }));
   }
@@ -51,6 +52,7 @@ export class TaxonomyService {
       parentId?: string | null;
       position?: number;
       isActive?: boolean;
+      keepSeparate?: boolean;
     },
     client: ClientInfo,
   ) {
@@ -68,6 +70,7 @@ export class TaxonomyService {
           parentId: dto.parentId ?? null,
           position: dto.position ?? 0,
           isActive: dto.isActive ?? true,
+          keepSeparate: dto.keepSeparate ?? false,
         },
       });
       await this.log(
@@ -80,6 +83,7 @@ export class TaxonomyService {
         {
           name,
           slug,
+          keepSeparate: created.keepSeparate,
         },
       );
       return created;
@@ -98,6 +102,7 @@ export class TaxonomyService {
       parentId?: string | null;
       position?: number;
       isActive?: boolean;
+      keepSeparate?: boolean;
     },
     client: ClientInfo,
   ) {
@@ -117,6 +122,7 @@ export class TaxonomyService {
       parentId: dto.parentId === undefined ? before.parentId : dto.parentId,
       position: dto.position ?? before.position,
       isActive: dto.isActive ?? before.isActive,
+      keepSeparate: dto.keepSeparate ?? before.keepSeparate,
     };
     await this.prisma.$transaction(async (tx) => {
       await tx.newsCategory.update({ where: { id }, data });
@@ -131,6 +137,7 @@ export class TaxonomyService {
           slug: before.slug,
           parentId: before.parentId,
           isActive: before.isActive,
+          keepSeparate: before.keepSeparate,
         },
         data,
       );

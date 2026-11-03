@@ -49,6 +49,11 @@ export class CategoryDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  /** Its stories stay out of Top stories and the latest-news list. */
+  @IsOptional()
+  @IsBoolean()
+  keepSeparate?: boolean;
 }
 
 export class TagDto {

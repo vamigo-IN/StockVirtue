@@ -40,6 +40,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     if (user.status === 'BLOCKED') {
       throw new UnauthorizedException('Account is blocked. Contact support.');
     }
+    if (user.status === 'DELETED') {
+      throw new UnauthorizedException('This account was deleted.');
+    }
     return user;
   }
 }

@@ -1,4 +1,13 @@
-import { IsEmail, IsString, MaxLength, MinLength } from 'class-validator';
+import { Type } from 'class-transformer';
+import {
+  IsEmail,
+  IsOptional,
+  IsString,
+  MaxLength,
+  MinLength,
+  ValidateNested,
+} from 'class-validator';
+import { NoticeAcceptanceDto } from '../../privacy/privacy.dto';
 
 export class EmailRegisterDto {
   @IsEmail()
@@ -11,4 +20,10 @@ export class EmailRegisterDto {
   @MinLength(10)
   @MaxLength(128)
   password!: string;
+
+  /** The privacy notice they accepted, and their 18+ confirmation (app 1.4+). */
+  @IsOptional()
+  @ValidateNested()
+  @Type(() => NoticeAcceptanceDto)
+  consent?: NoticeAcceptanceDto;
 }

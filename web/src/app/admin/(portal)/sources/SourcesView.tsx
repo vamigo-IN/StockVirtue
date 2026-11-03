@@ -257,10 +257,15 @@ export function SourcesView() {
                       </TableCell>
                       <TableCell className="text-sm">
                         {USAGE[s.usage].label}
-                        {(s.allowAiDrafts || ARRIVAL[s.arrivalMode].badge) && (
+                        {(s.allowAiDrafts ||
+                          s.useImages ||
+                          ARRIVAL[s.arrivalMode].badge) && (
                           <div className="mt-1 flex flex-wrap gap-1.5">
                             {s.allowAiDrafts && (
                               <Badge variant="secondary">AI drafts</Badge>
+                            )}
+                            {s.useImages && (
+                              <Badge variant="secondary">Pictures</Badge>
                             )}
                             {ARRIVAL[s.arrivalMode].badge && (
                               <Badge

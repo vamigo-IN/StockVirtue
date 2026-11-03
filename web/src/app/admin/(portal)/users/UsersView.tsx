@@ -78,6 +78,7 @@ export function UsersView() {
             <SelectItem value="all">All statuses</SelectItem>
             <SelectItem value="ACTIVE">Active</SelectItem>
             <SelectItem value="BLOCKED">Blocked</SelectItem>
+            <SelectItem value="DELETED">Deleted</SelectItem>
             <SelectItem value="PENDING">Pending</SelectItem>
           </SelectContent>
         </Select>

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../privacy/widgets/consent_box.dart';
 import '../auth_controller.dart';
 import '../auth_errors.dart';
 import '../auth_repository.dart';
@@ -31,6 +32,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   bool _googleBusy = false;
   bool _obscure = true;
   String? _error;
+  /// "18 or older, and I agree": needed to create an account, by email,
+  /// Google or phone (DPDP Act 2023: consent before any processing).
+  bool _consent = false;
+  bool _consentNudge = false;
 
   // One-shot staggered entrance; one looping controller for the live
   // background (drifting glow + oscillating candles).
@@ -60,6 +65,30 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
     super.dispose();
   }
 
+  void _setConsent(bool v) {
+    ref.read(authControllerProvider.notifier).consentGiven = v;
+    setState(() {
+      _consent = v;
+      if (v) {
+        _consentNudge = false;
+        if (_error == _consentMessage) _error = null;
+      }
+    });
+  }
+
+  static const _consentMessage =
+      'Tick the box to confirm you are 18 or older and agree to the privacy notice.';
+
+  /// Whether the person has agreed; nudges them to the box when not.
+  bool _requireConsent() {
+    if (_consent) return true;
+    setState(() {
+      _consentNudge = true;
+      _error = _consentMessage;
+    });
+    return false;
+  }
+
   void _toVerify(String email) {
     Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => EmailVerifyScreen(email: email)),
@@ -77,6 +106,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
       setState(() => _error = 'Password must be at least 6 characters.');
       return;
     }
+    if (_isSignUp && !_requireConsent()) return;
     setState(() {
       _busy = true;
       _error = null;
@@ -109,6 +139,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   }
 
   Future<void> _signInWithGoogle() async {
+    // Google sign-in creates the account the first time.
+    if (!_requireConsent()) return;
     setState(() {
       _googleBusy = true;
       _error = null;
@@ -125,6 +157,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
   }
 
   void _goToPhone() {
+    if (!_requireConsent()) return;
     Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const PhoneScreen()),
     );
@@ -308,7 +341,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
                       ),
                     ),
             ),
-            SizedBox(height: _isSignUp ? 20 : 12),
+            const SizedBox(height: 12),
+            ConsentBox(
+              value: _consent,
+              onChanged: _setConsent,
+              enabled: !busy,
+              highlight: _consentNudge,
+            ),
+            SizedBox(height: _isSignUp ? 12 : 8),
             _PrimaryButton(
               scheme: scheme,
               busy: _busy,

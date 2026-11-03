@@ -157,7 +157,7 @@ export class SiteService {
       where: { id: SINGLETON },
     });
     const current = readConfig(row?.config);
-    const next = await this.checkGroup(group, input);
+    const next = await this.checkGroup(group, input, current);
     if (JSON.stringify(current[group]) !== JSON.stringify(next)) {
       const config = { ...current, [group]: next };
       await this.prisma.$transaction(async (tx) => {
@@ -190,6 +190,7 @@ export class SiteService {
   private async checkGroup<G extends SiteConfigGroup>(
     group: G,
     input: SiteConfig[G],
+    current: SiteConfig,
   ): Promise<SiteConfig[G]> {
     if (group === 'branding') {
       const b = input as SiteConfig['branding'];
@@ -242,7 +243,11 @@ export class SiteService {
           `This ads.txt line isn't a valid record: "${bad.slice(0, 80)}". Use "domain, account id, DIRECT or RESELLER[, certification id]".`,
         );
       }
-      return { ...a, adsTxt: tidyLines(a.adsTxt) } as SiteConfig[G];
+      return {
+        ...a,
+        adsTxt: tidyLines(a.adsTxt),
+        withoutConsent: a.withoutConsent ?? current.ads.withoutConsent,
+      } as SiteConfig[G];
     }
     return { ...input };
   }
@@ -372,10 +377,11 @@ export class SiteService {
     // 1) Notify the team.
     const to = this.config.get('site', { infer: true }).contactTo;
     const subject = `[Website] ${saved.subject || 'New message'}`;
-    const html = `
-      <p style="margin:0 0 6px"><strong>From:</strong> ${escapeHtml(saved.name)} &lt;${escapeHtml(saved.email)}&gt;</p>
-      <p style="margin:0 0 16px;color:#71717a"><strong>Subject:</strong> ${escapeHtml(saved.subject || '—')}</p>
-      <div style="white-space:pre-wrap">${escapeHtml(saved.message)}</div>`;
+    const html =
+      this.mail.detailTable([
+        { label: 'From', value: `${saved.name} <${saved.email}>` },
+        { label: 'Subject', value: saved.subject || '—' },
+      ]) + this.mail.quote(saved.message);
     const text = `From: ${saved.name} <${saved.email}>\nSubject: ${saved.subject || '—'}\n\n${saved.message}`;
     await this.safeMail(
       () => this.mail.notify(to, subject, 'New website message', html, text),
@@ -383,11 +389,13 @@ export class SiteService {
     );
 
     // 2) Auto-acknowledge the sender.
-    const ackHtml = `
-      <p style="margin:0 0 14px">Hi ${escapeHtml(saved.name)},</p>
-      <p style="margin:0 0 14px">Thanks for reaching out to StockVirtue — we've received your message and our team will get back to you soon.</p>
-      <p style="margin:0 0 6px;color:#71717a"><strong>Your message:</strong></p>
-      <div style="white-space:pre-wrap;color:#52525b">${escapeHtml(saved.message)}</div>`;
+    const ackHtml = [
+      this.mail.para(`Hi ${escapeHtml(saved.name)},`),
+      this.mail.para(
+        "Thanks for reaching out to StockVirtue — we've received your message and our team will get back to you soon. Here's what you sent:",
+      ),
+      this.mail.quote(saved.message),
+    ].join('');
     const ackText = `Hi ${saved.name},\n\nThanks for reaching out to StockVirtue — we've received your message and will get back to you soon.\n\nYour message:\n${saved.message}`;
     await this.safeMail(
       () =>
@@ -457,12 +465,12 @@ export class SiteService {
   async replyToMessage(id: string, replyText: string): Promise<void> {
     const msg = await this.prisma.contactMessage.findUnique({ where: { id } });
     if (!msg) return;
-    const html = `
-      <p style="margin:0 0 14px">Hi ${escapeHtml(msg.name)},</p>
-      <div style="white-space:pre-wrap;margin:0 0 18px">${escapeHtml(replyText)}</div>
-      <hr style="border:none;border-top:1px solid #eee;margin:18px 0" />
-      <p style="margin:0;color:#a1a1aa;font-size:12px">In reply to your message:</p>
-      <div style="white-space:pre-wrap;color:#a1a1aa;font-size:12px">${escapeHtml(msg.message)}</div>`;
+    const html = [
+      this.mail.para(`Hi ${escapeHtml(msg.name)},`),
+      this.mail.para(escapeHtml(replyText).replace(/\r?\n/g, '<br>')),
+      this.mail.para('<b>In reply to your message:</b>'),
+      this.mail.quote(msg.message),
+    ].join('');
     const text = `Hi ${msg.name},\n\n${replyText}\n\n— In reply to your message:\n${msg.message}`;
     await this.mail.notify(
       msg.email,

@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { getSettings, privacyContact } from '@/lib/settings';
 import { SITE } from '@/lib/site';
 import { LegalShell } from '@/components/motion/LegalShell';
 
@@ -8,9 +9,10 @@ export const metadata: Metadata = {
   alternates: { canonical: '/terms' },
 };
 
-const UPDATED = 'June 27, 2026';
+const UPDATED = '3 November 2026';
 
-export default function TermsPage() {
+export default async function TermsPage() {
+  const contact = privacyContact(await getSettings());
   return (
     <LegalShell
       title="Terms & Conditions"
@@ -51,10 +53,11 @@ export default function TermsPage() {
 
           <h2>3. Eligibility &amp; accounts</h2>
           <ul>
-            <li>You must be at least 18 years old (or the age of majority in your jurisdiction) to use the Service.</li>
+            <li>You must be at least 18 years old to have an account. You confirm this when you sign up; we close accounts that belong to anyone younger.</li>
             <li>You agree to provide accurate information and to keep your login credentials secure.</li>
             <li>You are responsible for all activity under your account.</li>
-            <li>You may sign in via email, Google, or phone number; you authorise us to process those credentials to authenticate you.</li>
+            <li>You may sign in via email, Google, or phone number. How we handle that and all other personal data is explained in our <a href="/privacy">Privacy notice</a>, which you accept separately when you sign up.</li>
+            <li>Leaderboards and rooms show your display name and returns to other users; choose a nickname if you prefer.</li>
           </ul>
 
           <h2>4. Virtual money &amp; in-app items</h2>
@@ -121,19 +124,28 @@ export default function TermsPage() {
             real-world financial value.
           </p>
 
-          <h2>11. Termination</h2>
+          <h2>11. Termination and deleting your account</h2>
           <p>
-            We may suspend or terminate your access at any time, with or without
-            notice, including for breach of these Terms. You may stop using the
-            Service and delete your account at any time.
+            We may suspend or terminate your access for breach of these Terms or
+            to protect the Service or other users. You can delete your account
+            at any time in the app (Profile → Privacy &amp; your data → Delete
+            my account) or through our{' '}
+            <a href="/privacy/requests">privacy requests page</a>. Deletion
+            takes effect at once; a locked copy is kept for one year, as the law
+            requires, and then erased. Accounts unused for three years are
+            erased after an email notice. Virtual balances and items end with
+            the account.
           </p>
 
           <h2>12. Changes to these Terms</h2>
           <p>
             We may update these Terms from time to time. Material changes will be
-            reflected by updating the &quot;Last updated&quot; date above.
-            Continued use of the Service after changes take effect constitutes
-            acceptance of the revised Terms.
+            reflected by updating the &quot;Updated&quot; date above and, where
+            they matter to you, announced in the app or by email before they
+            take effect. Continued use of the Service after changes take effect
+            constitutes acceptance of the revised Terms. Changes to how we use
+            personal data follow our Privacy notice, which asks for your consent
+            again where the law requires.
           </p>
 
           <h2>13. Governing law</h2>
@@ -143,11 +155,19 @@ export default function TermsPage() {
             subject to applicable law.
           </p>
 
-          <h2>14. Contact</h2>
+          <h2>14. Contact and grievances</h2>
           <p>
             Questions about these Terms? Contact us at{' '}
             <a href={`mailto:${SITE.email}`}>{SITE.email}</a> or via our{' '}
             <a href="/contact">contact page</a>.
+          </p>
+          <p>
+            Complaints about personal data, or about content and conduct on the
+            Service, go to our Grievance Officer
+            {contact.name ? `, ${contact.name}` : ''}:{' '}
+            <a href={`mailto:${contact.email}`}>{contact.email}</a>
+            {contact.phone ? `, ${contact.phone}` : ''}. We reply within{' '}
+            {contact.responseDays} days.
           </p>
 
       <p className="muted" style={{ fontSize: '0.85rem', marginTop: 32 }}>

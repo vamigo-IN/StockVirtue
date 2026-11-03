@@ -53,11 +53,51 @@ export class UsersService {
     return `SV-${Date.now().toString(36).slice(-6).toUpperCase()}`;
   }
 
+  /** Signing in also cancels a pending inactive-account erasure. */
   markLoggedIn(id: string): Promise<User> {
     return this.prisma.user.update({
       where: { id },
-      data: { lastLoginAt: new Date() },
+      data: { lastLoginAt: new Date(), inactivityNoticeAt: null },
     });
+  }
+
+  /**
+   * The app refreshing its session counts as use too: lastLoginAt moves on
+   * (at most once a day) so a signed-in daily user is never "inactive".
+   */
+  async markActive(id: string): Promise<void> {
+    const now = new Date();
+    await this.prisma.user.updateMany({
+      where: {
+        id,
+        OR: [
+          { lastLoginAt: null },
+          { lastLoginAt: { lt: new Date(now.getTime() - 86_400_000) } },
+        ],
+      },
+      data: { lastLoginAt: now, inactivityNoticeAt: null },
+    });
+  }
+
+  /** Whether a Firebase identity already has an account (no side effects). */
+  async findFirebaseAccount(args: {
+    firebaseUid: string;
+    phone: string | null;
+    email: string | null;
+  }): Promise<boolean> {
+    const hit = await this.prisma.user.findFirst({
+      where: {
+        OR: [
+          { firebaseUid: args.firebaseUid },
+          ...(args.phone ? [{ phone: args.phone }] : []),
+          ...(args.email
+            ? [{ emailAlias: args.email, emailVerified: true }]
+            : []),
+        ],
+      },
+      select: { id: true },
+    });
+    return !!hit;
   }
 
   // ── Server-side email/password accounts ──────────────────────────

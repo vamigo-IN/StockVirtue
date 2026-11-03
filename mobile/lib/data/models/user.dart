@@ -21,6 +21,11 @@ class AppUser {
   /// Non-null once this user has redeemed someone else's invite. Used by
   /// the InviteTile to hide the "redeem" CTA after a successful claim.
   final String? referredById;
+  /// The account still has to read and accept the current privacy notice
+  /// (and confirm being 18 or older) before using the app.
+  final bool needsPrivacyNotice;
+  /// App usage analytics allowed. Off unless the person said yes.
+  final bool analyticsConsent;
 
   const AppUser({
     required this.id,
@@ -36,6 +41,8 @@ class AppUser {
     required this.lastLoginAt,
     required this.referralCode,
     required this.referredById,
+    this.needsPrivacyNotice = false,
+    this.analyticsConsent = false,
   });
 
   AppUser copyWith({
@@ -45,6 +52,8 @@ class AppUser {
     bool? tradeEmailsOptIn,
     bool? profileComplete,
     String? referredById,
+    bool? needsPrivacyNotice,
+    bool? analyticsConsent,
   }) =>
       AppUser(
         id: id,
@@ -60,6 +69,8 @@ class AppUser {
         lastLoginAt: lastLoginAt,
         referralCode: referralCode,
         referredById: referredById ?? this.referredById,
+        needsPrivacyNotice: needsPrivacyNotice ?? this.needsPrivacyNotice,
+        analyticsConsent: analyticsConsent ?? this.analyticsConsent,
       );
 
   factory AppUser.fromJson(Map<String, dynamic> json) => AppUser(
@@ -76,6 +87,11 @@ class AppUser {
         lastLoginAt: _parseDate(json['lastLoginAt']),
         referralCode: json['referralCode'] as String?,
         referredById: json['referredById'] as String?,
+        // Older servers send no privacy block: nothing to ask then.
+        needsPrivacyNotice:
+            (json['privacy'] as Map?)?['needsNotice'] as bool? ?? false,
+        analyticsConsent:
+            (json['privacy'] as Map?)?['analytics'] as bool? ?? false,
       );
 
   static DateTime? _parseDate(Object? value) {

@@ -27,7 +27,12 @@ import {
   parseJsonApi,
   RawItem,
 } from './feed-parser';
-import { safeFetch, SafeFetchError, SafeResponse } from './safe-fetch';
+import {
+  NEWSROOM_USER_AGENT,
+  safeFetch,
+  SafeFetchError,
+  SafeResponse,
+} from './safe-fetch';
 import { StockMatcherService } from './stock-matcher.service';
 import {
   canonicalUrl,
@@ -49,9 +54,6 @@ import {
 
 const MINUTE = 60_000;
 const DAY = 24 * 60 * MINUTE;
-// Names us and a contact, as public feeds (e.g. the US SEC) ask of robots.
-const USER_AGENT =
-  'StockVirtueNewsroom/1.0 (+https://stockvirtue.com/news; support@stockvirtue.com)';
 const FEED_ACCEPT =
   'application/rss+xml, application/atom+xml, application/rdf+xml, application/xml;q=0.9, text/xml;q=0.9, */*;q=0.5';
 const SUMMARY_CHARS = 1500;
@@ -111,6 +113,7 @@ interface Normalised {
   text: string[];
   summary: string | null;
   content: string | null;
+  imageUrl: string | null;
   author: string | null;
   publishedAt: Date | null;
   feedCategories: string[];
@@ -398,7 +401,7 @@ export class IngestService {
     if (!source.url)
       throw new IngestError('This source has no address to fetch.');
     const headers: Record<string, string> = {
-      'user-agent': USER_AGENT,
+      'user-agent': NEWSROOM_USER_AGENT,
       accept:
         source.format === NewsSourceFormat.JSON_API
           ? 'application/json'
@@ -441,15 +444,23 @@ export class IngestService {
     return feed.items;
   }
 
-  /** Cleans an item and keeps only what the licence allows. */
+  /**
+   * Cleans an item and keeps only what the licence allows: the picture too
+   * when the source's licence covers pictures (full-text sources only).
+   */
   normalise(
     raw: RawItem,
     usage: NewsSourceUsage,
     base: string | null,
+    pictures = false,
   ): Normalised | null {
     const title = oneLine(htmlToText(raw.title), 300);
     if (!title) return null;
     const url = canonicalUrl(raw.url, base ?? undefined);
+    const imageUrl =
+      pictures && usage === NewsSourceUsage.FULL_TEXT
+        ? canonicalUrl(raw.image, url ?? base ?? undefined)
+        : null;
     const key = raw.id?.trim() || url || `${title}|${raw.publishedAt ?? ''}`;
     const summary =
       usage === NewsSourceUsage.HEADLINE_ONLY || !raw.summary
@@ -470,6 +481,7 @@ export class IngestService {
       text: summary ? textTokens(`${title}\n${summary}`) : [],
       summary,
       content,
+      imageUrl,
       author: cleanAuthor(raw.author),
       publishedAt: parseSourceDate(raw.publishedAt),
       feedCategories: raw.categories
@@ -480,11 +492,13 @@ export class IngestService {
   }
 
   /** A fetch without storing anything: the source form's Test button. */
-  async preview(source: FetchableSource & { usage: NewsSourceUsage }) {
+  async preview(
+    source: FetchableSource & { usage: NewsSourceUsage; useImages?: boolean },
+  ) {
     const res = await this.fetch(source, false);
     const raw = this.parse(source, decodeBody(res));
     const items = raw
-      .map((r) => this.normalise(r, source.usage, res.url))
+      .map((r) => this.normalise(r, source.usage, res.url, source.useImages))
       .filter((n): n is Normalised => n !== null)
       .slice(0, 8);
     return {
@@ -496,6 +510,7 @@ export class IngestService {
         publishedAt: n.publishedAt,
         summary: n.summary ? clip(n.summary, 300) : null,
         hasFullText: !!n.content,
+        hasImage: !!n.imageUrl,
         author: n.author,
       })),
     };
@@ -512,6 +527,7 @@ export class IngestService {
       | 'type'
       | 'usage'
       | 'allowAiDrafts'
+      | 'useImages'
       | 'attribution'
       | 'name'
       | 'categoryId'
@@ -523,7 +539,7 @@ export class IngestService {
     const seenHashes = new Set<string>();
     const candidates: Normalised[] = [];
     for (const r of raw) {
-      const n = this.normalise(r, source.usage, base);
+      const n = this.normalise(r, source.usage, base, source.useImages);
       if (!n || seenHashes.has(n.externalHash)) continue;
       seenHashes.add(n.externalHash);
       candidates.push(n);
@@ -641,6 +657,7 @@ export class IngestService {
         titleKey: c.titleKey,
         summary: c.summary,
         content: c.content,
+        imageUrl: c.imageUrl,
         author: c.author,
         publishedAt: c.publishedAt,
         fetchedAt: now,
@@ -856,6 +873,7 @@ export class IngestService {
       | 'type'
       | 'usage'
       | 'allowAiDrafts'
+      | 'useImages'
       | 'attribution'
       | 'name'
       | 'categoryId'

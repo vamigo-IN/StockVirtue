@@ -89,7 +89,8 @@ export interface NewsArticle extends Omit<NewsCard, 'category' | 'author'> {
   tags: { slug: string; name: string }[];
   sectors: string[];
   stocks: { exchange: string; symbol: string; name: string | null }[];
-  sources: { name: string; url: string | null; note: string | null }[];
+  /** Who is credited; readers get names, never links to the sources. */
+  sources: { name: string; note: string | null }[];
   retractedAt: string | null;
   retractionNote: string | null;
   seo: {

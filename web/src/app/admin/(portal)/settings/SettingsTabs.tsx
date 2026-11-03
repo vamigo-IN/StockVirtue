@@ -14,6 +14,7 @@ import type { SiteConfigView } from '@/portal/types';
 import { AdsTab } from './AdsTab';
 import { AnalyticsTab } from './AnalyticsTab';
 import { BrandingTab } from './BrandingTab';
+import { PrivacyTab } from './PrivacyTab';
 import { SearchTab } from './SearchTab';
 import { SettingsView } from './SettingsView';
 
@@ -37,6 +38,11 @@ export function SettingsTabs() {
       key: 'ads',
       label: 'Advertising',
       show: read || can(me, 'ads.manage'),
+    },
+    {
+      key: 'privacy',
+      label: 'Privacy',
+      show: read || can(me, 'privacy.manage'),
     },
   ].filter((t) => t.show);
   const [tab, setTab] = useState(tabs[0]?.key ?? 'general');
@@ -62,7 +68,7 @@ export function SettingsTabs() {
     <>
       <PageHeader
         title="Site settings"
-        description="How stockvirtue.com looks, how search engines and AI tools see it, what it tracks and which ads it shows."
+        description="How stockvirtue.com looks, how search engines and AI tools see it, what it tracks, which ads it shows, and who answers for personal data."
       />
       <Tabs
         value={tab}
@@ -131,6 +137,17 @@ export function SettingsTabs() {
           >
             {withConfig((view) => (
               <AdsTab view={view} canEdit={can(me, 'ads.manage')} />
+            ))}
+          </TabsContent>
+        )}
+        {tabs.some((t) => t.key === 'privacy') && (
+          <TabsContent
+            value="privacy"
+            forceMount
+            className="mt-6 data-[state=inactive]:hidden"
+          >
+            {withConfig((view) => (
+              <PrivacyTab view={view} canEdit={can(me, 'privacy.manage')} />
             ))}
           </TabsContent>
         )}

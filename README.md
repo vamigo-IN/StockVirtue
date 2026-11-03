@@ -124,6 +124,89 @@ at your keystore, and keep both out of version control (already git-ignored).
   password, Firebase service account). Never reuse development secrets in
   production.
 
+## Personal data (DPDP Act 2023)
+
+StockVirtue handles personal data under India's Digital Personal Data
+Protection Act, 2023 and the DPDP Rules, 2025 (notified 13 November 2025;
+most duties apply from 13 May 2027). What the code does:
+
+- **Notice and consent.** Creating an account (email, Google or phone) needs
+  a tick: "18 or older, and I agree to the privacy notice". The notice is at
+  `/privacy` and, in Hindi, `/privacy/hi`. Every acceptance and every cookie
+  choice is a row in `consent_records`: notice version, purposes granted and
+  refused, where it was given. An account that hasn't accepted the current
+  notice sees it in the app (1.4.0+) before anything else. The version lives
+  in three places that must change together: `PRIVACY_NOTICE_VERSION`
+  (`backend/src/privacy/privacy.constants.ts`), `NOTICE_VERSION`
+  (`web/src/lib/privacy-notice.ts`) and `kPrivacyNoticeVersion` (the app).
+- **Optional purposes are off until chosen.** App analytics (Firebase) is off
+  until the person turns it on, and the Android build strips the
+  advertising-ID permissions. Website analytics and ads wait for the cookie
+  banner (see `web/README.md`).
+- **Rights.** In the app, Profile → Privacy & your data: download everything
+  (JSON, with who it was shared with), name a nominee, raise requests and
+  complaints, switch analytics, delete the account. Without the app:
+  `stockvirtue.com/privacy/requests` (an emailed code first). Staff answer in
+  the portal's Privacy requests (permission `privacy.manage`), before the due
+  date set in Site settings → Privacy (at most 90 days). Each answer is
+  emailed with the grievance officer's details and the right to complain to
+  the Data Protection Board of India.
+- **Deleting an account** (by the person, by staff on a request, or for
+  inactivity) takes effect at once: email, phone, sign-in links, avatar and
+  referral code are cleared, sessions and devices are revoked, and the
+  account leaves leaderboards and broadcasts. A locked copy of the identity
+  is kept for one year (DPDP Rules, rule 8(3)), then the worker erases the
+  account and everything attached to it. Staff accounts can't be deleted
+  this way.
+- **Retention** runs daily at 03:30 IST in the worker (`privacy-retention`):
+
+  | Data | Kept |
+  |---|---|
+  | Account and its activity | While the account is open |
+  | Deleted account (locked copy) | 1 year, then erased |
+  | Account unused for `PRIVACY_INACTIVE_YEARS` (default 3) | Emailed, then deleted 48 hours later unless they sign in |
+  | Request logs, abuse events | `MONITORING_LOG_RETENTION_DAYS` (at least 365 days) |
+  | Admin sign-in sessions, devices and challenges | 1 year |
+  | Contact messages | 1 year after the last reply |
+  | In-app notifications | 1 year |
+  | Push tokens of devices not seen | 270 days |
+  | Staff invitations | 1 year |
+  | Newsroom audit log | 3 years |
+  | Website cookie choices | 2 years |
+  | Closed privacy requests | 3 years |
+
+  The admin panel's audit log is append-only and is not pruned.
+
+### If personal data leaks (DPDP Rules, rule 7)
+
+1. Contain it, and keep the logs (they are kept for a year).
+2. Tell each affected person without delay, by email and in the app (admin
+   panel → Notifications): what happened and when, what it may mean for
+   them, what we are doing, what they can do, and the grievance officer's
+   contact.
+3. Tell the Data Protection Board of India without delay, then send the
+   detailed report within 72 hours of finding out: what happened and why,
+   what was done to limit it, what is known about who caused it, the fixes,
+   and the messages sent to people.
+4. Write it all down: times, decisions, who was told.
+
+### Owner checklist (outside the code)
+
+- Name a grievance officer and fill in Site settings → Privacy (name, email,
+  phone, legal name, postal address). Until then the notice shows the
+  contact email.
+- Have a lawyer review `/privacy`, `/privacy/hi` and `/terms`, and someone
+  fluent check the Hindi.
+- Data processing terms with every provider that handles personal data:
+  Google Firebase, the email provider, hosting, Cloudflare R2, and the
+  logo/chart providers the app loads.
+- Keep nginx access logs for a year (logrotate), like the app's own logs.
+- Backups hold deleted accounts too: keep them no longer than a year.
+- Google Play: update Data safety (analytics optional, data deletion in the
+  app and at `https://stockvirtue.com/privacy/requests`) and answer "No" to
+  the advertising ID question for 1.4.0.
+- Set `PRIVACY_REQUIRE_SIGNUP_CONSENT=true` once most users run 1.4.0.
+
 ## License
 
 Proprietary — © VamigoIN. All rights reserved.

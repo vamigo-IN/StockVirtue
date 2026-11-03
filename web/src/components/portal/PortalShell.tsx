@@ -168,6 +168,12 @@ const NAV: { title?: string; items: NavItem[] }[] = [
         icon: UserRound,
         permission: 'users.read',
       },
+      {
+        href: '/admin/privacy',
+        label: 'Privacy requests',
+        icon: ShieldCheck,
+        permission: 'privacy.manage',
+      },
     ],
   },
   {
@@ -189,7 +195,12 @@ const NAV: { title?: string; items: NavItem[] }[] = [
         href: '/admin/settings',
         label: 'Site settings',
         icon: Globe,
-        permission: ['settings.read', 'seo.read', 'ads.manage'],
+        permission: [
+          'settings.read',
+          'seo.read',
+          'ads.manage',
+          'privacy.manage',
+        ],
       },
       {
         href: '/admin/storage',

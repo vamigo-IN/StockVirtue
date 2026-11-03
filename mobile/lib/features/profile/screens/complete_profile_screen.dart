@@ -184,6 +184,8 @@ class _CompleteProfileScreenState extends ConsumerState<CompleteProfileScreen> {
                       decoration: const InputDecoration(
                         hintText: 'e.g. Asha Patel',
                         prefixIcon: Icon(Icons.person_outline),
+                        helperText: 'Other traders see it on leaderboards '
+                            'and in rooms. A nickname is fine.',
                       ),
                       validator: (v) {
                         final t = (v ?? '').trim();

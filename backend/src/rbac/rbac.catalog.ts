@@ -70,6 +70,11 @@ export const PERMISSIONS = [
   { key: 'users.create', description: 'Create user accounts' },
   { key: 'users.update', description: 'Edit user accounts' },
   { key: 'users.suspend', description: 'Suspend user accounts' },
+  {
+    key: 'privacy.manage',
+    description:
+      'Handle privacy requests and grievances, delete accounts on request, and set the grievance officer',
+  },
 
   // Website
   {

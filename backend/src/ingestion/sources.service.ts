@@ -31,7 +31,11 @@ import {
 import { IngestQueue } from './ingest.queue';
 import { LogsQuery, SourceDto, TestSourceDto } from './ingestion.dto';
 import { checkedUrl, SafeFetchError } from './safe-fetch';
-import { SOURCE_CATALOGUE } from './source-catalogue';
+import {
+  OFFICIAL_CATEGORY_SLUG,
+  OFFICIAL_TYPES,
+  SOURCE_CATALOGUE,
+} from './source-catalogue';
 import { sourceHealth } from './source-health';
 
 const MINUTE = 60_000;
@@ -86,10 +90,18 @@ export class SourcesService {
         .map((s) => s.url)
         .filter(Boolean),
     );
-    return SOURCE_CATALOGUE.map((c) => ({ ...c, added: added.has(c.url) }));
+    return SOURCE_CATALOGUE.map((c) => ({
+      ...c,
+      official: OFFICIAL_TYPES.has(c.type),
+      added: added.has(c.url),
+    }));
   }
 
-  /** Adds a ready-made source with the usage its terms allow; items wait in Incoming news. */
+  /**
+   * Adds a ready-made source with the usage its terms allow; items wait in
+   * Incoming news. Government bodies and regulators file their stories in
+   * Official updates (kept apart from the main news) while that category is on.
+   */
   async addFromCatalogue(
     actor: StaffPrincipal,
     key: string,
@@ -100,12 +112,19 @@ export class SourcesService {
     if (await this.prisma.newsSource.count({ where: { url: c.url } })) {
       throw new ConflictException(`${c.name} is already one of your sources.`);
     }
+    const official = OFFICIAL_TYPES.has(c.type)
+      ? await this.prisma.newsCategory.findFirst({
+          where: { slug: OFFICIAL_CATEGORY_SLUG, isActive: true },
+          select: { id: true },
+        })
+      : null;
     const dto: SourceDto = {
       name: c.name,
       type: c.type,
       format: NewsSourceFormat.FEED,
       url: c.url,
       pollMinutes: c.pollMinutes,
+      ...(official ? { categoryId: official.id } : {}),
       usage: c.usage,
       attribution: c.attribution,
       licenceNote: [c.terms, `Terms: ${c.termsUrl}`, c.caution]
@@ -149,6 +168,7 @@ export class SourcesService {
       category: s.category ?? null,
       usage: s.usage,
       allowAiDrafts: s.allowAiDrafts,
+      useImages: s.useImages,
       attribution: s.attribution,
       licenceNote: s.licenceNote,
       notifyEditors: s.notifyEditors,
@@ -238,6 +258,11 @@ export class SourcesService {
       usage === NewsSourceUsage.HEADLINE_ONLY
         ? false
         : (dto.allowAiDrafts ?? existing?.allowAiDrafts ?? false);
+    // Pictures come with licensed full text, never with a headline or summary.
+    const useImages =
+      usage === NewsSourceUsage.FULL_TEXT
+        ? (dto.useImages ?? existing?.useImages ?? false)
+        : false;
     const arrivalMode =
       dto.arrivalMode ?? existing?.arrivalMode ?? NewsArrivalMode.INBOX;
     if (
@@ -268,6 +293,7 @@ export class SourcesService {
       categoryId,
       usage,
       allowAiDrafts,
+      useImages,
       attribution: (dto.attribution ?? existing?.attribution ?? '').trim(),
       licenceNote:
         dto.licenceNote === undefined
@@ -311,6 +337,7 @@ export class SourcesService {
       categoryId: s.categoryId,
       usage: s.usage,
       allowAiDrafts: s.allowAiDrafts,
+      useImages: s.useImages,
       attribution: s.attribution,
       notifyEditors: s.notifyEditors,
       arrivalMode: s.arrivalMode,
@@ -443,6 +470,7 @@ export class SourcesService {
         etag: null,
         lastModified: null,
         usage: data.usage,
+        useImages: data.useImages,
       });
     } catch (err) {
       if (

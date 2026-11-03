@@ -2,6 +2,7 @@ import { Transform, Type } from 'class-transformer';
 import {
   IsBoolean,
   IsEmail,
+  IsIn,
   IsInt,
   IsNotEmpty,
   IsObject,
@@ -12,8 +13,10 @@ import {
   Max,
   MaxLength,
   Min,
+  MinLength,
   ValidateNested,
 } from 'class-validator';
+import { ADS_WITHOUT_CONSENT, type AdsWithoutConsent } from './site-config';
 
 const trim = ({ value }: { value: unknown }) =>
   typeof value === 'string' ? value.trim() : value;
@@ -155,6 +158,35 @@ export class AdsDto {
   @IsBoolean() autoAds!: boolean;
 
   @IsString() @MaxLength(10_000) adsTxt!: string;
+
+  /** Older portals don't send it; the saved choice then stays. */
+  @IsOptional()
+  @IsIn(ADS_WITHOUT_CONSENT)
+  withoutConsent?: AdsWithoutConsent;
+}
+
+export class PrivacyContactDto {
+  @Transform(trim) @IsString() @MinLength(2) @MaxLength(160) legalName!: string;
+  @Transform(trim) @IsString() @MaxLength(500) postalAddress!: string;
+  @Transform(trim) @IsString() @MaxLength(120) officerName!: string;
+
+  @Transform(trim)
+  @IsString()
+  @Matches(/^$|^[^\s@]+@[^\s@]+\.[^\s@]+$/, {
+    message: 'Enter a valid email address for the grievance officer.',
+  })
+  @MaxLength(160)
+  officerEmail!: string;
+
+  @Transform(trim)
+  @IsString()
+  @Matches(/^$|^[+0-9 ()-]{6,20}$/, {
+    message: 'Enter a valid phone number for the grievance officer.',
+  })
+  officerPhone!: string;
+
+  /** The law allows at most 90 days. */
+  @IsInt() @Min(1) @Max(90) responseDays!: number;
 }
 
 export class ContactDto {
