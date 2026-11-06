@@ -1,9 +1,13 @@
 import 'server-only';
 import { API_V1 } from '@/portal/backend';
-import { marketPath, type ChartRange } from './paths';
+import { marketPath, type ChartRange, type OptionUnderlying } from './paths';
 import type {
   ChartData,
+  ContractNoteData,
   IpoBoard,
+  Labelled,
+  ListRow,
+  OptionChainData,
   QuotesData,
   Snapshot,
   TickerData,
@@ -34,7 +38,15 @@ import type {
  * the page dynamic (Next 15), which would break the pages' render modes.
  */
 
-const REVALIDATE = { ticker: 15, snapshot: 15, quotes: 15, ipos: 300 } as const;
+const REVALIDATE = {
+  ticker: 15,
+  snapshot: 15,
+  quotes: 15,
+  ipos: 300,
+  movers: 15,
+  optionChain: 60,
+  contractNote: 15,
+} as const;
 
 /** Seconds a chart is reused, per range (the API's own chart TTLs). */
 const CHART_REVALIDATE: Record<ChartRange, number> = {
@@ -145,4 +157,39 @@ export function getQuotes(refs: string[]): Promise<QuotesData | null> {
 /** The IPO board (300 s). Null when NSE's pages couldn't be read. */
 export function getIpos(): Promise<IpoBoard | null> {
   return fetchMarketRetrying<IpoBoard>(marketPath.ipos(), REVALIDATE.ipos);
+}
+
+/** Only an answer with data: unavailable (licence or upstream) is null. */
+async function available<T extends { available: boolean }>(
+  p: Promise<T | null>,
+): Promise<T | null> {
+  const body = await p;
+  return body && body.available ? body : null;
+}
+
+/**
+ * The large caps' gainers or losers (15 s; LIVE licence only), at the same
+ * canonical address the browser's MoversBoard asks for, so the home page's
+ * desk and the market overview share one cache entry per list. Null when
+ * unavailable.
+ */
+export function getMovers(type: 'gainers' | 'losers'): Promise<Labelled<ListRow[]> | null> {
+  return available(fetchMarket<Labelled<ListRow[]>>(marketPath.movers(type), REVALIDATE.movers));
+}
+
+/**
+ * The home page's small option chain (60 s, the API's own TTL; LIVE
+ * licence only). Null when unavailable, and on an API without the endpoint.
+ */
+export function getOptionChain(underlying: OptionUnderlying): Promise<OptionChainData | null> {
+  return available(fetchMarket<OptionChainData>(marketPath.optionChain(underlying), REVALIDATE.optionChain));
+}
+
+/**
+ * The home page's worked contract note for a curated stock (15 s): the API
+ * prices it with the app's own charges. Null when unavailable, and on an
+ * API without the endpoint.
+ */
+export function getContractNote(ref: string): Promise<ContractNoteData | null> {
+  return available(fetchMarket<ContractNoteData>(marketPath.contractNote(ref), REVALIDATE.contractNote));
 }

@@ -37,6 +37,8 @@ export class ScripMasterService implements OnModuleInit, OnModuleDestroy {
   private bySymbolExchange = new Map<string, Instrument>();
   // Indices (AMXIDX etc.) — separate from equities but searchable.
   private indices: Instrument[] = [];
+  // Share-typed index-code rows ("EX:token") → the index row they stand for.
+  private indexTwins = new Map<string, Instrument>();
   private loadedAt: Date | null = null;
 
   async onModuleInit() {
@@ -83,6 +85,7 @@ export class ScripMasterService implements OnModuleInit, OnModuleDestroy {
       total: this.instruments.length,
       equities: this.equityBySymbol.size,
       indices: this.indices.length,
+      indexTwins: this.indexTwins.size,
       optionUnderlyings: this.optionsByUnderlying.size,
       futureUnderlyings: this.futuresByUnderlying.size,
       loadedAt: this.loadedAt?.toISOString() ?? null,
@@ -103,6 +106,21 @@ export class ScripMasterService implements OnModuleInit, OnModuleDestroy {
 
   getByToken(exchange: Exchange, token: string): Instrument | null {
     return this.byToken.get(`${exchange}:${token}`) ?? null;
+  }
+
+  /**
+   * The index row that a share-typed index-code row stands for, else null.
+   *
+   * Angel lists each F&O index twice on NSE and BSE: the index row
+   * (instrumenttype AMXIDX: NSE 99926000, symbol "Nifty 50", name "NIFTY")
+   * and a row with an empty instrumenttype carrying the exchange's own index
+   * code (NSE 26000, symbol and name "NIFTY"). The short name resolves to
+   * the second one. Quotes and ticks answer for both tokens, but SmartAPI's
+   * historical API has candles only for the index row, so candle requests
+   * ask for it (MarketService.getCandles).
+   */
+  indexTwin(inst: Instrument): Instrument | null {
+    return this.indexTwins.get(`${inst.exchange}:${inst.token}`) ?? null;
   }
 
   /// True when the underlying has at least one live (unexpired) option
@@ -285,7 +303,8 @@ export class ScripMasterService implements OnModuleInit, OnModuleDestroy {
       `Loaded ${this.instruments.length} instruments ` +
         `(${this.equityBySymbol.size} equities, ` +
         `${this.optionsByUnderlying.size} option underlyings, ` +
-        `${this.futuresByUnderlying.size} future underlyings)`,
+        `${this.futuresByUnderlying.size} future underlyings, ` +
+        `${this.indexTwins.size} index code rows)`,
     );
   }
 
@@ -411,6 +430,24 @@ export class ScripMasterService implements OnModuleInit, OnModuleDestroy {
       }
     }
 
+    // A share-typed row whose symbol and name are both an index's name on
+    // the same exchange is that index's code row (see indexTwin). Matching
+    // the index NAME, not its symbol, leaves real listings alone: BSE 544268
+    // "METAL" is a security, while the BSE Metal index is named
+    // "S&P BSE METAL".
+    const indexByName = new Map<string, Instrument>();
+    for (const inst of indices) {
+      indexByName.set(`${inst.exchange}:${inst.name.toUpperCase()}`, inst);
+    }
+    const indexTwins = new Map<string, Instrument>();
+    for (const inst of instruments) {
+      if (!inst.isEquity) continue;
+      const symbol = inst.symbol.toUpperCase();
+      if (symbol !== inst.name.toUpperCase()) continue;
+      const index = indexByName.get(`${inst.exchange}:${symbol}`);
+      if (index) indexTwins.set(`${inst.exchange}:${inst.token}`, index);
+    }
+
     this.instruments = instruments;
     this.byToken = byToken;
     this.equityBySymbol = equityBySymbol;
@@ -419,6 +456,7 @@ export class ScripMasterService implements OnModuleInit, OnModuleDestroy {
     this.futuresByUnderlying = futuresByUnderlying;
     this.bySymbolExchange = bySymbolExchange;
     this.indices = indices;
+    this.indexTwins = indexTwins;
   }
 }
 

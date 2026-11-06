@@ -1,9 +1,15 @@
 import type { ReactNode } from 'react';
 import { clsx } from 'clsx';
+import { contractMonth, RowStamp } from '@/components/market/parts';
+import { delayFor, isVolatilityIndex } from '@/components/market/gate';
+import { Stamp } from '@/components/market/Stamp';
 import { FactText } from '@/components/site-content/FactText';
+import { Change } from '@/components/widgets/frame';
+import { fmtDate, fmtPrice, stampOf } from '@/components/widgets/format';
 import { withFacts } from '@/content/app';
 import type { HomeContent, HomeTradeCard } from '@/content/site/types';
-import { SampleTag, SectionHead } from './parts';
+import type { MarketQuote, MiniOptionChain, OptionChainData, Snapshot } from '@/market/types';
+import { SectionHead } from './parts';
 import e from './et.module.css';
 
 const TRADE_TITLE_ID = 'home-trade-title';
@@ -12,50 +18,131 @@ const FEATURES_TITLE_ID = 'home-features-title';
 /* Interface strings built from the facts (code, not content). */
 const ORDER_TYPES = withFacts(['F2'], ['Market', 'Limit', 'Stop-loss', 'Stop-loss limit', 'Trailing stop'], null);
 const PRODUCTS = withFacts(['F3'], 'Intraday · Delivery', null);
+const DERIVATIVES = withFacts(['F4'], ['Index futures', 'Stock futures', 'Index options', 'Stock options'], null);
 const COMMODITIES = withFacts(['F8'], ['Gold', 'Silver', 'Crude oil', 'Natural gas', 'Copper', 'Zinc'], null);
 const BY_UNIT = withFacts(['F7'], 'By the unit · No margin', null);
+const CHAIN_IN_APP = withFacts(['F4'], 'The app has the option chain for every expiry.', null);
+
+/** Rows in each card's live list. */
+const STOCKS = 3;
+const MCX_ROWS = 6;
+/** The F&O card's indices when there is no option chain. */
+const FNO_INDICES = ['NSE:NIFTY', 'NSE:BANKNIFTY', 'NSE:FINNIFTY'];
+
+const f2 = new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const strikeFmt = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 2 });
+
+/** What the cards draw with prices: the snapshot (gate on, not OFF) and the chain. */
+type TradeData = { snapshot: Snapshot; chain: OptionChainData | null };
+
+function Chips({ items, label }: { items: string[] | null; label: string }) {
+  return items ? (
+    <ul className={e.chips} aria-label={label}>
+      {items.map((t) => (
+        <li key={t}>{t}</li>
+      ))}
+    </ul>
+  ) : null;
+}
+
+/** The snapshot's Stamp for a set of its rows. */
+function SnapStamp({ rows, snapshot }: { rows: MarketQuote[]; snapshot: Snapshot }) {
+  const s = stampOf(rows);
+  return (
+    <Stamp
+      label={s.label}
+      asOf={s.asOf}
+      attribution={snapshot.attribution}
+      delay={delayFor(snapshot.right, snapshot.delayMinutes)}
+      className={e.miniStamp}
+    />
+  );
+}
 
 /**
- * A labelled sample option chain (never real prices): a made-up underlying
- * on round strikes, so it can't be read as today's chain. Calls in the
- * money are shaded below the spot, puts above it.
+ * A compact price table (name, last price, % change) on the card's white
+ * box, from snapshot rows. A row whose label or time differs from the
+ * list's carries its own pill (stampOf), so no price borrows another's stamp.
  */
-const CHAIN = [
-  { strike: 980, call: 31.5, put: 4.2 },
-  { strike: 990, call: 23.0, put: 6.1 },
-  { strike: 1000, call: 15.8, put: 9.4 },
-  { strike: 1010, call: 10.1, put: 14.2 },
-  { strike: 1020, call: 6.0, put: 20.6 },
-];
-const SPOT = 1004.5;
-const f2 = new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+function MiniTable({
+  rows,
+  caption,
+  head,
+  second,
+}: {
+  rows: MarketQuote[];
+  caption: string;
+  head: string;
+  second?: (q: MarketQuote) => string | null;
+}) {
+  const stamp = stampOf(rows);
+  return (
+    <table className={e.mini}>
+      <caption className="sr-only">{caption}</caption>
+      <thead className="sr-only">
+        <tr>
+          <th scope="col">{head}</th>
+          <th scope="col">Last</th>
+          <th scope="col">Change</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((q) => {
+          const sub = second?.(q);
+          return (
+            <tr key={q.ref}>
+              <th scope="row">
+                {q.name}
+                {sub ? <span className={e.miniSub}>{sub}</span> : null}
+                {stamp.own(q) ? <RowStamp label={q.label} asOf={q.asOf} /> : null}
+              </th>
+              <td>{fmtPrice(q.ltp, q.kind)}</td>
+              <td>
+                <Change change={null} pct={q.changePct} showAbs={false} />
+              </td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+}
 
-function SampleChain() {
+/** The real NIFTY chain: five strikes around the money, the spot between them. */
+function Chain({ chain, data }: { chain: MiniOptionChain; data: OptionChainData }) {
   const rows: ReactNode[] = [];
-  CHAIN.forEach((r, i) => {
-    if (i > 0 && CHAIN[i - 1].strike < SPOT && r.strike > SPOT) {
-      rows.push(
-        <tr key="spot" className={e.spot}>
-          <td colSpan={3}>SPOT {f2.format(SPOT)} (SAMPLE)</td>
-        </tr>,
-      );
+  const spotRow = (
+    <tr key="spot" className={e.spot}>
+      <td colSpan={3}>
+        {chain.underlying} {f2.format(chain.spot)}
+      </td>
+    </tr>
+  );
+  let placed = false;
+  chain.strikes.forEach((r) => {
+    if (!placed && r.strike > chain.spot) {
+      rows.push(spotRow);
+      placed = true;
     }
     rows.push(
       <tr key={r.strike}>
-        <td className={r.strike < SPOT ? e.itm : undefined}>{f2.format(r.call)}</td>
-        <td className={e.strike}>{r.strike.toLocaleString('en-IN')}</td>
-        <td className={r.strike > SPOT ? e.itm : undefined}>{f2.format(r.put)}</td>
+        <td className={r.strike < chain.spot ? e.itm : undefined}>{r.call === null ? '—' : f2.format(r.call)}</td>
+        <td className={e.strike}>{strikeFmt.format(r.strike)}</td>
+        <td className={r.strike > chain.spot ? e.itm : undefined}>{r.put === null ? '—' : f2.format(r.put)}</td>
       </tr>,
     );
   });
+  if (!placed) rows.push(spotRow);
   return (
     <div className={e.chainBox}>
       <div className={e.chainHead}>
-        <span>SAMPLE · Weekly</span>
-        <SampleTag>Sample option chain</SampleTag>
+        <span>{chain.underlying} options</span>
+        <span className={e.chainExpiry}>Expiry {fmtDate(chain.expiry)}</span>
       </div>
       <table className={e.chain}>
-        <caption className="sr-only">A sample option chain with made-up prices</caption>
+        <caption className="sr-only">
+          {`${chain.name} options expiring ${fmtDate(chain.expiry)}: last prices of calls and puts at the strikes around the index level`}
+        </caption>
         <thead>
           <tr>
             <th scope="col">CALL LTP</th>
@@ -67,8 +154,110 @@ function SampleChain() {
         </thead>
         <tbody>{rows}</tbody>
       </table>
-      <p className={e.chainNote}>Shaded prices are in the money. Sample figures, not a real chain.</p>
+      <div className={e.chainNote}>
+        <p>Shaded prices are in the money.</p>
+        <Stamp label={data.label} asOf={data.asOf} attribution={data.attribution} className={e.miniStamp} />
+      </div>
     </div>
+  );
+}
+
+/** Each trade card's fixed panel and foot line, by its fixed id. */
+function TradePanel({ id, data }: { id: string; data: TradeData | null }) {
+  const snap = data?.snapshot ?? null;
+  switch (id) {
+    case 'equity': {
+      const stocks = snap ? snap.instruments.filter((q) => q.kind === 'STOCK' && q.ltp > 0).slice(0, STOCKS) : [];
+      return (
+        <>
+          {snap && stocks.length ? (
+            <div className={e.miniBox}>
+              <MiniTable rows={stocks} caption="Large-cap shares on NSE: last price and change" head="Share" />
+              <SnapStamp rows={stocks} snapshot={snap} />
+            </div>
+          ) : null}
+          <Chips items={ORDER_TYPES} label="Order types" />
+          {PRODUCTS ? (
+            <div className={e.cardFoot}>
+              <span>NSE · BSE</span>
+              <span>{PRODUCTS}</span>
+            </div>
+          ) : null}
+        </>
+      );
+    }
+    case 'derivatives': {
+      const chain = data?.chain?.data ?? null;
+      const indices = snap
+        ? FNO_INDICES.map((ref) => snap.instruments.find((q) => q.ref === ref)).filter(
+            (q): q is MarketQuote => !!q && q.ltp > 0 && !isVolatilityIndex(q.ref),
+          )
+        : [];
+      return (
+        <>
+          {data?.chain && chain ? (
+            <Chain chain={chain} data={data.chain} />
+          ) : snap && indices.length ? (
+            <div className={e.miniBox}>
+              <MiniTable rows={indices} caption="The indices behind index futures and options" head="Index" />
+              {CHAIN_IN_APP ? <p className={e.miniNote}>{CHAIN_IN_APP}</p> : null}
+              <SnapStamp rows={indices} snapshot={snap} />
+            </div>
+          ) : (
+            <Chips items={DERIVATIVES} label="Futures and options" />
+          )}
+          <div className={e.cardFoot}>
+            <span>NSE F&amp;O</span>
+            <span>Calls · Puts · Futures</span>
+          </div>
+        </>
+      );
+    }
+    case 'commodities': {
+      const mcx = snap ? snap.instruments.filter((q) => q.kind === 'COMMODITY' && q.ltp > 0).slice(0, MCX_ROWS) : [];
+      return (
+        <>
+          {snap && mcx.length ? (
+            <div className={e.miniBox}>
+              <MiniTable
+                rows={mcx}
+                caption="MCX futures, nearest expiry: last price per the unit shown, and change"
+                head="Commodity"
+                second={(q) => {
+                  const month = contractMonth(q.contract);
+                  return [q.unit, month ? `${month} future` : null].filter(Boolean).join(' · ') || null;
+                }}
+              />
+              <SnapStamp rows={mcx} snapshot={snap} />
+            </div>
+          ) : (
+            <Chips items={COMMODITIES} label="Some of the MCX commodities" />
+          )}
+          <div className={e.cardFoot}>
+            <span>MCX</span>
+            {BY_UNIT ? <span>{BY_UNIT}</span> : null}
+          </div>
+        </>
+      );
+    }
+    default:
+      return null;
+  }
+}
+
+function TradeCard({ card, n, data }: { card: HomeTradeCard; n: number; data: TradeData | null }) {
+  return (
+    <li className={e.tradeCard}>
+      <div className={e.cardTop}>
+        <Icon id={card.id} />
+        <span className={e.index}>{String(n).padStart(2, '0')}</span>
+      </div>
+      <div>
+        <h3 className={e.h3}>{card.title}</h3>
+        <FactText as="p" field={card.body} className={e.body} />
+      </div>
+      <TradePanel id={card.id} data={data} />
+    </li>
   );
 }
 
@@ -93,79 +282,27 @@ function Icon({ id }: { id: string }) {
   );
 }
 
-/** Each trade card's fixed panel and foot line, by its fixed id. */
-function TradePanel({ id }: { id: string }) {
-  switch (id) {
-    case 'equity':
-      return (
-        <>
-          {ORDER_TYPES ? (
-            <ul className={e.chips} aria-label="Order types">
-              {ORDER_TYPES.map((t) => (
-                <li key={t}>{t}</li>
-              ))}
-            </ul>
-          ) : null}
-          {PRODUCTS ? (
-            <div className={e.cardFoot}>
-              <span>NSE · BSE</span>
-              <span>{PRODUCTS}</span>
-            </div>
-          ) : null}
-        </>
-      );
-    case 'derivatives':
-      return (
-        <>
-          <SampleChain />
-          <div className={e.cardFoot}>
-            <span>Calls · Puts · Futures</span>
-          </div>
-        </>
-      );
-    case 'commodities':
-      return (
-        <>
-          {COMMODITIES ? (
-            <ul className={e.chips} aria-label="Some of the MCX commodities">
-              {COMMODITIES.map((t) => (
-                <li key={t}>{t}</li>
-              ))}
-            </ul>
-          ) : null}
-          <div className={e.cardFoot}>
-            <span>MCX</span>
-            {BY_UNIT ? <span>{BY_UNIT}</span> : null}
-          </div>
-        </>
-      );
-    default:
-      return null;
-  }
-}
-
-function TradeCard({ card, n }: { card: HomeTradeCard; n: number }) {
-  return (
-    <li className={e.tradeCard}>
-      <div className={e.cardTop}>
-        <Icon id={card.id} />
-        <span className={e.index}>{String(n).padStart(2, '0')}</span>
-      </div>
-      <div>
-        <h3 className={e.h3}>{card.title}</h3>
-        <FactText as="p" field={card.body} className={e.body} />
-      </div>
-      <TradePanel id={card.id} />
-    </li>
-  );
-}
-
 /**
  * "What you can trade" (Emerald Terminal): equity, F&O and MCX in three
- * cards on white. No prices: the F&O card's option chain is a labelled
- * sample on a made-up underlying. Server component.
+ * cards on white. With prices on (the gate on and a snapshot whose licence
+ * isn't OFF), each card shows real prices with its Stamp: three large-cap
+ * shares; the NIFTY option chain at the nearest expiry (LIVE licence; else
+ * the F&O indices); the MCX commodities with their units. With prices off,
+ * the cards show words only (order types, contracts, commodities): never a
+ * made-up figure. Server component.
  */
-export function TradeCards({ content }: { content: HomeContent['trade'] }) {
+export function TradeCards({
+  content,
+  snapshot,
+  chain,
+}: {
+  content: HomeContent['trade'];
+  /** The snapshot with the gate on and the licence not OFF; null otherwise. */
+  snapshot: Snapshot | null;
+  /** getOptionChain('NIFTY') under LIVE with the gate on; null otherwise. */
+  chain: OptionChainData | null;
+}) {
+  const data: TradeData | null = snapshot ? { snapshot, chain } : null;
   return (
     <section className={clsx(e.section, e.white)} aria-labelledby={TRADE_TITLE_ID}>
       <div className="sv-container">
@@ -177,7 +314,7 @@ export function TradeCards({ content }: { content: HomeContent['trade'] }) {
         />
         <ul className={e.cards3}>
           {content.cards.map((c, i) => (
-            <TradeCard key={c.id} card={c} n={i + 1} />
+            <TradeCard key={c.id} card={c} n={i + 1} data={data} />
           ))}
         </ul>
       </div>

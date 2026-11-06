@@ -112,6 +112,50 @@ export type ChartData = Labelled<{
   candles: Candle[];
 }>;
 
+/**
+ * The website's small option chain (`option-chain?underlying=NIFTY`, LIVE
+ * licence only): the at-the-money strike and two either side at the nearest
+ * expiry still trading, and the index level they were picked around.
+ */
+export interface MiniOptionChain {
+  underlying: string;
+  /** The index's name from the curated snapshot ("Nifty 50"). */
+  name: string;
+  /** "2026-11-10" (IST). */
+  expiry: string;
+  spot: number;
+  /** Ascending; a leg with no last price is null. */
+  strikes: { strike: number; call: number | null; put: number | null }[];
+}
+export type OptionChainData = Labelled<MiniOptionChain | null>;
+
+/**
+ * A worked contract note (`contract-note?symbol=NSE:HDFCBANK`): 20 shares of
+ * a curated stock bought at the day's open and sold at the last price,
+ * intraday, charged by the API with the app's own fee schedule. Rupees.
+ */
+export interface WorkedNote {
+  ref: string;
+  symbol: string;
+  name: string;
+  exchange: string;
+  qty: number;
+  product: 'INTRADAY';
+  buy: { price: number; value: number };
+  sell: { price: number; value: number };
+  charges: {
+    brokerage: number;
+    stt: number;
+    exchangeAndSebi: number;
+    stampDuty: number;
+    gst: number;
+    total: number;
+  };
+  /** sold − bought − every charge. */
+  net: number;
+}
+export type ContractNoteData = Labelled<WorkedNote | null>;
+
 export interface IpoIssue {
   symbol: string;
   companyName: string;

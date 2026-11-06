@@ -5,7 +5,7 @@ import { FactText, factText } from '@/components/site-content/FactText';
 import type { Screen } from '@/content/screens';
 import type { HomeContent } from '@/content/site/types';
 import { fmtCaptureDate } from '../screens';
-import { Desk, DeskFloat } from './Desk';
+import { Desk } from './Desk';
 import type { RealDesk } from './desk-model';
 import { Shield } from './parts';
 import e from './et.module.css';
@@ -34,9 +34,10 @@ function TitleWords({ title }: { title: string }) {
  * bottom corners, its top fading from the header's solid #01261A. The text
  * column (label, H1, lead, the Play badge, "See how it works" to
  * #inside-the-app, the small print), and on the right the desk on the
- * terminal ground (real with the gate on and data present, else a sample
- * screen). With the gate off and an owner's home screenshot (content first,
- * SCREENS second), the screenshot shows in place of the sample desk.
+ * terminal ground, with real prices only (the gate on and the data there).
+ * Without a desk: the owner's home screenshot (content first, SCREENS
+ * second) in its place, else no figure at all, and the text takes the band
+ * on its own (the type-led hero; nothing made up stands in for prices).
  * Phones: the desk stacks under the text. Server component.
  */
 export function HeroBand({
@@ -48,14 +49,20 @@ export function HeroBand({
   content: HomeContent['hero'];
   playUrl: string;
   desk: RealDesk | null;
-  /** The gate-off screenshot, only when there is no real desk. */
+  /** The owner's screenshot, only when there is no real desk. */
   homeScreen: Screen | null;
 }) {
   const small = factText(content.smallPrint);
+  const figure = desk ? 'desk' : homeScreen ? 'screen' : null;
   return (
-    <section className={clsx('sv-emerald', e.hero)} aria-labelledby={HERO_TITLE_ID} data-home-hero="">
+    <section
+      className={clsx('sv-emerald', e.hero)}
+      aria-labelledby={HERO_TITLE_ID}
+      data-home-hero=""
+      data-hero-figure={figure ?? 'none'}
+    >
       <div className={e.heroLines} aria-hidden="true" />
-      <div className={clsx('sv-container', e.heroInner)}>
+      <div className={clsx('sv-container', e.heroInner, !figure && e.heroSolo)}>
         <div className={e.heroText}>
           {content.eyebrow ? <p className={e.eyebrow}>{content.eyebrow}</p> : null}
           <h1 id={HERO_TITLE_ID} className={e.h1}>
@@ -80,8 +87,12 @@ export function HeroBand({
             </p>
           ) : null}
         </div>
-        <div className={e.deskWrap}>
-          {!desk && homeScreen ? (
+        {desk ? (
+          <div className={e.deskWrap}>
+            <Desk desk={desk} playUrl={playUrl} />
+          </div>
+        ) : homeScreen ? (
+          <div className={e.deskWrap}>
             <div className={e.screenWrap}>
               <DeviceFrame
                 screen={homeScreen}
@@ -90,13 +101,8 @@ export function HeroBand({
                 caption={`The StockVirtue home screen, captured on ${fmtCaptureDate(homeScreen.captured)}. Prices on it are from that day.`}
               />
             </div>
-          ) : (
-            <>
-              <Desk real={desk} />
-              <DeskFloat real={desk} />
-            </>
-          )}
-        </div>
+          </div>
+        ) : null}
       </div>
     </section>
   );

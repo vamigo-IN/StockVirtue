@@ -38,11 +38,6 @@ export function SectionHead({
   );
 }
 
-/** The dashed mono tag every illustrative block carries ("Sample screen", "Example order"). */
-export function SampleTag({ children, className }: { children: ReactNode; className?: string }) {
-  return <span className={clsx(e.tag, className)}>{children}</span>;
-}
-
 /** A right arrow for "All markets", "Read the news" and the like. */
 export function ArrowRight() {
   return (

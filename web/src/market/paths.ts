@@ -23,6 +23,7 @@ export type ChartRange = '1D' | '5D' | '1M' | '6M' | '1Y';
 export type HeatmapIndex = 'NIFTY' | 'BANKNIFTY' | 'SENSEX';
 export type CapSegment = 'largecap' | 'midcap' | 'smallcap';
 export type MoversType = 'gainers' | 'losers' | 'active';
+export type OptionUnderlying = 'NIFTY' | 'BANKNIFTY';
 
 /**
  * Refs as one canonical set: trimmed, upper case, each once, sorted
@@ -65,6 +66,16 @@ export const marketPath = {
 
   heatmap(index: HeatmapIndex): string {
     return `heatmap?index=${index}`;
+  },
+
+  /** The home page's small option chain (server only; LIVE licence). */
+  optionChain(underlying: OptionUnderlying): string {
+    return `option-chain?underlying=${underlying}`;
+  },
+
+  /** The home page's worked contract note for a curated stock (server only). */
+  contractNote(ref: string): string {
+    return `contract-note?symbol=${encodeURIComponent(ref.trim().toUpperCase())}`;
   },
 
   /** `chart?symbol=EX:SYM&range=…` (the ref trimmed and upper-cased). */
