@@ -81,6 +81,11 @@ export interface SiteConfig {
   adminKey: string;
   contactTo: string;
   revalidateUrl: string;
+  /// The public website's address as its legal pages name it (the `site.url`
+  /// live value, W7). PUBLIC_SITE_URL must equal the web's
+  /// NEXT_PUBLIC_SITE_URL; both default to https://stockvirtue.com, so
+  /// production sets neither. Never the portal's origin.
+  publicUrl: string;
 }
 
 /// Traffic-monitoring & abuse-detection subsystem. `enabled` is a kill-switch;
@@ -105,6 +110,10 @@ export interface PrivacySettings {
   /// New accounts must accept the privacy notice (and confirm 18+) before
   /// they are created. Turn on once nobody uses an app older than 1.4.0.
   requireSignupConsent: boolean;
+  /// PRIVACY_NOTICE_GATE_DISABLED=true forces the app notice gate off,
+  /// whatever Settings → Privacy says (W7 decision 2): for the day nobody
+  /// who can switch it off can sign in. Needs an API restart.
+  noticeGateDisabled: boolean;
 }
 
 /// A consuming application's credential for the public market feed. The
@@ -369,6 +378,7 @@ export default (): AppConfig => ({
       process.env.ADMIN_EMAIL ||
       'admin@stockvirtue.local',
     revalidateUrl: siteRevalidateUrl(),
+    publicUrl: (process.env.PUBLIC_SITE_URL ?? '').trim() || 'https://stockvirtue.com',
   },
   monitoring: {
     enabled: (process.env.MONITORING_ENABLED ?? 'true') !== 'false',
@@ -389,6 +399,8 @@ export default (): AppConfig => ({
     ),
     requireSignupConsent:
       (process.env.PRIVACY_REQUIRE_SIGNUP_CONSENT ?? 'false') === 'true',
+    noticeGateDisabled:
+      (process.env.PRIVACY_NOTICE_GATE_DISABLED ?? 'false') === 'true',
   },
   logoUrlTemplate: process.env.LOGO_URL_TEMPLATE || DEFAULT_LOGO_URL_TEMPLATE,
   feed: {

@@ -1,11 +1,22 @@
 /**
- * The privacy notice the app and the website show (DPDP Act 2023 s.5; DPDP
- * Rules 2025, rule 3). Bump it when the notice changes in substance: everyone
- * with an account is asked to read and accept it again (the app checks
- * `needsNotice`). Keep the website's notice (web/src/app/(site)/privacy) in
- * step: it shows the same version.
+ * The privacy notice version the W7 migration seeds (DPDP Act 2023 s.5; DPDP
+ * Rules 2025, rule 3). It is no longer changed in code: the current version
+ * lives in the database (`privacy_notice_versions`) and a Super Admin
+ * publishes a new one from the portal (Pages → Privacy notice, a material
+ * change), which asks everyone with an account to read and accept it again.
+ * The API uses this id only as its boot fallback when that table is empty or
+ * missing (PrivacyNoticeService).
  */
-export const PRIVACY_NOTICE_VERSION = '2026-11';
+export const SEED_NOTICE_VERSION = '2026-11';
+
+/**
+ * @deprecated The current version is `PrivacyNoticeService.current().version`.
+ * Kept equal to the seed id for local tests written before W7.
+ */
+export const PRIVACY_NOTICE_VERSION = SEED_NOTICE_VERSION;
+
+/** The oldest app that shows the privacy notice screen (the gate's floor). */
+export const NOTICE_MIN_APP_VERSION = '1.4.0';
 
 /** Purposes a person can say yes or no to. "account" is the service itself. */
 export const PURPOSES = ['account', 'analytics', 'advertising'] as const;

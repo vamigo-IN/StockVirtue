@@ -11,7 +11,9 @@ import 'story_links.dart';
 import 'story_widgets.dart';
 
 /// Draws a story's body — the ProseMirror document the newsroom stores —
-/// with Flutter widgets: text and its formatting, headings, lists, quotes,
+/// with Flutter widgets: text and its formatting (bold, italic, underline,
+/// strike, code, links, palette text colours and highlights, and paragraph
+/// and heading alignment), headings, lists, quotes,
 /// callouts, tables, pictures, videos, related stories and market widgets.
 /// Node types this app doesn't know yet show a "View on stockvirtue.com"
 /// card; unknown text formatting is ignored. The document has already been
@@ -50,6 +52,52 @@ String _text(Map<String, dynamic> a, String k) =>
 
 /// Spacing below each block, so the body reads like an article.
 const _gap = 14.0;
+
+/// Text colours and highlights are stored as palette names (the newsroom
+/// editor's list: web components/editor/formatting.ts, checked by the API's
+/// article-content.ts; the website maps the same names in
+/// article-prose.css). Each name has a light-theme and a dark-theme shade:
+/// every text shade is at least 4.6:1 on the reader's backgrounds (page,
+/// cards, callouts, table heads) and at least 4.5:1 on every highlight, and
+/// the default text is at least 9:1 on every highlight. A name this version
+/// doesn't know leaves the text as it is.
+const _textColors = <String, (Color light, Color dark)>{
+  'gray': (Color(0xFF55615B), Color(0xFFA7B3AD)),
+  'green': (Color(0xFF0A6B41), Color(0xFF34E089)),
+  'red': (Color(0xFFB42318), Color(0xFFFF8F87)),
+  'orange': (Color(0xFFA84A0E), Color(0xFFFDA868)),
+  'blue': (Color(0xFF1D57C7), Color(0xFF82B6FF)),
+  'purple': (Color(0xFF6D3FD6), Color(0xFFBFA7FF)),
+  'pink': (Color(0xFFB3166B), Color(0xFFF795C8)),
+};
+const _highlights = <String, (Color light, Color dark)>{
+  'yellow': (Color(0xFFFFF0A3), Color(0xFF4A3E0C)),
+  'green': (Color(0xFFCFF2DC), Color(0xFF16472E)),
+  'blue': (Color(0xFFDCE8FF), Color(0xFF1D3A63)),
+  'red': (Color(0xFFFFDCD8), Color(0xFF5A2424)),
+  'purple': (Color(0xFFECDFFF), Color(0xFF40306A)),
+};
+
+/// A mark's palette colour for the current theme, or null for an unknown name.
+Color? _paletteColor(
+  Map<String, (Color, Color)> palette,
+  Map mark,
+  bool dark,
+) {
+  final attrs = mark['attrs'];
+  final name = attrs is Map ? attrs['color'] : null;
+  final shades = name is String ? palette[name] : null;
+  if (shades == null) return null;
+  return dark ? shades.$2 : shades.$1;
+}
+
+/// A paragraph's or heading's stored alignment (left is stored as nothing).
+TextAlign _textAlign(Map<String, dynamic> a) => switch (a['textAlign']) {
+      'center' => TextAlign.center,
+      'right' => TextAlign.right,
+      'justify' => TextAlign.justify,
+      _ => TextAlign.start,
+    };
 
 TextStyle _bodyStyle(BuildContext context) =>
     (Theme.of(context).textTheme.bodyLarge ?? const TextStyle()).copyWith(
@@ -93,7 +141,11 @@ class _Block extends StatelessWidget {
         final kids = _children(node);
         if (kids.isEmpty) return const SizedBox(height: 8);
         return pad(
-          _RichText(inline: kids, style: _bodyStyle(context).merge(tweak)),
+          _RichText(
+            inline: kids,
+            style: _bodyStyle(context).merge(tweak),
+            align: _textAlign(a),
+          ),
         );
       case 'heading':
         final level = (a['level'] is num) ? (a['level'] as num).toInt() : 2;
@@ -110,6 +162,7 @@ class _Block extends StatelessWidget {
             child: _RichText(
               inline: _children(node),
               style: (style ?? const TextStyle()).merge(tweak),
+              align: _textAlign(a),
             ),
           ),
         );
@@ -284,9 +337,14 @@ class _Block extends StatelessWidget {
 
 /// A run of text with its formatting; links open in the reader or browser.
 class _RichText extends StatefulWidget {
-  const _RichText({required this.inline, required this.style});
+  const _RichText({
+    required this.inline,
+    required this.style,
+    this.align = TextAlign.start,
+  });
   final List<Map<String, dynamic>> inline;
   final TextStyle style;
+  final TextAlign align;
 
   @override
   State<_RichText> createState() => _RichTextState();
@@ -312,6 +370,7 @@ class _RichTextState extends State<_RichText> {
   Widget build(BuildContext context) {
     _clear();
     final scheme = Theme.of(context).colorScheme;
+    final dark = Theme.of(context).brightness == Brightness.dark;
     final spans = <InlineSpan>[];
     for (final node in widget.inline) {
       if (node['type'] == 'hardBreak') {
@@ -352,6 +411,12 @@ class _RichTextState extends State<_RichText> {
           case 'link':
             final h = (m['attrs'] is Map) ? (m['attrs'] as Map)['href'] : null;
             if (h is String && h.isNotEmpty) href = h;
+          case 'textColor':
+            final c = _paletteColor(_textColors, m, dark);
+            if (c != null) style = style.copyWith(color: c);
+          case 'highlight':
+            final c = _paletteColor(_highlights, m, dark);
+            if (c != null) style = style.copyWith(backgroundColor: c);
         }
       }
       if (href != null) {
@@ -359,8 +424,10 @@ class _RichTextState extends State<_RichText> {
         final r = TapGestureRecognizer()
           ..onTap = () => openStoryLink(context, target);
         _recognizers.add(r);
+        // A coloured link keeps the writer's colour (as on the website);
+        // the underline still marks it as a link.
         style = style.copyWith(
-          color: scheme.primary,
+          color: style.color ?? scheme.primary,
           decoration: TextDecoration.underline,
           decorationColor: scheme.primary.withValues(alpha: 0.5),
         );
@@ -369,7 +436,10 @@ class _RichTextState extends State<_RichText> {
         spans.add(TextSpan(text: text, style: style));
       }
     }
-    return Text.rich(TextSpan(style: widget.style, children: spans));
+    return Text.rich(
+      TextSpan(style: widget.style, children: spans),
+      textAlign: widget.align,
+    );
   }
 }
 

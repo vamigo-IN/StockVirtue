@@ -71,8 +71,26 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
       _consent = v;
       if (v) {
         _consentNudge = false;
-        if (_error == _consentMessage) _error = null;
+        if (_error == _consentMessage || _error == _refusal) _error = null;
       }
+    });
+  }
+
+  /// The server's words when it refused the agreement (428 consent_required
+  /// or 409 notice_outdated), until the person ticks the box again.
+  String? _refusal;
+
+  /// The sign-up was refused over the notice: untick the box (the
+  /// controller has dropped the agreement and will read the notice afresh),
+  /// point at it and say why. The person ticks again, informed; nothing is
+  /// retried for them.
+  void _onConsentRefused(ConsentRefusal? refusal) {
+    if (refusal == null || !mounted) return;
+    setState(() {
+      _consent = false;
+      _consentNudge = true;
+      _refusal = refusal.message;
+      _error = refusal.message;
     });
   }
 
@@ -194,6 +212,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen>
 
   @override
   Widget build(BuildContext context) {
+    // Also for refusals met on the phone screens pushed above this one.
+    ref.listen<ConsentRefusal?>(
+      consentRefusalProvider,
+      (_, refusal) => _onConsentRefused(refusal),
+    );
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final dark = theme.brightness == Brightness.dark;

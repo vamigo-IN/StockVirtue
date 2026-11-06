@@ -54,3 +54,15 @@ export const hasOptionalServices = (config: SiteConfig) => {
   const s = optionalServices(config);
   return s.analytics.length > 0 || s.advertising.length > 0;
 };
+
+/**
+ * Where AdSense may run (the owner's rule, 6 Nov 2026): the news site only,
+ * /news and every page under it. Never the home page, the site pages
+ * (About, Contact, FAQ, Features, Download), the policies, the CMS pages at
+ * /[slug], a 404, the staff portal or the preview route. The consent rules
+ * are the same everywhere; this only decides where the ad script may load.
+ * The site has no basePath, so a URL's pathname and usePathname() agree.
+ */
+export function isAdPath(pathname: string | null | undefined): boolean {
+  return !!pathname && (pathname === '/news' || pathname.startsWith('/news/'));
+}

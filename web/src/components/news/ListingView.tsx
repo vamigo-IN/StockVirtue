@@ -1,37 +1,89 @@
 import Link from 'next/link';
+import type { ReactNode } from 'react';
+import { Container } from '@/components/public/Container';
 import { cn } from '@/lib/utils';
-import { pluralize } from '@/news/format';
 import { newsPath } from '@/news/routes';
 import type { NewsCard, NewsPage } from '@/news/types';
-import { ArticleCard } from './ArticleCard';
-import { Breadcrumbs, Container, EmptyState, Pagination } from './blocks';
+import { EmptyState, Pagination } from './blocks';
+import { DayGroups } from './DayGroups';
+import { ListingHead, type Crumb } from './listing/ListingHead';
+import s from './listing/listing.module.css';
+import { StoryCard, type StoryHeadingLevel } from './StoryCard';
 
-/** Stories in a grid; the first page opens with a lead story. */
-export function StoryGrid({
+/**
+ * Page 1 opens with a `splash` (image left, text right from 768 px), then
+ * `row`s; later pages are rows only (spec §5.10, §5.11). One `<article>`
+ * per story (StoryCard), so `main article` counts stories only.
+ */
+export function StoryList({
   items,
-  lead = true,
+  splash,
+  headingLevel = 'h2',
+  priority = false,
+  clock = true,
+  highlight,
+  className,
 }: {
   items: NewsCard[];
-  lead?: boolean;
+  /** Open with a splash (page 1 of a category, a hub). */
+  splash: boolean;
+  headingLevel?: StoryHeadingLevel;
+  /** Load the splash image eagerly (it is in the first viewport). */
+  priority?: boolean;
+  /** false: "{author} · {n} min read", no clock time (Learn). */
+  clock?: boolean;
+  /** The search query, wrapped in <mark> in headlines and summaries. */
+  highlight?: string;
+  className?: string;
 }) {
   return (
-    <div className="grid gap-x-6 gap-y-10 sm:grid-cols-2 lg:grid-cols-3">
-      {items.map((card, i) => (
-        <ArticleCard
-          key={card.id}
-          card={card}
-          variant={lead && i === 0 ? 'lead' : 'standard'}
-          priority={i === 0}
-          className={cn(lead && i === 0 && 'sm:col-span-2')}
-        />
-      ))}
+    <div className={className}>
+      {items.map((card, i) =>
+        splash && i === 0 ? (
+          <StoryCard
+            key={card.id}
+            card={card}
+            variant="splash"
+            orientation="horizontal"
+            headingLevel={headingLevel}
+            priority={priority}
+            clock={clock}
+            className="mb-4"
+          />
+        ) : (
+          <StoryCard
+            key={card.id}
+            card={card}
+            variant="row"
+            headingLevel={headingLevel}
+            clock={clock}
+            highlight={highlight}
+            className={i === 0 ? 'border-t-0' : undefined}
+          />
+        ),
+      )}
     </div>
   );
 }
 
-/** A section, tag, byline or company page: heading, stories, pages. */
+/**
+ * A section, tag, byline or latest page (spec §5.11; W5): the head, the
+ * story list and `Pagination`, with an optional aside.
+ *
+ * - The head is `ListingHead` (no eyebrow, no count line), or `head` when
+ *   the page brings its own (the author's profile head).
+ * - `layout="stories"` (default): page 1 opens with a splash (`splash`,
+ *   default true), then rows. `layout="days"`: DayGroups (Latest, author).
+ * - `rail`: the aside slot, cols 10–12 from 1024 and 6–8 (5 + 3) from 768;
+ *   after the list on phones. Pass a complete module (an `<aside>`); a
+ *   client module that renders nothing gives the width back.
+ * - `main article` is stories only: rails, boards and the head never use
+ *   `<article>`.
+ * - `aside` is the head's extra content (the sub-section links).
+ *
+ * Server component.
+ */
 export function ListingView({
-  eyebrow,
   title,
   description,
   crumbs,
@@ -40,64 +92,93 @@ export function ListingView({
   hrefFor,
   emptyTitle,
   emptyBody,
+  head,
+  storiesHead,
+  layout = 'stories',
+  splash = true,
+  rail,
+  railBelowOnTablet = false,
+  headingLevel,
+  emptyHeadingLevel,
+  clock = true,
+  highlight,
 }: {
-  eyebrow: string;
   title: string;
-  description?: React.ReactNode;
-  crumbs: { name: string; href?: string }[];
-  /** Extra header content: sub-sections, an author's links… */
-  aside?: React.ReactNode;
+  description?: ReactNode;
+  crumbs: Crumb[];
+  /** Extra head content under the summary: the sub-section links. */
+  aside?: ReactNode;
   listing: NewsPage | null;
   hrefFor: (page: number) => string;
   emptyTitle: string;
-  emptyBody?: React.ReactNode;
+  emptyBody?: ReactNode;
+  /** Replaces the ListingHead (the author's profile head). */
+  head?: ReactNode;
+  /** A section head between the page head and the list ("Stories by …"). */
+  storiesHead?: ReactNode;
+  layout?: 'stories' | 'days';
+  /** stories layout: page 1 opens with a splash. */
+  splash?: boolean;
+  /** The aside slot (cols 10–12; 5 + 3 on tablets). */
+  rail?: ReactNode;
+  /** Tablets show the aside after the list instead of 5 + 3. */
+  railBelowOnTablet?: boolean;
+  /** Story headline level: h2 under the H1, h3 under a section head. */
+  headingLevel?: StoryHeadingLevel;
+  /** The empty state's heading (h2 by default, h3 under a section head). */
+  emptyHeadingLevel?: 'h2' | 'h3';
+  clock?: boolean;
+  highlight?: string;
 }) {
   const items = listing?.items ?? [];
+  const page = listing?.page ?? 1;
+  const level = headingLevel ?? (storiesHead ? 'h3' : 'h2');
   return (
     <>
-      <section className="border-b border-border bg-paper">
-        <Container className="py-8 sm:py-12">
-          <Breadcrumbs items={crumbs} />
-          <p className="mt-6 font-mono text-xs tracking-[0.14em] text-primary uppercase">
-            {eyebrow}
-          </p>
-          <h1 className="mt-2 text-3xl font-bold text-balance sm:text-5xl">
-            {title}
-          </h1>
-          {description && (
-            <div className="mt-3 max-w-2xl text-lg leading-relaxed text-muted-foreground">
-              {description}
-            </div>
-          )}
+      {head ?? (
+        <ListingHead title={title} summary={description} crumbs={crumbs}>
           {aside}
-          {listing && listing.total > 0 && (
-            <p className="mt-4 text-sm text-muted-foreground">
-              {pluralize(listing.total, 'story', 'stories')}
-              {listing.totalPages > 1 &&
-                ` · page ${listing.page} of ${listing.totalPages}`}
-            </p>
-          )}
-        </Container>
-      </section>
-      <Container className="py-10">
-        {items.length === 0 ? (
-          <EmptyState title={emptyTitle}>{emptyBody}</EmptyState>
-        ) : (
-          <StoryGrid items={items} lead={listing?.page === 1} />
-        )}
-        {listing && (
-          <Pagination
-            page={listing.page}
-            totalPages={listing.totalPages}
-            hrefFor={hrefFor}
-          />
-        )}
+        </ListingHead>
+      )}
+      <Container className={s.area}>
+        <div
+          className={cn('sv-grid', s.grid)}
+          data-aside={rail ? (railBelowOnTablet ? 'below-tablet' : '') : undefined}
+        >
+          <div className={s.main}>
+            {storiesHead}
+            {items.length === 0 ? (
+              <EmptyState title={emptyTitle} headingLevel={emptyHeadingLevel ?? (storiesHead ? 'h3' : 'h2')}>
+                {emptyBody}
+              </EmptyState>
+            ) : layout === 'days' ? (
+              <DayGroups items={items} headingLevel={storiesHead ? 'h3' : 'h2'} />
+            ) : (
+              <StoryList
+                items={items}
+                splash={splash && page === 1}
+                headingLevel={level}
+                priority={!storiesHead}
+                clock={clock}
+                highlight={highlight}
+              />
+            )}
+            {listing ? (
+              <Pagination page={listing.page} totalPages={listing.totalPages} hrefFor={hrefFor} />
+            ) : null}
+          </div>
+          {rail ? <div className={s.side}>{rail}</div> : null}
+        </div>
       </Container>
     </>
   );
 }
 
-/** Links to a section's sub-sections, under its heading. */
+/**
+ * A section's sub-sections under its heading (spec §5.10, §5.11): quiet
+ * links in a row, 44 px tall. public-e2e finds "Derivatives" here on
+ * /news/markets.
+ */
 export function SubSections({
   items,
 }: {
@@ -105,14 +186,11 @@ export function SubSections({
 }) {
   if (!items.length) return null;
   return (
-    <ul className="mt-6 flex flex-wrap gap-2" aria-label="Sub-sections">
-      {items.map((s) => (
-        <li key={s.slug}>
-          <Link
-            href={newsPath.category(s.slug)}
-            className="inline-flex rounded-full border border-border bg-background px-3 py-1.5 text-sm font-medium hover:border-primary hover:text-primary"
-          >
-            {s.name}
+    <ul className={s.subs} aria-label="Sub-sections">
+      {items.map((x) => (
+        <li key={x.slug}>
+          <Link href={newsPath.category(x.slug)} className="sv-quiet t-small">
+            {x.name}
           </Link>
         </li>
       ))}

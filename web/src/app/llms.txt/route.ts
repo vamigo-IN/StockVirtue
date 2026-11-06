@@ -53,6 +53,8 @@ export async function GET() {
     item('Home', SITE.url),
     item('News', absolute(newsPath.home())),
     item('Latest news', absolute(newsPath.latest())),
+    item('Markets', absolute(newsPath.category('markets'))),
+    item('Learn', absolute(newsPath.category('education'))),
     item('Features', `${SITE.url}/features`),
     item('Download the app', `${SITE.url}/download`),
     item('About', `${SITE.url}/about`),

@@ -1,4 +1,5 @@
 import type { Metadata } from 'next';
+import { siteShareImage } from '@/lib/metadata';
 import { getSettings, type SiteSettings } from '@/lib/settings';
 import { SITE } from '@/lib/site';
 import { newsPath } from './routes';
@@ -36,13 +37,23 @@ export function istIso(iso: string | null | undefined): string | undefined {
 /** Whether the site as a whole may be indexed (Site settings). */
 const siteIndexable = (s: SiteSettings) => !s.config.search.noindex;
 
-/** The site's default share image, for pages without their own. */
-function defaultShareImage(s: SiteSettings) {
-  const share = s.config.branding.shareImage;
-  // A library image comes as a JPEG crop through /brand (the library keeps WebP).
-  const url = share ? `/brand/share.jpg?v=${share.id}` : '/og.png';
-  return { url: absolute(url), width: 1200, height: 630, alt: SITE.name };
+/**
+ * The site's default share image, for pages without their own: the admin's
+ * share image as a JPEG crop through /brand (the library keeps WebP), or
+ * /og.png. The same image as `siteShareImage()` in src/lib/metadata.ts.
+ */
+export function defaultShareImage(s: SiteSettings) {
+  return siteShareImage(s);
 }
+
+/**
+ * RSS autodiscovery for news pages (spec §10). Next replaces `alternates`
+ * as a whole in each segment that sets it, so every news page that sets a
+ * canonical must include this in its own `alternates`.
+ */
+export const RSS_TYPES = {
+  'application/rss+xml': [{ url: '/news/feed.xml', title: NEWS_NAME }],
+};
 
 export function absolute(path: string): string {
   return `${SITE.url}${path}`;
@@ -93,7 +104,7 @@ export async function articleMetadata(a: NewsArticle): Promise<Metadata> {
   return {
     title,
     description,
-    alternates: { canonical },
+    alternates: { canonical, types: RSS_TYPES },
     robots: {
       index,
       follow,
@@ -139,7 +150,7 @@ export async function listingMetadata(opts: {
   return {
     title,
     description: opts.description,
-    alternates: { canonical: opts.path },
+    alternates: { canonical: opts.path, types: RSS_TYPES },
     robots: { index, follow: siteIndexable(settings) },
     openGraph: {
       type: 'website',
@@ -243,17 +254,38 @@ export function breadcrumbJsonLd(items: { name: string; path: string }[]) {
   };
 }
 
+/** The characters escaped inside a JSON-LD script, and their JSON escapes. */
+const JSON_LD_ESCAPES: Record<string, string> = {
+  '<': '\\u003c',
+  '>': '\\u003e',
+  '&': '\\u0026',
+  '\u2028': '\\u2028',
+  '\u2029': '\\u2029',
+};
+
 /**
- * Structured data as a script tag. `<` is escaped so a headline containing
- * "</script>" can never end the tag early.
+ * Structured data as the text of a `<script type="application/ld+json">`
+ * (W7 addendum §9.1): `JSON.stringify(data)` with `<`, `>`, `&`, U+2028 and
+ * U+2029 written as JSON unicode escapes. No value (a headline, an editable
+ * FAQ answer) can then end the tag early ("</script>"), open a comment or
+ * a character reference, or break the line in older script parsers, and
+ * JSON.parse reads back exactly the same data. The ONLY way site code puts
+ * text into a script tag; never pass anything else to
+ * dangerouslySetInnerHTML.
+ */
+export function jsonLdHtml(data: unknown): string {
+  return (JSON.stringify(data) ?? 'null').replace(/[<>&\u2028\u2029]/g, (c) => JSON_LD_ESCAPES[c]);
+}
+
+/**
+ * Structured data as a script tag, escaped by jsonLdHtml, so a headline
+ * containing "</script>" can never end the tag early.
  */
 export function JsonLdScript({ data }: { data: unknown }) {
   return (
     <script
       type="application/ld+json"
-      dangerouslySetInnerHTML={{
-        __html: JSON.stringify(data).replace(/</g, '\\u003c'),
-      }}
+      dangerouslySetInnerHTML={{ __html: jsonLdHtml(data) }}
     />
   );
 }

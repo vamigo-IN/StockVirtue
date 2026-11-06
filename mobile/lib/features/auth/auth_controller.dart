@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:dio/dio.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_sign_in/google_sign_in.dart';
@@ -7,6 +8,7 @@ import 'package:google_sign_in/google_sign_in.dart';
 import '../../core/analytics.dart';
 import '../../core/firebase_init.dart';
 import '../../core/local_data.dart';
+import '../../core/notice_events.dart';
 import '../../data/auth_storage.dart';
 import '../../data/models/user.dart';
 import '../bookmarks/bookmarks_storage.dart';
@@ -15,7 +17,51 @@ import '../notifications/notifications_repository.dart';
 import '../notifications/push_service.dart';
 import '../orders/trade_notes_storage.dart';
 import '../privacy/privacy_repository.dart';
+import 'auth_errors.dart';
 import 'auth_repository.dart';
+
+/// How long a sign-up waits for the privacy notice's current version, per
+/// try (it tries twice).
+const kNoticeFetchTimeout = Duration(seconds: 8);
+
+/// The machine code of an API error (`message.code`), or null.
+String? apiErrorCode(Object? error) =>
+    error is DioException ? errorBodyCode(error.response?.data) : null;
+
+/// 409 `notice_outdated`: the privacy notice changed since the app read it,
+/// or the analytics question is now due afresh.
+bool isNoticeOutdated(Object? error) =>
+    error is DioException &&
+    error.response?.statusCode == 409 &&
+    apiErrorCode(error) == 'notice_outdated';
+
+/// The server refused a sign-up's agreement to the privacy notice: 428
+/// `consent_required` (none was sent, for example because the notice couldn't
+/// be read) or 409 `notice_outdated` (it changed meanwhile).
+bool isConsentRefusal(Object? error) =>
+    error is DioException &&
+    (error.response?.statusCode == 428 || isNoticeOutdated(error));
+
+/// The server's words from the last refused sign-up agreement (see
+/// [isConsentRefusal]).
+class ConsentRefusal {
+  const ConsentRefusal(this.message);
+  final String message;
+}
+
+class ConsentRefusalNotifier extends Notifier<ConsentRefusal?> {
+  @override
+  ConsentRefusal? build() => null;
+
+  void report(String message) => state = ConsentRefusal(message);
+}
+
+/// The sign-in screen listens: it unticks its consent box and shows the
+/// message, so the person ticks again, informed (never a silent retry).
+final consentRefusalProvider =
+    NotifierProvider<ConsentRefusalNotifier, ConsentRefusal?>(
+  ConsentRefusalNotifier.new,
+);
 
 class AuthController extends AsyncNotifier<AppUser?> {
   /// A referral code the user typed on the sign-up form. It can't be redeemed
@@ -28,17 +74,35 @@ class AuthController extends AsyncNotifier<AppUser?> {
   /// consent before the account exists (DPDP Act 2023 s.6).
   bool consentGiven = false;
 
-  /// The notice the person agreed to: the server's current version.
+  /// The notice the person agreed to on the sign-in screen: the server's
+  /// current version, read afresh now (a version read earlier may be out of
+  /// date), trying twice. Null when the box isn't ticked or the notice can't
+  /// be read: never a version the app made up. An existing account signs in
+  /// anyway and meets the notice screen if it needs it; a new account gets
+  /// 428 `consent_required` in strict mode, and the sign-in screen asks again.
   Future<Map<String, dynamic>?> _consent() async {
     if (!consentGiven) return null;
-    var version = kPrivacyNoticeVersion;
-    try {
-      version = (await ref
-              .read(privacyInfoProvider.future)
-              .timeout(const Duration(seconds: 5)))
-          .noticeVersion;
-    } catch (_) {}
-    return {'noticeVersion': version, 'adult': true};
+    final privacy = ref.read(privacyRepositoryProvider);
+    for (var attempt = 0; attempt < 2; attempt++) {
+      try {
+        final version =
+            (await privacy.info().timeout(kNoticeFetchTimeout)).noticeVersion;
+        return version == null ? null : {'noticeVersion': version, 'adult': true};
+      } catch (_) {
+        // Slow or offline: one more try, then no consent payload.
+      }
+    }
+    return null;
+  }
+
+  /// A sign-up refused over the notice: untick (the person ticks again,
+  /// informed), let the notice be read afresh, and tell the sign-in screen.
+  /// The caller still gets the error.
+  void _consentRefused(Object error) {
+    if (!isConsentRefusal(error)) return;
+    consentGiven = false;
+    ref.invalidate(privacyInfoProvider);
+    ref.read(consentRefusalProvider.notifier).report(friendlyAuthError(error));
   }
 
   @override
@@ -64,9 +128,14 @@ class AuthController extends AsyncNotifier<AppUser?> {
   /// change yet — the UI routes to the verify screen on success. Throws on
   /// failure (e.g. email already registered) for the screen to surface.
   Future<void> registerWithEmail(String email, String password) async {
-    await ref
-        .read(authRepositoryProvider)
-        .registerEmail(email, password, consent: await _consent());
+    try {
+      await ref
+          .read(authRepositoryProvider)
+          .registerEmail(email, password, consent: await _consent());
+    } catch (e) {
+      _consentRefused(e);
+      rethrow;
+    }
   }
 
   /// Verify the emailed OTP and exchange it for app tokens (signs in).
@@ -201,9 +270,15 @@ class AuthController extends AsyncNotifier<AppUser?> {
     if (idToken == null) {
       throw StateError('Firebase did not return an ID token');
     }
-    final result = await ref
-        .read(authRepositoryProvider)
-        .firebaseLogin(idToken, consent: await _consent());
+    final AuthResult result;
+    try {
+      result = await ref
+          .read(authRepositoryProvider)
+          .firebaseLogin(idToken, consent: await _consent());
+    } catch (e) {
+      _consentRefused(e);
+      rethrow;
+    }
     await ref.read(authStorageProvider).write(result.tokens);
     await Analytics.instance.setCollection(result.user.analyticsConsent);
     Analytics.instance.logLogin(method);
@@ -237,27 +312,82 @@ class AuthController extends AsyncNotifier<AppUser?> {
 
   // ── Privacy ──────────────────────────────────────────────────────
 
-  /// Accepts the current privacy notice (and confirms 18+), with the
-  /// optional analytics choice.
-  Future<void> acceptPrivacyNotice({required bool analytics}) async {
-    var version = kPrivacyNoticeVersion;
+  /// Accepts the privacy notice the screen showed, confirms 18+, and records
+  /// the analytics box.
+  ///
+  /// [noticeVersion] is the `currentNoticeVersion` the screen drew, never one
+  /// read at the tap: a version published while the screen was open has a
+  /// date and summary the person never saw. [analyticsPrefilled] is the value
+  /// the analytics box started at, given only when the screen set the box to
+  /// the person's current choice. On 409 `notice_outdated` (a newer notice,
+  /// or the analytics question is now due afresh) the status is read again,
+  /// so the screen redraws with the new summary and boxes, and the server's
+  /// message reaches the screen.
+  Future<void> acceptPrivacyNotice({
+    required String? noticeVersion,
+    required bool analytics,
+    bool? analyticsPrefilled,
+  }) async {
+    if (noticeVersion == null) {
+      // The server didn't say which notice is current: read it again, so the
+      // screen shows it, and let the person accept that one.
+      await refreshPrivacy();
+      throw StateError('No notice version to accept');
+    }
+    final PrivacyStatus status;
     try {
-      version = (await ref.read(privacyRepositoryProvider).info()).noticeVersion;
-    } catch (_) {}
-    final status = await ref.read(privacyRepositoryProvider).acceptNotice(
-          noticeVersion: version,
-          adult: true,
-          analytics: analytics,
-        );
+      status = await ref.read(privacyRepositoryProvider).acceptNotice(
+            noticeVersion: noticeVersion,
+            adult: true,
+            analytics: analytics,
+            analyticsPrefilled: analyticsPrefilled,
+          );
+    } catch (e) {
+      if (isNoticeOutdated(e)) {
+        try {
+          await refreshPrivacy();
+        } catch (_) {
+          // The message still shows; the next resume or tap reads it again.
+        }
+      }
+      rethrow;
+    }
     await Analytics.instance.setCollection(status.analytics);
     final current = state.value;
     if (current != null) {
-      state = AsyncData<AppUser?>(current.copyWith(
-        needsPrivacyNotice: status.needsNotice,
-        analyticsConsent: status.analytics,
-      ));
+      state = AsyncData<AppUser?>(current.withNotice(status.notice));
     }
   }
+
+  /// Reads the account's privacy status again (GET /v1/privacy/me, open while
+  /// the notice is pending) and takes its notice fields, so the notice screen
+  /// shows, hides or redraws. Throws when the call fails; does nothing while
+  /// signed out.
+  Future<void> refreshPrivacy() async {
+    final before = state.value;
+    if (before == null) return;
+    final status = await ref.read(privacyRepositoryProvider).status();
+    final current = state.value;
+    // Signed out, or another account signed in, while it was loading.
+    if (current == null || current.id != before.id) return;
+    if (_sameNotice(current, status.notice)) return;
+    state = AsyncData<AppUser?>(current.withNotice(status.notice));
+    if (status.analytics != current.analyticsConsent) {
+      // Changed elsewhere (another phone, or a withdrawal request): follow it.
+      await Analytics.instance.setCollection(status.analytics);
+    }
+  }
+
+  static bool _sameNotice(AppUser user, NoticeState notice) =>
+      user.needsPrivacyNotice == notice.needsNotice &&
+      user.analyticsConsent == notice.analytics &&
+      user.acceptedNoticeVersion == notice.acceptedVersion &&
+      user.currentNoticeVersion == notice.currentVersion &&
+      user.noticeUpdatedAt == notice.updatedAt &&
+      user.noticeChangeSummary?.en == notice.changeSummary?.en &&
+      user.noticeChangeSummary?.hi == notice.changeSummary?.hi &&
+      (user.noticeChangeSummary == null) == (notice.changeSummary == null) &&
+      user.analyticsReask == notice.analyticsReask;
 
   /// Gives or withdraws consent to app analytics.
   Future<void> setAnalyticsConsent(bool allowed) async {

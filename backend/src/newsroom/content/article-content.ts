@@ -8,6 +8,14 @@
  *
  * Widget blocks are their own node type (`marketWidget`): structured JSON
  * checked by the widget registry, never HTML.
+ *
+ * Text colour, highlight and alignment are names from fixed lists
+ * (TEXT_COLORS, HIGHLIGHT_COLORS, TEXT_ALIGNS), stored as
+ * `{type:'textColor',attrs:{color:'blue'}}`, `{type:'highlight',attrs:{color:'yellow'}}`
+ * and a paragraph's or heading's `attrs.textAlign` ('center' | 'right' |
+ * 'justify'; left is no attribute). They render as data attributes
+ * (`<span data-text-color>`, `<mark data-highlight>`, `data-text-align`),
+ * never as inline styles.
  */
 import { safeHref } from './article-content-links';
 import {
@@ -103,7 +111,54 @@ const MARKS = new Set([
   'strike',
   'code',
   'link',
+  'textColor',
+  'highlight',
 ]);
+
+/**
+ * Text colours and highlights are stored as these names, never as colour
+ * values: each reader (the website's light story page, the portal's light
+ * and dark editor, the app's light and dark themes) maps a name to shades
+ * that are readable on its own background. A name not listed here is
+ * dropped on save (the text keeps the default colour), so retiring a colour
+ * later can never make a stored story fail the allowlist.
+ */
+export const TEXT_COLORS = [
+  'gray',
+  'green',
+  'red',
+  'orange',
+  'blue',
+  'purple',
+  'pink',
+] as const;
+export type TextColor = (typeof TEXT_COLORS)[number];
+export const HIGHLIGHT_COLORS = [
+  'yellow',
+  'green',
+  'blue',
+  'red',
+  'purple',
+] as const;
+export type HighlightColor = (typeof HIGHLIGHT_COLORS)[number];
+
+/**
+ * Paragraph and heading alignment. Left is the default and is stored as no
+ * attribute at all, so only these three values ever appear in a document.
+ */
+export const TEXT_ALIGNS = ['center', 'right', 'justify'] as const;
+export type TextAlign = (typeof TEXT_ALIGNS)[number];
+
+const isTextColor = (v: unknown): v is TextColor =>
+  typeof v === 'string' && (TEXT_COLORS as readonly string[]).includes(v);
+const isHighlightColor = (v: unknown): v is HighlightColor =>
+  typeof v === 'string' && (HIGHLIGHT_COLORS as readonly string[]).includes(v);
+const isTextAlign = (v: unknown): v is TextAlign =>
+  typeof v === 'string' && (TEXT_ALIGNS as readonly string[]).includes(v);
+
+/** `{ textAlign }` for a known non-default alignment, else nothing. */
+const alignAttrs = (v: unknown): { textAlign?: TextAlign } =>
+  isTextAlign(v) ? { textAlign: v } : {};
 
 export const CALLOUT_TONES = ['info', 'takeaway', 'warning', 'note'] as const;
 export const VIDEO_PROVIDERS = {
@@ -157,6 +212,14 @@ function cleanMarks(marks: unknown): PmMark[] | undefined {
       const href = safeHref(m.attrs?.href);
       if (!href) continue; // an unsafe link becomes plain text
       out.push({ type, attrs: { href } });
+    } else if (type === 'textColor' || type === 'highlight') {
+      // Only a palette name is kept; anything else (a hex value, a CSS
+      // string, a name from another palette) leaves the text uncoloured.
+      const color = m.attrs?.color;
+      const known =
+        type === 'textColor' ? isTextColor(color) : isHighlightColor(color);
+      if (!known) continue;
+      out.push({ type, attrs: { color } });
     } else {
       out.push({ type });
     }
@@ -170,8 +233,12 @@ function cleanAttrs(
   a: Record<string, unknown> = {},
 ): Record<string, unknown> | undefined {
   switch (type) {
+    case 'paragraph': {
+      const align = alignAttrs(a.textAlign);
+      return align.textAlign ? align : undefined;
+    }
     case 'heading':
-      return { level: int(a.level, 2, 4, 2) };
+      return { level: int(a.level, 2, 4, 2), ...alignAttrs(a.textAlign) };
     case 'orderedList':
       return { start: int(a.start, 1, 100_000, 1) };
     case 'image': {
@@ -397,12 +464,30 @@ const MARK_TAGS: Record<string, [string, string]> = {
   code: ['<code>', '</code>'],
 };
 
+/**
+ * A paragraph's or heading's alignment as a data attribute (article-prose.css
+ * and the app draw it). Never a style attribute: the served HTML carries no
+ * CSS, so other readers of it (feeds, partners) simply show the text.
+ */
+const alignHtml = (a: Record<string, unknown>): string =>
+  isTextAlign(a.textAlign) ? ` data-text-align="${a.textAlign}"` : '';
+
 function renderText(node: PmNode): string {
   let html = escapeHtml(node.text ?? '');
   // Innermost first, so the first mark ends up outermost.
   for (const mark of [...(node.marks ?? [])].reverse()) {
+    const color = mark.attrs?.color;
     if (mark.type === 'link') {
       html = `${linkOpen(attr(mark.attrs?.href))}${html}</a>`;
+    } else if (mark.type === 'textColor') {
+      // The palette name only; each surface's CSS picks the shade.
+      if (isTextColor(color)) {
+        html = `<span data-text-color="${color}">${html}</span>`;
+      }
+    } else if (mark.type === 'highlight') {
+      if (isHighlightColor(color)) {
+        html = `<mark data-highlight="${color}">${html}</mark>`;
+      }
     } else if (MARK_TAGS[mark.type]) {
       const [open, close] = MARK_TAGS[mark.type];
       html = `${open}${html}${close}`;
@@ -432,10 +517,10 @@ function renderNode(node: PmNode, ctx: RenderContext): string {
     case 'hardBreak':
       return '<br>';
     case 'paragraph':
-      return `<p>${kids()}</p>`;
+      return `<p${alignHtml(a)}>${kids()}</p>`;
     case 'heading': {
       const level = Number(a.level) || 2;
-      return `<h${level}>${kids()}</h${level}>`;
+      return `<h${level}${alignHtml(a)}>${kids()}</h${level}>`;
     }
     case 'bulletList':
       return `<ul>${kids()}</ul>`;

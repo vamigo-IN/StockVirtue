@@ -1,0 +1,57 @@
+/* The Nifty Field (spec §6.7): the canvas replaces the tiles inside the
+   HeatGrid card; the legend, BreadthBar, "View as list" and the Stamp stay
+   (HeatGrid's). While the scene loads the tiles stay and the canvas host
+   is laid out invisibly over them, so the renderer can size itself. */
+
+.field {
+  position: relative;
+}
+
+.host {
+  position: relative;
+  width: 100%;
+}
+.host[data-state='loading'] {
+  position: absolute;
+  inset: 0 0 auto 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+.host[data-state='failed'] {
+  display: none;
+}
+.host[data-pick='link'] {
+  cursor: pointer;
+}
+
+.status {
+  margin-top: 8px;
+}
+
+.caption {
+  margin-top: 8px;
+}
+
+/* The block's tooltip: at its projected top, above it. */
+.tip {
+  position: absolute;
+  z-index: 2;
+  max-width: min(320px, calc(100% - 16px));
+  transform: translate(-50%, calc(-100% - 10px));
+  border: 1px solid var(--sv-rule);
+  border-radius: 8px;
+  background: var(--sv-surface);
+  box-shadow: 0 6px 18px rgb(17 23 20 / 0.12);
+  padding: 8px 12px;
+  color: var(--sv-fg);
+  pointer-events: none;
+  white-space: normal;
+}
+.tip[data-interactive] {
+  pointer-events: auto;
+}
+.tipLink {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+}

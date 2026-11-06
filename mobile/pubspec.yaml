@@ -1,7 +1,7 @@
 name: stockvirtue
 description: "StockVirtue — Indian stock market simulator with virtual money."
 publish_to: 'none'
-version: 1.4.0+8
+version: 1.4.1+9
 
 environment:
   sdk: ^3.11.5

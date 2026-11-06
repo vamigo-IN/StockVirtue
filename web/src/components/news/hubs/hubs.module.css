@@ -1,0 +1,361 @@
+/* ============================================================================
+   The section hubs (spec §5.10; W5): /news/markets, /news/commodities,
+   /news/ipo and /news/education (Learn). Layout only: the modules are
+   W0m's (components/market), the diagrams W2's, the units StoryCard's.
+
+   Data first, then stories (§5.10 rules). The data area is the page grid
+   (--sv-cols 4 / 8 / 12) with 24 px between module rows; modules sit in
+   their own boxes (radius 12, hairline, white). Below 1024 every module
+   runs full width, one after the other, except the Markets hub's movers
+   and sectors, which sit 4 / 4 on tablets.
+
+   A module that drew nothing in the browser (the licence changed after the
+   page was cached; IndexBoard under OFF) leaves its cell empty: the cell
+   hides and its neighbour takes the row (:has(); browsers without it keep
+   the empty column).
+   ========================================================================== */
+
+.data {
+  padding-top: var(--sv-block-news);
+}
+.rows {
+  display: grid;
+  row-gap: 24px;
+}
+.row {
+  row-gap: 24px;
+}
+.cell {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+.cell:empty {
+  display: none;
+}
+
+@media (min-width: 1024px) {
+  .c1to7 {
+    grid-column: 1 / span 7;
+  }
+  .c8to12 {
+    grid-column: 8 / span 5;
+  }
+  .c1to8 {
+    grid-column: 1 / span 8;
+  }
+  .c9to12 {
+    grid-column: 9 / span 4;
+  }
+  .c1to9 {
+    grid-column: 1 / span 9;
+  }
+  .row:has(> .cell:empty) > .cell {
+    grid-column: 1 / -1;
+  }
+}
+
+/* The stories after the data (HubStories). */
+.stories {
+  padding-block: calc(var(--sv-block-news) + 8px) calc(var(--sv-block-news) * 1.5);
+}
+
+/* ── Markets: the LIVE card (MarketsLive) ─────────────────────────────────
+   Phones: ONE card (the hub box) with Radix Tabs [Heatmap | Movers |
+   Sectors]; the modules inside are unboxed (boxed={false}; OI-m07-2).
+   From 768: the tab list hides, the three panels stack into the grid and
+   each panel draws the box itself: the heatmap full width on tablets (its
+   8 tile columns) with movers and sectors 4 / 4 below; from 1024 the
+   heatmap in cols 1–7, the movers in 8–12, the sectors across 1–12. */
+.live {
+  border: 1px solid var(--sv-rule);
+  border-radius: 12px;
+  background: var(--sv-surface);
+  padding: 16px;
+}
+@media (max-width: 767.98px) {
+  .panel[data-state='inactive'] {
+    display: none;
+  }
+  .panel {
+    margin-top: 12px;
+  }
+}
+@media (min-width: 640px) and (max-width: 767.98px) {
+  .live {
+    padding: 20px;
+  }
+}
+@media (min-width: 768px) {
+  .live {
+    display: grid;
+    grid-template-columns: repeat(var(--sv-cols), minmax(0, 1fr));
+    column-gap: var(--sv-gutter);
+    row-gap: 24px;
+    border: 0;
+    border-radius: 0;
+    background: none;
+    padding: 0;
+  }
+  .liveTabs {
+    display: none;
+  }
+  .panel {
+    min-width: 0;
+    border: 1px solid var(--sv-rule);
+    border-radius: 12px;
+    background: var(--sv-surface);
+    padding: 20px;
+  }
+  .panelHeat {
+    grid-column: 1 / -1;
+  }
+  .panelMovers {
+    grid-column: 1 / span 4;
+  }
+  .panelSectors {
+    grid-column: 5 / span 4;
+  }
+  /* A module that returned nothing (an upstream answer it can't show
+     never does; the licence switch is handled above it): no empty box. */
+  .panel:empty {
+    display: none;
+  }
+}
+@media (min-width: 1024px) {
+  .panelHeat {
+    grid-column: 1 / span 7;
+  }
+  .panelMovers {
+    grid-column: 8 / span 5;
+  }
+  .panelSectors {
+    grid-column: 1 / -1;
+  }
+}
+
+/* ── Commodities: the data note beside the gold and silver chart ────────
+   (meta, --sv-fg-2); across the row when the compare chart is left out. */
+.note {
+  max-width: 34em;
+}
+
+/* ── IPOs: DISCLAIMERS.ipo as a RiskDisclaimer-style note (an amber 3 px
+   rule, small; spec §5.10.3). */
+.risk {
+  max-width: 46em;
+  margin-top: 24px;
+  border-left: 3px solid var(--sv-warning);
+  padding: 4px 0 4px 16px;
+}
+
+/* ── Learn (spec §5.10.4) ──────────────────────────────────────────────── */
+.learnSection {
+  padding-top: calc(var(--sv-block-news) + 8px);
+}
+.learnLast {
+  padding-bottom: calc(var(--sv-block-news) * 1.5);
+}
+.intro {
+  max-width: 40em;
+  margin-top: 4px;
+}
+
+/* Start here: 1 story = a large row in cols 1–9; 2 = two features
+   (c1–6 | c7–12); 3 = three features (c1–4 | c5–8 | c9–12). Tablets: two
+   features side by side, a third as a row. Phones: rows. */
+.start {
+  row-gap: 24px;
+}
+.start > * {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+@media (min-width: 768px) {
+  .start[data-n='2'] > *,
+  .start[data-n='3'] > :nth-child(-n + 2) {
+    grid-column: span 4;
+  }
+}
+@media (min-width: 1024px) {
+  .start[data-n='1'] > * {
+    grid-column: 1 / span 9;
+  }
+  .start[data-n='2'] > * {
+    grid-column: span 6;
+  }
+  .start[data-n='3'] > *,
+  .start[data-n='3'] > :nth-child(-n + 2) {
+    grid-column: span 4;
+  }
+}
+
+/* The diagrams (W2's, through DiagramPlayer and DiagramFrame): one figure
+   per row. From 1280: the drawing in cols 1–6 (at least 600 px, the
+   600 × 240 drawing at 1:1) and the text in cols 7–10, in the order
+   "Diagram" · title · caption · [Replay]. 1024–1279: the drawing in cols
+   1–8, the text in 9–12. Tablets: full width capped at 720 px, the text
+   under the drawing. Phones: full width, a 44 px Replay under each. The
+   frame's own markup is W0's; only its placement is set here. */
+.diagrams {
+  display: grid;
+  row-gap: 40px;
+  margin-top: 24px;
+}
+@media (min-width: 768px) and (max-width: 1023.98px) {
+  .diagrams :global(.sv-diagram) {
+    max-width: 720px;
+  }
+}
+@media (min-width: 1024px) {
+  .diagrams :global(.sv-diagram) {
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    column-gap: var(--sv-gutter);
+    grid-template-rows: auto auto auto 1fr;
+    align-items: start;
+  }
+  .diagrams :global(.sv-diagram) > :global(.sv-diagram-drawing) {
+    grid-column: 1 / span 8;
+    grid-row: 1 / span 4;
+    margin-top: 0;
+  }
+  .diagrams :global(.sv-diagram) > :not(:global(.sv-diagram-drawing)) {
+    grid-column: 9 / span 4;
+  }
+  .diagrams :global(.sv-diagram) > :global(.t-label) {
+    grid-row: 1;
+  }
+  .diagrams :global(.sv-diagram) > :is(h2, h3, p:not(:global(.t-label))) {
+    grid-row: 2;
+  }
+  .diagrams :global(.sv-diagram) > figcaption {
+    grid-row: 3;
+  }
+  .diagrams :global(.sv-diagram) > :global(.sv-diagram-actions) {
+    grid-row: 4;
+    margin-top: 16px;
+  }
+}
+@media (min-width: 1280px) {
+  .diagrams :global(.sv-diagram) {
+    grid-template-columns: minmax(600px, 6fr) minmax(0, 4fr) minmax(0, 2fr);
+  }
+  .diagrams :global(.sv-diagram) > :global(.sv-diagram-drawing) {
+    grid-column: 1;
+  }
+  .diagrams :global(.sv-diagram) > :not(:global(.sv-diagram-drawing)) {
+    grid-column: 2;
+  }
+}
+/* All explainers: rows in cols 1–9, the Academy panel in 10–12 (after the
+   list, full width, below 1024). */
+.explainers {
+  row-gap: 32px;
+}
+.explainers > * {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+@media (min-width: 1024px) {
+  .explainersMain {
+    grid-column: 1 / span 9;
+  }
+  .explainersSide {
+    grid-column: 10 / span 3;
+  }
+}
+
+/* ── Glossary (spec §4.9): five groups, two CSS columns from 768; each
+   group a PhoneDisclosure "head" (closed on phones, open from 768). */
+.glossary {
+  padding-top: calc(var(--sv-block-news) + 8px);
+}
+.groups {
+  margin-top: 24px;
+}
+@media (min-width: 768px) {
+  .groups {
+    columns: 2;
+    column-gap: var(--sv-gutter);
+  }
+}
+.group {
+  break-inside: avoid-column;
+  border-top: 2px solid var(--sv-fg);
+  margin-bottom: 28px;
+}
+@media (max-width: 767.98px) {
+  .group {
+    margin-bottom: 0;
+    border-top-width: 1px;
+    border-top-color: var(--sv-rule);
+  }
+  .group:first-child {
+    border-top: 2px solid var(--sv-fg);
+  }
+  .groups {
+    border-bottom: 1px solid var(--sv-rule);
+  }
+}
+.groupHead {
+  margin: 0;
+  padding-block: 12px;
+}
+.terms {
+  margin: 0;
+}
+.terms dt {
+  margin-top: 16px;
+  scroll-margin-top: calc(var(--sv-chrome-h, 100px) + 16px);
+}
+.terms dt:first-child {
+  margin-top: 4px;
+}
+.terms dd {
+  margin: 4px 0 0;
+  max-width: 36em;
+}
+@media (max-width: 767.98px) {
+  .terms {
+    padding-bottom: 16px;
+  }
+}
+
+/* ── Emerald Terminal (6 Nov 2026): the Markets hub's data area is a
+   terminal band (the brief's "dense data modules"): #0B1016 with its two
+   soft glows, 40 px band corners (24 on phones), the modules on #0E131A
+   panels. Used with A's .sv-terminal scope (text, rules, up/down, stamps,
+   heat, focus, bo palette); the light-surface names the module boxes, the
+   tracks and the chart read are remapped here so they follow too. */
+.terminal {
+  --sv-surface: var(--sv-term-2, #0E131A);
+  --sv-surface-2: var(--sv-term-3, #10151D);
+  --sv-surface-3: var(--sv-term-line, #1E2733);
+  --sv-ink: var(--sv-on-term, #E6EDF5);
+  --card: var(--sv-term-2, #0E131A);
+  --card-foreground: var(--sv-on-term, #E6EDF5);
+  --foreground: var(--sv-on-term, #E6EDF5);
+  --muted: var(--sv-term-3, #10151D);
+  --muted-foreground: var(--sv-on-term-3, #8A97A6);
+  --border: var(--sv-term-line, #1E2733);
+  padding: 12px;
+  border-radius: 24px;
+  background: var(--sv-terminal-band, #0B1016);
+  box-shadow: var(--sv-shadow-card, 0 16px 40px rgb(3 68 45 / 0.12));
+}
+@media (min-width: 768px) {
+  .terminal {
+    padding: 24px;
+    border-radius: var(--sv-r-band, 40px);
+  }
+}
+@media (min-width: 1280px) {
+  .terminal {
+    padding: 32px;
+  }
+}
+/* The panels inside: 16 px corners, the terminal hairline. */
+.terminal :is(.live, .panel) {
+  border-color: var(--sv-term-line, #1E2733);
+  border-radius: var(--sv-r-lg, 16px);
+}

@@ -52,6 +52,12 @@
   margin: 8px 0 4px;
 }
 
+/* The "choose again" line (a new cookie choice version), above the intro. */
+.again {
+  margin: 8px 0 0;
+  font-weight: 600;
+}
+
 .purposes {
   margin: 0;
   padding-left: 18px;

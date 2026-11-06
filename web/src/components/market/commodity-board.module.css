@@ -1,0 +1,20 @@
+/* CommodityBoard (spec §4.10): its rows keep the 44 px height of every data
+   table (widgets.css .sv-mk-table) although the name cell holds two lines,
+   the name (t-small, 22 px line) over "{unit} · {Mon} future" (t-meta,
+   18 px line). The name cell's block padding drops from 6 px to 2 px, so
+   22 + 18 + 2 + 2 = 44. The home band's phone tab reserves "5 rows × 44 +
+   Stamp" (spec §5.1); at 6 px the rows were 52.5 px. The other cells keep
+   their padding and stay centred. (0,1,2) beats widgets.css's (0,1,1) in
+   any load order. */
+.rows tbody th {
+  padding-block: 2px;
+}
+
+/* The home band's phone tab (`phoneCurrencies`): below 640 px only the first
+   rupee rows show, so the tab keeps spec §5.1.3's "5 rows × 44 + Stamp"
+   (lead decision, 5 Nov 2026). From 640 px every row shows. */
+@media (max-width: 639.98px) {
+  .phoneHidden {
+    display: none;
+  }
+}

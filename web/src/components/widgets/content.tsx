@@ -13,15 +13,24 @@ import { useWidgetMode } from './data';
 import { WidgetCard, WidgetMessage } from './frame';
 import { DISCLAIMERS, type WidgetConfig } from './meta';
 
-/** Story widgets: text the newsroom wrote, no market data. */
+/**
+ * Story widgets: text the newsroom wrote, no market data. They sit between
+ * the story's prose runs, so they share the prose callouts' look: a 3 px
+ * rule and the callout fill (--prose-callout-bg), with sentence-case labels
+ * in the text colour (spec R1, R11, R14). Only area-level names and the
+ * theme utilities are used, so the portal's light and dark modes follow.
+ */
+
+const LABEL =
+  'flex items-center gap-2 text-[13px] leading-4 font-semibold text-foreground';
 
 export function KeyTakeawaysWidget({ config }: { config: WidgetConfig }) {
   const items = (
     Array.isArray(config.items) ? (config.items as string[]) : []
   ).filter(Boolean);
   return (
-    <aside className="not-prose my-8 rounded-xl border-l-4 border-emerald-600 bg-emerald-500/7 px-5 py-4">
-      <p className="flex items-center gap-2 font-mono text-[11px] font-semibold tracking-[0.12em] text-emerald-700 uppercase dark:text-emerald-400">
+    <aside className="not-prose my-8 rounded-r-[4px] border-l-[3px] border-foreground bg-(--prose-callout-bg) px-5 py-4 text-foreground">
+      <p className={LABEL}>
         <ListChecks className="size-4" aria-hidden="true" />
         {String(config.title || 'Key takeaways')}
       </p>
@@ -29,7 +38,7 @@ export function KeyTakeawaysWidget({ config }: { config: WidgetConfig }) {
         {items.map((item, i) => (
           <li key={i} className="flex gap-3 text-[15px] leading-relaxed">
             <span
-              className="mt-2 size-1.5 shrink-0 rounded-full bg-emerald-600"
+              className="mt-2.5 size-1.5 shrink-0 rounded-full bg-foreground"
               aria-hidden="true"
             />
             <span>{item}</span>
@@ -46,14 +55,14 @@ export function EducationalWidget({ config }: { config: WidgetConfig }) {
     .filter((p) => p.trim());
   const link = typeof config.link === 'string' ? config.link : null;
   return (
-    <aside className="not-prose my-8 rounded-xl border border-border bg-muted/40 px-5 py-4">
-      <p className="flex items-center gap-2 font-mono text-[11px] font-semibold tracking-[0.12em] text-muted-foreground uppercase">
+    <aside className="not-prose my-8 rounded-[4px] border border-border bg-card px-5 py-4 text-card-foreground">
+      <p className={LABEL}>
         <GraduationCap className="size-4" aria-hidden="true" /> Explainer
       </p>
       <p className="mt-2 font-display text-lg font-bold">
         {String(config.term ?? '')}
       </p>
-      <div className="mt-1 space-y-2 text-[15px] leading-relaxed text-foreground/90">
+      <div className="mt-1 space-y-2 text-[15px] leading-relaxed">
         {paragraphs.map((p, i) => (
           <p key={i}>{p}</p>
         ))}
@@ -64,9 +73,9 @@ export function EducationalWidget({ config }: { config: WidgetConfig }) {
           {...(link.startsWith('/')
             ? {}
             : { target: '_blank', rel: 'noopener noreferrer nofollow' })}
-          className="mt-3 inline-flex items-center gap-1 text-sm font-medium text-primary hover:underline"
+          className="mt-3 inline-flex items-center gap-1 text-sm font-medium text-foreground underline decoration-primary decoration-2 underline-offset-4"
         >
-          Learn more <ArrowRight className="size-4" aria-hidden="true" />
+          Learn more <ArrowRight className="size-3.5" aria-hidden="true" />
         </a>
       )}
     </aside>
@@ -85,10 +94,10 @@ export function RiskDisclaimerWidget({
   return (
     <aside
       role="note"
-      className="not-prose my-8 flex gap-3 rounded-xl border border-amber-500/40 bg-amber-500/8 px-5 py-4 text-sm leading-relaxed"
+      className="not-prose my-8 flex gap-3 rounded-r-[4px] border-l-[3px] border-(--warning) bg-(--prose-callout-bg) px-5 py-4 text-sm leading-relaxed text-foreground"
     >
       <ShieldAlert
-        className="mt-0.5 size-5 shrink-0 text-amber-600"
+        className="mt-0.5 size-5 shrink-0 text-(--warning)"
         aria-hidden="true"
       />
       <p>{wording}</p>
@@ -96,32 +105,33 @@ export function RiskDisclaimerWidget({
   );
 }
 
-const BANNER: Record<string, { box: string; button: string; body: string }> = {
-  dark: {
-    box: 'bg-[#0a0f0d] text-[#e7f3ec]',
-    button: 'bg-[#4ade80] text-[#0a0f0d] hover:bg-white',
-    body: 'text-[#8aa398]',
-  },
-  brand: {
-    box: 'bg-[#15803d] text-white',
-    button: 'bg-white text-[#14532d] hover:bg-[#dcfce7]',
-    body: 'text-white/85',
-  },
-  light: {
-    box: 'bg-card text-foreground border border-border',
-    button: 'bg-primary text-primary-foreground hover:bg-primary/90',
-    body: 'text-muted-foreground',
-  },
-};
+/**
+ * The editor's three banner themes. "dark" and "brand" are fixed surfaces
+ * coloured in widgets.css (.sv-promo[data-theme]): the stage tokens with the
+ * green-400 button, and green-700 with a white button. "light" is the card.
+ */
+const BANNER: Record<'dark' | 'brand' | 'light', { box: string; cta: string }> =
+  {
+    dark: { box: '', cta: '' },
+    brand: { box: '', cta: '' },
+    light: {
+      box: 'bg-card text-card-foreground border border-border',
+      cta: 'bg-primary text-primary-foreground hover:bg-primary/90',
+    },
+  };
+const themeOf = (v: unknown): keyof typeof BANNER =>
+  v === 'brand' || v === 'light' ? v : 'dark';
 
 export function PromoBannerWidget({ config }: { config: WidgetConfig }) {
-  const look = BANNER[String(config.theme)] ?? BANNER.dark;
+  const theme = themeOf(config.theme);
+  const look = BANNER[theme];
   const href = String(config.ctaUrl ?? '/');
   const external = !href.startsWith('/');
   return (
     <aside
+      data-theme={theme}
       className={cn(
-        'not-prose my-8 flex flex-col gap-4 rounded-xl px-6 py-5 sm:flex-row sm:items-center sm:justify-between',
+        'sv-promo not-prose my-8 flex flex-col gap-4 rounded-[12px] px-6 py-5 sm:flex-row sm:items-center sm:justify-between',
         look.box,
       )}
     >
@@ -130,15 +140,22 @@ export function PromoBannerWidget({ config }: { config: WidgetConfig }) {
           {String(config.headline ?? '')}
         </p>
         {config.body ? (
-          <p className={cn('mt-1 text-sm', look.body)}>{String(config.body)}</p>
+          <p
+            className={cn(
+              'sv-promo-body mt-1 text-sm',
+              theme === 'light' && 'text-muted-foreground',
+            )}
+          >
+            {String(config.body)}
+          </p>
         ) : null}
       </div>
       <a
         href={href}
         {...(external ? { target: '_blank', rel: 'noopener sponsored' } : {})}
         className={cn(
-          'inline-flex shrink-0 items-center justify-center self-start rounded-lg px-5 py-2.5 text-sm font-bold sm:self-auto',
-          look.button,
+          'sv-promo-cta inline-flex min-h-11 shrink-0 items-center justify-center self-start rounded-[8px] px-5 py-2.5 text-sm font-bold sm:self-auto',
+          look.cta,
         )}
       >
         {String(config.ctaLabel ?? 'Learn more')}
@@ -164,12 +181,12 @@ export function RelatedNewsWidget({
             <li key={c.id} className="py-2.5">
               <a
                 href={`/news/${c.slug}`}
-                className="font-medium hover:text-primary hover:underline"
+                className="font-medium underline-offset-4 hover:underline"
               >
                 {c.title}
               </a>
               {c.category && (
-                <span className="block text-xs text-muted-foreground">
+                <span className="block text-[13px] leading-[18px] text-muted-foreground">
                   {c.category.name}
                 </span>
               )}

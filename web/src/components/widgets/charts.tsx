@@ -2,10 +2,12 @@
 
 import { ChartCandlestick, ChartSpline, GitCompareArrows } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { delayFor, isVolatilityIndex } from '@/components/market/gate';
 import { cn } from '@/lib/utils';
-import type { Candle, ChartData } from '@/market/types';
-import { useMarket } from './data';
-import { fmtPct, fmtPrice } from './format';
+import { marketPath, type ChartRange } from '@/market/paths';
+import type { Candle, ChartData, InstrumentKind } from '@/market/types';
+import { useMarket, useQuotes, useSnapshot } from './data';
+import { fmtPrice } from './format';
 import {
   Change,
   DataStamp,
@@ -13,42 +15,81 @@ import {
   WidgetMessage,
   WidgetSkeleton,
 } from './frame';
+import {
+  applyChartColors,
+  candleColors,
+  candleTime,
+  createLwChart,
+  watchChartColors,
+  type ChartApi,
+} from './lw-chart';
 import type { WidgetConfig } from './meta';
-import { useQuotes } from './quotes';
+
+/**
+ * Chart widgets. Addresses come from `marketPath.chart` (spec §7.0 rule 1).
+ * A chart loads once per mount and range; only 1 day refreshes, every 60 s
+ * (spec §7.12 rule 5). Colours come from the tokens: the sparkline through
+ * `currentColor` (text-up / text-down), the canvas charts through
+ * lw-chart.ts, which reads them at mount and again when the palette
+ * switches.
+ */
 
 const num = (v: unknown, fb: number) => (typeof v === 'number' ? v : fb);
-const RANGES = ['1D', '5D', '1M', '6M', '1Y'] as const;
-const IST = 330 * 60;
-const COLORS = ['#16a34a', '#2563eb', '#d97706', '#9333ea'];
+const RANGES: readonly ChartRange[] = ['1D', '5D', '1M', '6M', '1Y'];
+const INDEX_RANGES: readonly ChartRange[] = ['1M', '6M', '1Y'];
+const rangeOf = (v: unknown, fb: ChartRange): ChartRange =>
+  RANGES.includes(v as ChartRange) ? (v as ChartRange) : fb;
+const intraday = (r: ChartRange) => r === '1D' || r === '5D';
 
-function chartPath(ref: string, range: string) {
-  return `chart?symbol=${encodeURIComponent(ref)}&range=${range}`;
+const RANGE_WORDS: Record<ChartRange, string> = {
+  '1D': '1 day',
+  '5D': '5 days',
+  '1M': '1 month',
+  '6M': '6 months',
+  '1Y': '1 year',
+};
+/** "1 month"; an index's 1M answer holds about three months (spec §4.10). */
+function rangeLabel(r: ChartRange, kind?: InstrumentKind): string {
+  return kind === 'INDEX' && r === '1M' ? '3 months' : RANGE_WORDS[r];
+}
+/** The short tab label: "1D" … "1Y", and "3M" for an index's 1M. */
+function rangeTab(r: ChartRange, kind?: InstrumentKind): string {
+  return kind === 'INDEX' && r === '1M' ? '3M' : r;
 }
 
-/** Intraday candles in IST seconds; daily ones as business days. */
-function timeOf(c: Candle, daily: boolean) {
-  if (daily) return new Date(c.t + IST * 1000).toISOString().slice(0, 10);
-  return Math.floor(c.t / 1000) + IST;
-}
-
-function ChartState({ res }: { res: { data?: ChartData; loading: boolean } }) {
+/**
+ * What a chart shows instead of itself (fix d, spec §7.9): under a licence
+ * that blocks the range, "Intraday charts aren't available…" only for 1 day
+ * and 5 days, "Charts aren't available…" otherwise.
+ */
+function ChartState({
+  res,
+  range,
+}: {
+  res: { data?: ChartData; loading: boolean };
+  range: ChartRange;
+}) {
   if (res.loading && !res.data) return <WidgetSkeleton rows={5} />;
   if (res.data?.reason === 'rights') {
     return (
       <WidgetMessage kind="rights">
-        Intraday charts aren’t available under our current market-data licence.
+        {intraday(range)
+          ? 'Intraday charts aren’t available under our current market-data licence.'
+          : 'Charts aren’t available under our current market-data licence.'}
       </WidgetMessage>
     );
   }
-  return (
-    <WidgetMessage kind="error">
-      The chart isn’t available right now.
-    </WidgetMessage>
-  );
+  return <WidgetMessage kind="error" />;
 }
 
 /** A small price line: closes over the range, filled under. */
-function Sparkline({ candles, up }: { candles: Candle[]; up: boolean }) {
+function Sparkline({
+  candles,
+  tone,
+}: {
+  candles: Candle[];
+  tone: 'up' | 'down' | 'neutral';
+}) {
   const closes = candles.map((c) => c.c);
   const min = Math.min(...closes);
   const max = Math.max(...closes);
@@ -57,24 +98,30 @@ function Sparkline({ candles, up }: { candles: Candle[]; up: boolean }) {
     (v, i) =>
       `${(i / Math.max(1, closes.length - 1)) * 100},${40 - ((v - min) / span) * 36 - 2}`,
   );
-  const color = up ? '#16a34a' : '#dc2626';
   return (
     <svg
       viewBox="0 0 100 40"
       preserveAspectRatio="none"
-      className="h-24 w-full"
+      className={cn(
+        'h-24 w-full',
+        tone === 'up'
+          ? 'text-up'
+          : tone === 'down'
+            ? 'text-down'
+            : 'text-foreground',
+      )}
       aria-hidden="true"
     >
       <polygon
         points={`0,40 ${pts.join(' ')} 100,40`}
-        fill={color}
+        fill="currentColor"
         opacity="0.1"
       />
       <polyline
         points={pts.join(' ')}
         fill="none"
-        stroke={color}
-        strokeWidth="1.2"
+        stroke="currentColor"
+        strokeWidth="1.5"
         vectorEffect="non-scaling-stroke"
       />
     </svg>
@@ -82,16 +129,28 @@ function Sparkline({ candles, up }: { candles: Candle[]; up: boolean }) {
 }
 
 export function MiniChartWidget({ config }: { config: WidgetConfig }) {
-  const ref = String(config.symbol ?? '');
-  const range = String(config.range ?? '1D');
+  const ref = String(config.symbol ?? '').toUpperCase();
+  const configured = rangeOf(config.range, '1M');
   const refresh = num(config.refresh, 60);
-  const chart = useMarket<ChartData>(
-    ref ? chartPath(ref, range) : null,
-    refresh,
-  );
   const quotes = useQuotes(ref ? [ref] : [], Math.min(refresh || 15, 15));
-  const q = quotes.data?.quotes.find((x) => x.ref === ref);
+  const snap = useSnapshot(0);
+  const q =
+    quotes.data?.right === 'OFF'
+      ? undefined
+      : quotes.data?.quotes.find((x) => x.ref === ref);
+  // Never 1 day or 5 days for an index (spec §7.12 rule 4): stories saved
+  // with the old default (NSE:NIFTY · 1D, a single daily candle) draw the
+  // index's 1M answer, about three months, instead.
+  const range: ChartRange =
+    q?.kind === 'INDEX' && intraday(configured) ? '1M' : configured;
+  // An intraday range waits for the quote to say what the instrument is.
+  const waiting = intraday(configured) && quotes.loading && !quotes.data;
+  const chart = useMarket<ChartData>(
+    ref && !waiting ? marketPath.chart(ref, range) : null,
+    range === '1D' ? Math.max(60, refresh) : 0,
+  );
   const candles = chart.data?.available ? chart.data.data.candles : [];
+  const vix = isVolatilityIndex(ref);
   const up =
     candles.length > 1
       ? candles[candles.length - 1].c >= candles[0].c
@@ -101,7 +160,9 @@ export function MiniChartWidget({ config }: { config: WidgetConfig }) {
       title={q?.name ?? ref.split(':')[1] ?? 'Chart'}
       icon={ChartSpline}
       aside={
-        <span className="font-mono text-xs text-muted-foreground">{range}</span>
+        <span className="text-[13px] leading-[18px] text-muted-foreground">
+          {rangeLabel(range, q?.kind)}
+        </span>
       }
       footer={
         (q || chart.data?.available) && (
@@ -109,6 +170,11 @@ export function MiniChartWidget({ config }: { config: WidgetConfig }) {
             label={q?.label ?? chart.data?.label}
             asOf={q?.asOf ?? chart.data?.asOf}
             attribution={quotes.data?.attribution ?? chart.data?.attribution}
+            delay={delayFor(
+              quotes.data?.right ?? snap.data?.right,
+              snap.data?.delayMinutes,
+            )}
+            stale={!!(quotes.error || chart.error)}
           />
         )
       }
@@ -122,77 +188,43 @@ export function MiniChartWidget({ config }: { config: WidgetConfig }) {
             change={q.change}
             pct={q.changePct}
             kind={q.kind}
+            neutral={vix}
             className="text-sm"
           />
         </p>
       )}
       {candles.length > 1 ? (
-        <Sparkline candles={candles} up={up} />
+        <Sparkline candles={candles} tone={vix ? 'neutral' : up ? 'up' : 'down'} />
       ) : (
         <div className="mt-2">
-          <ChartState res={chart} />
+          <ChartState res={chart} range={range} />
         </div>
       )}
     </WidgetCard>
   );
 }
 
-type ChartApi = import('lightweight-charts').IChartApi;
-
-/**
- * Any CSS colour as rgba(). lightweight-charts parses hex and rgb() only,
- * while the site's theme colours are oklch(); drawing one pixel lets the
- * browser do the conversion.
- */
-function toRgba(color: string): string {
-  const ctx = document
-    .createElement('canvas')
-    .getContext('2d', { willReadFrequently: true });
-  if (!ctx) return 'rgb(107, 114, 128)';
-  ctx.fillStyle = 'rgb(107, 114, 128)';
-  ctx.fillStyle = color; // left as is if the browser can't parse `color`
-  ctx.fillRect(0, 0, 1, 1);
-  const [r, g, b, a] = ctx.getImageData(0, 0, 1, 1).data;
-  return `rgba(${r}, ${g}, ${b}, ${Math.round((a / 255) * 1000) / 1000})`;
-}
-
-/** Creates a lightweight-charts chart in `el`, matched to the page's colours. */
-async function makeChart(el: HTMLElement, height: number): Promise<ChartApi> {
-  const lc = await import('lightweight-charts');
-  const style = getComputedStyle(el);
-  return lc.createChart(el, {
-    height,
-    autoSize: true,
-    layout: {
-      background: { color: 'transparent' },
-      textColor: toRgba(style.color),
-      fontFamily: style.fontFamily,
-      // The library's licence requires crediting TradingView with a link to
-      // tradingview.com; this on-chart logo is its documented way to do so.
-      attributionLogo: true,
-    },
-    grid: {
-      vertLines: { visible: false },
-      horzLines: { color: 'rgba(128,128,128,0.15)' },
-    },
-    rightPriceScale: { borderVisible: false },
-    timeScale: {
-      borderVisible: false,
-      timeVisible: true,
-      secondsVisible: false,
-    },
-    crosshair: { mode: lc.CrosshairMode.Magnet },
-    localization: { priceFormatter: (p: number) => fmtPrice(p) },
-  });
-}
-
 export function CandleChartWidget({ config }: { config: WidgetConfig }) {
-  const ref = String(config.symbol ?? '');
-  const [range, setRange] = useState(String(config.range ?? '1M'));
-  useEffect(() => setRange(String(config.range ?? '1M')), [config.range]);
+  const ref = String(config.symbol ?? '').toUpperCase();
+  const configured = rangeOf(config.range, '1M');
+  const [chosen, setRange] = useState<ChartRange>(configured);
+  useEffect(() => setRange(configured), [configured]);
+  // The snapshot says whether this is an index (daily candles only) and
+  // whether the licence allows intraday ranges.
+  const snap = useSnapshot(0);
+  const inst = snap.data?.instruments.find((i) => i.ref === ref);
+  const kind = inst?.kind;
+  const ranges = kind === 'INDEX' ? INDEX_RANGES : RANGES;
+  // Never 1 day or 5 days for an index (spec §7.12 rule 4): an older
+  // config that asks for one shows "3 months" instead.
+  const range: ChartRange =
+    kind === 'INDEX' && intraday(chosen) ? '1M' : chosen;
+  const intradayBlocked = !!snap.data && snap.data.right !== 'LIVE';
+  // An intraday range waits for the snapshot to say what the instrument is.
+  const waiting = intraday(chosen) && !snap.data && !snap.error;
   const res = useMarket<ChartData>(
-    ref ? chartPath(ref, range) : null,
-    num(config.refresh, 60),
+    ref && !waiting ? marketPath.chart(ref, range) : null,
+    range === '1D' ? Math.max(60, num(config.refresh, 60)) : 0,
   );
   const host = useRef<HTMLDivElement>(null);
   const [drawFailed, setDrawFailed] = useState(false);
@@ -201,25 +233,31 @@ export function CandleChartWidget({ config }: { config: WidgetConfig }) {
     [res.data],
   );
   const daily = res.data?.data.interval === 'ONE_DAY';
+  // An intraday request answered with daily candles (the intraday call
+  // failed upstream): say so rather than draw days as "1 day" (spec §5.10.2).
+  const noIntraday = intraday(range) && daily && candles.length > 0;
+  const name = inst?.name ?? ref.split(':')[1] ?? '';
 
   useEffect(() => {
-    if (!host.current || candles.length === 0) return;
+    const el = host.current;
+    if (!el || candles.length === 0 || noIntraday) return;
     let chart: ChartApi | null = null;
+    let stop = () => {};
     let cancelled = false;
     void (async () => {
-      const lc = await import('lightweight-charts');
-      if (cancelled || !host.current) return;
-      chart = await makeChart(host.current, 300);
-      const series = chart.addSeries(lc.CandlestickSeries, {
-        upColor: '#16a34a',
-        downColor: '#dc2626',
-        borderVisible: false,
-        wickUpColor: '#16a34a',
-        wickDownColor: '#dc2626',
-      });
+      const made = await createLwChart(el, { height: 300 });
+      if (cancelled) {
+        made.chart.remove();
+        return;
+      }
+      chart = made.chart;
+      const series = chart.addSeries(
+        made.lc.CandlestickSeries,
+        candleColors(made.colors),
+      );
       series.setData(
         candles.map((c) => ({
-          time: timeOf(c, daily) as import('lightweight-charts').Time,
+          time: candleTime(c.t, daily),
           open: c.o,
           high: c.h,
           low: c.l,
@@ -227,15 +265,21 @@ export function CandleChartWidget({ config }: { config: WidgetConfig }) {
         })),
       );
       chart.timeScale().fitContent();
+      const drawn = chart;
+      stop = watchChartColors(el, (colors) => {
+        applyChartColors(drawn, colors);
+        series.applyOptions(candleColors(colors));
+      });
       setDrawFailed(false);
     })().catch(() => {
       if (!cancelled) setDrawFailed(true);
     });
     return () => {
       cancelled = true;
+      stop();
       chart?.remove();
     };
-  }, [candles, daily]);
+  }, [candles, daily, noIntraday]);
 
   const first = candles[0];
   const last = candles[candles.length - 1];
@@ -244,37 +288,53 @@ export function CandleChartWidget({ config }: { config: WidgetConfig }) {
       title={`${ref.split(':')[1] ?? ''} · candlestick`}
       icon={ChartCandlestick}
       aside={
-        <div className="flex gap-0.5" role="tablist" aria-label="Chart range">
-          {RANGES.map((r) => (
-            <button
-              key={r}
-              type="button"
-              role="tab"
-              aria-selected={r === range}
-              onClick={() => setRange(r)}
-              className={cn(
-                'rounded px-2 py-1 font-mono text-[11px]',
-                r === range
-                  ? 'bg-foreground text-background'
-                  : 'text-muted-foreground hover:bg-muted',
-              )}
-            >
-              {r}
-            </button>
-          ))}
+        <div className="flex flex-wrap gap-1" role="group" aria-label="Chart range">
+          {ranges.map((r) => {
+            const blocked = intraday(r) && intradayBlocked;
+            return (
+              <button
+                key={r}
+                type="button"
+                aria-pressed={r === range}
+                disabled={blocked}
+                title={
+                  blocked ? 'Needs our live data licence' : rangeLabel(r, kind)
+                }
+                onClick={() => setRange(r)}
+                className={cn(
+                  'min-h-11 min-w-11 rounded-[4px] px-2 text-[13px] leading-4 font-[650] tabular-nums',
+                  r === range
+                    ? 'bg-foreground text-background'
+                    : 'text-muted-foreground hover:bg-muted hover:text-foreground',
+                  'disabled:cursor-not-allowed disabled:opacity-40',
+                )}
+              >
+                {rangeTab(r, kind)}
+              </button>
+            );
+          })}
         </div>
       }
       footer={
-        res.data?.available && (
+        res.data?.available &&
+        !noIntraday && (
           <DataStamp
             label={res.data.label}
             asOf={res.data.asOf}
             attribution={res.data.attribution}
+            delay={delayFor(snap.data?.right, snap.data?.delayMinutes)}
+            stale={!!res.error}
           />
         )
       }
     >
-      {drawFailed ? (
+      {noIntraday ? (
+        <WidgetMessage kind="error">
+          {kind === 'COMMODITY' || kind === 'CURRENCY'
+            ? 'Intraday prices aren’t available for this contract right now.'
+            : `Intraday prices aren’t available for ${name} right now.`}
+        </WidgetMessage>
+      ) : drawFailed ? (
         <WidgetMessage kind="error">
           This chart couldn’t be drawn.
         </WidgetMessage>
@@ -288,17 +348,18 @@ export function CandleChartWidget({ config }: { config: WidgetConfig }) {
               <Change
                 change={last.c - first.o}
                 pct={((last.c - first.o) / first.o) * 100}
-                className="text-xs"
+                neutral={isVolatilityIndex(ref)}
+                className="text-[13px]"
               />{' '}
-              <span className="text-xs text-muted-foreground">
-                over {range}
+              <span className="text-[13px] text-muted-foreground">
+                over {rangeLabel(range, kind)}
               </span>
             </p>
           )}
           <div ref={host} className="h-[300px] w-full" />
         </>
       ) : (
-        <ChartState res={res} />
+        <ChartState res={res} range={range} />
       )}
     </WidgetCard>
   );
@@ -306,14 +367,18 @@ export function CandleChartWidget({ config }: { config: WidgetConfig }) {
 
 export function StockCompareWidget({ config }: { config: WidgetConfig }) {
   const refs = (
-    Array.isArray(config.symbols) ? (config.symbols as string[]) : []
-  ).slice(0, 4);
-  const range = String(config.range ?? '6M');
+    Array.isArray(config.symbols) ? (config.symbols as unknown[]) : []
+  )
+    .map((s) => String(s).toUpperCase())
+    .slice(0, 4);
+  const range = rangeOf(config.range, '6M');
+  const pathFor = (i: number) =>
+    refs[i] ? marketPath.chart(refs[i], range) : null;
   // Four fixed slots keep the hook order stable whatever the config holds.
-  const a = useMarket<ChartData>(refs[0] ? chartPath(refs[0], range) : null, 0);
-  const b = useMarket<ChartData>(refs[1] ? chartPath(refs[1], range) : null, 0);
-  const c = useMarket<ChartData>(refs[2] ? chartPath(refs[2], range) : null, 0);
-  const d = useMarket<ChartData>(refs[3] ? chartPath(refs[3], range) : null, 0);
+  const a = useMarket<ChartData>(pathFor(0), 0);
+  const b = useMarket<ChartData>(pathFor(1), 0);
+  const c = useMarket<ChartData>(pathFor(2), 0);
+  const d = useMarket<ChartData>(pathFor(3), 0);
   const results = [a, b, c, d].slice(0, refs.length);
   const series = useMemo(
     () =>
@@ -322,7 +387,7 @@ export function StockCompareWidget({ config }: { config: WidgetConfig }) {
         const base = candles[0]?.c;
         return {
           ref: refs[i],
-          color: COLORS[i],
+          slot: i,
           points: base
             ? candles.map((k) => ({ t: k.t, v: ((k.c - base) / base) * 100 }))
             : [],
@@ -337,40 +402,47 @@ export function StockCompareWidget({ config }: { config: WidgetConfig }) {
   const ready = series.some((s) => s.points.length > 1);
 
   useEffect(() => {
-    if (!host.current || !ready) return;
+    const el = host.current;
+    if (!el || !ready) return;
     let chart: ChartApi | null = null;
+    let stop = () => {};
     let cancelled = false;
     void (async () => {
-      const lc = await import('lightweight-charts');
-      if (cancelled || !host.current) return;
-      chart = await makeChart(host.current, 280);
-      chart.applyOptions({
-        localization: { priceFormatter: (p: number) => fmtPct(p) },
-      });
+      const made = await createLwChart(el, { height: 280, percent: true });
+      if (cancelled) {
+        made.chart.remove();
+        return;
+      }
+      chart = made.chart;
+      const lines: {
+        line: { applyOptions(o: { color: string }): void };
+        slot: number;
+      }[] = [];
       for (const s of series) {
         if (s.points.length < 2) continue;
-        const line = chart.addSeries(lc.LineSeries, {
-          color: s.color,
+        const line = chart.addSeries(made.lc.LineSeries, {
+          color: made.colors.series[s.slot],
           lineWidth: 2,
           priceLineVisible: false,
         });
         line.setData(
-          s.points.map((p) => ({
-            time: timeOf(
-              { t: p.t } as Candle,
-              s.daily,
-            ) as import('lightweight-charts').Time,
-            value: p.v,
-          })),
+          s.points.map((p) => ({ time: candleTime(p.t, s.daily), value: p.v })),
         );
+        lines.push({ line, slot: s.slot });
       }
       chart.timeScale().fitContent();
+      const drawn = chart;
+      stop = watchChartColors(el, (colors) => {
+        applyChartColors(drawn, colors);
+        for (const l of lines) l.line.applyOptions({ color: colors.series[l.slot] });
+      });
       setDrawFailed(false);
     })().catch(() => {
       if (!cancelled) setDrawFailed(true);
     });
     return () => {
       cancelled = true;
+      stop();
       chart?.remove();
     };
   }, [series, ready]);
@@ -379,7 +451,7 @@ export function StockCompareWidget({ config }: { config: WidgetConfig }) {
   const stamp = results.find((r) => r.data?.available)?.data;
   return (
     <WidgetCard
-      title={`Comparison · ${range}`}
+      title={`Comparison · ${RANGE_WORDS[range]}`}
       icon={GitCompareArrows}
       footer={
         stamp && (
@@ -387,6 +459,7 @@ export function StockCompareWidget({ config }: { config: WidgetConfig }) {
             label={stamp.label}
             asOf={stamp.asOf}
             attribution={stamp.attribution}
+            stale={results.some((r) => !!r.error)}
           />
         )
       }
@@ -404,7 +477,14 @@ export function StockCompareWidget({ config }: { config: WidgetConfig }) {
                 <li key={s.ref} className="flex items-center gap-1.5">
                   <span
                     className="size-2.5 rounded-full"
-                    style={{ background: s.color }}
+                    // Series 1 is ink: the text colour, which also covers
+                    // the portal's dark cards (lw-chart.ts does the same).
+                    style={{
+                      background:
+                        s.slot === 0
+                          ? 'currentColor'
+                          : `var(--sv-series-${s.slot + 1})`,
+                    }}
                     aria-hidden="true"
                   />
                   <span className="font-medium">{s.ref.split(':')[1]}</span>
@@ -413,10 +493,10 @@ export function StockCompareWidget({ config }: { config: WidgetConfig }) {
                       change={null}
                       pct={last.v}
                       showAbs={false}
-                      className="text-xs"
+                      className="text-[13px]"
                     />
                   ) : (
-                    <span className="text-xs text-muted-foreground">
+                    <span className="text-[13px] text-muted-foreground">
                       no data
                     </span>
                   )}
@@ -425,22 +505,18 @@ export function StockCompareWidget({ config }: { config: WidgetConfig }) {
             })}
           </ul>
           <div ref={host} className="h-[280px] w-full" />
-          <p className="mt-2 text-xs text-muted-foreground">
+          <p className="mt-2 text-[13px] leading-[18px] text-muted-foreground">
             Change since the start of the period, in %.
           </p>
         </>
       ) : loading ? (
         <WidgetSkeleton rows={5} />
-      ) : (
-        <WidgetMessage
-          kind={
-            results.some((r) => r.data?.reason === 'rights')
-              ? 'rights'
-              : 'error'
-          }
-        >
-          {undefined}
+      ) : results.some((r) => r.data?.reason === 'rights') ? (
+        <WidgetMessage kind="rights">
+          Charts aren’t available under our current market-data licence.
         </WidgetMessage>
+      ) : (
+        <WidgetMessage kind="error" />
       )}
     </WidgetCard>
   );

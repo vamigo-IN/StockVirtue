@@ -45,6 +45,48 @@ export function dateOnly(iso: string): string {
   return DAY_YEAR.format(new Date(iso));
 }
 
+const LONG_DAY = new Intl.DateTimeFormat('en-IN', {
+  timeZone: IST,
+  weekday: 'long',
+  day: 'numeric',
+  month: 'long',
+  year: 'numeric',
+});
+
+const valid = (iso: string) => {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? null : d;
+};
+
+/**
+ * "Wednesday 4 November 2026", in India time: the day groups on /news/latest
+ * and the /news nameplate's dateline. Built from the parts, because en-IN
+ * puts a comma after the weekday. Empty for an invalid date.
+ */
+export function dayHeading(iso: string): string {
+  const d = valid(iso);
+  if (!d) return '';
+  const part = (type: Intl.DateTimeFormatPartTypes) =>
+    LONG_DAY.formatToParts(d).find((p) => p.type === type)?.value ?? '';
+  return `${part('weekday')} ${part('day')} ${part('month')} ${part('year')}`;
+}
+
+/** "9:12 am", in India time (no zone label). Empty for an invalid date. */
+export function clockTime(iso: string): string {
+  const d = valid(iso);
+  return d ? TIME.format(d).toLowerCase() : '';
+}
+
+/**
+ * "4 Nov 2026, 9:12 am IST": a story's dateline. Absolute, with the year and
+ * the zone, so it never depends on the reader's clock. Empty for an invalid
+ * date.
+ */
+export function dateline(iso: string): string {
+  const d = valid(iso);
+  return d ? `${DAY_YEAR.format(d)}, ${TIME.format(d).toLowerCase()} IST` : '';
+}
+
 /** True when a story was meaningfully edited after it went live. */
 export function wasUpdated(publishedAt: string, updatedAt: string): boolean {
   return (

@@ -51,6 +51,16 @@ import { WorkflowActions } from './WorkflowActions';
 /// Pause after typing before a background save.
 const AUTOSAVE_MS = 2_500;
 
+/// From xl (1280 px, where the side column sits beside the story) the
+/// workspace fills the window under the portal header and the page itself
+/// stops scrolling: the story column and the side column each scroll on
+/// their own, so the side column stays put while the writer scrolls the
+/// story (owner's request, 6 Nov 2026). Below xl the columns stack and the
+/// page scrolls as before. `relative` keeps anything absolutely placed
+/// inside a pane (suggestion lists, editor menus) scrolling with it.
+const PANE =
+  'xl:relative xl:min-h-0 xl:overflow-y-auto xl:overscroll-contain xl:[scrollbar-gutter:stable] xl:[scrollbar-width:thin]';
+
 type SaveState =
   | { kind: 'saved'; at: string }
   | { kind: 'dirty' }
@@ -115,7 +125,7 @@ function lockReason(a: ArticleDetail): string {
     case 'SCHEDULED':
       return 'This story has been approved. Only editors can change it now.';
     case 'PUBLISHED':
-      return 'This story is live. Editors can update it or publish a correction.';
+      return 'This story is live. Only editors can update it now.';
     case 'REJECTED':
     case 'CANCELLED':
     case 'ARCHIVED':
@@ -347,8 +357,11 @@ function Workspace({
   const showSeoTab = can.editSeo || can.edit || article.can.read;
 
   return (
-    <div>
-      <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2">
+    // 6rem = the portal header (4rem) + main's top padding (2rem from lg);
+    // -mb-8 runs the columns down over main's bottom padding, so the page
+    // is exactly one window tall and never scrolls itself.
+    <div className="xl:-mb-8 xl:flex xl:h-[calc(100dvh-6rem)] xl:flex-col">
+      <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-2 xl:shrink-0">
         <Button
           variant="ghost"
           size="sm"
@@ -404,72 +417,82 @@ function Workspace({
         />
       </div>
 
-      <div className="mb-4 space-y-3">
-        {conflict && (
-          <Alert variant="destructive">
-            <AlertCircle />
-            <AlertTitle>
-              Someone else saved this story after you opened it
-            </AlertTitle>
-            <AlertDescription>
-              <p>
-                Reload to get their changes. Anything you typed here since your
-                last save will be lost.
-              </p>
-              <Button
-                size="sm"
-                variant="outline"
-                className="mt-2"
-                onClick={() => void onReload()}
-              >
-                <RefreshCw /> Reload the latest version
-              </Button>
-            </AlertDescription>
-          </Alert>
-        )}
-        {!can.edit && !conflict && (
-          <Alert>
-            <Lock />
-            <AlertDescription>{lockReason(article)}</AlertDescription>
-          </Alert>
-        )}
-        {(article.status === 'CHANGES_REQUESTED' ||
-          article.status === 'REJECTED') &&
-          lastReview?.comment && (
-            <Alert className="border-warning/40 bg-warning/5">
-              <MessageSquareWarning className="text-warning" />
-              <AlertTitle>
-                {lastReview.reviewer?.displayName ?? 'An editor'}{' '}
-                {article.status === 'REJECTED'
-                  ? 'rejected this story'
-                  : 'asked for changes'}
-              </AlertTitle>
-              <AlertDescription className="whitespace-pre-line">
-                {lastReview.comment}
+      {/* Above both columns, so it stays in view however far they scroll. */}
+      {conflict && (
+        <Alert variant="destructive" className="mb-4 xl:shrink-0">
+          <AlertCircle />
+          <AlertTitle>
+            Someone else saved this story after you opened it
+          </AlertTitle>
+          <AlertDescription>
+            <p>
+              Reload to get their changes. Anything you typed here since your
+              last save will be lost.
+            </p>
+            <Button
+              size="sm"
+              variant="outline"
+              className="mt-2"
+              onClick={() => void onReload()}
+            >
+              <RefreshCw /> Reload the latest version
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
+
+      <div className="grid gap-6 xl:min-h-0 xl:flex-1 xl:grid-cols-[minmax(0,1fr)_360px] xl:grid-rows-[minmax(0,1fr)] xl:gap-4">
+        <div
+          data-scroll-pane="story"
+          className={cn(
+            'min-w-0 space-y-3',
+            PANE,
+            // Room for focus rings at the pane's edges. The formatting
+            // toolbar pins to the top of this pane (--sv-toolbar-top; its
+            // default is under the portal header), and focus scrolling
+            // clears it even when it wraps to two rows.
+            'xl:-ml-1 xl:scroll-pt-24 xl:pr-1 xl:pb-8 xl:pl-1 xl:[--sv-toolbar-top:0px]',
+          )}
+        >
+          {!can.edit && !conflict && (
+            <Alert>
+              <Lock />
+              <AlertDescription>{lockReason(article)}</AlertDescription>
+            </Alert>
+          )}
+          {(article.status === 'CHANGES_REQUESTED' ||
+            article.status === 'REJECTED') &&
+            lastReview?.comment && (
+              <Alert className="border-warning/40 bg-warning/5">
+                <MessageSquareWarning className="text-warning" />
+                <AlertTitle>
+                  {lastReview.reviewer?.displayName ?? 'An editor'}{' '}
+                  {article.status === 'REJECTED'
+                    ? 'rejected this story'
+                    : 'asked for changes'}
+                </AlertTitle>
+                <AlertDescription className="whitespace-pre-line">
+                  {lastReview.comment}
+                </AlertDescription>
+              </Alert>
+            )}
+          {article.status === 'SCHEDULED' && article.scheduledAt && (
+            <Alert>
+              <CalendarClock />
+              <AlertDescription>
+                Scheduled to go live {formatDateTime(article.scheduledAt)}.
               </AlertDescription>
             </Alert>
           )}
-        {article.status === 'SCHEDULED' && article.scheduledAt && (
-          <Alert>
-            <CalendarClock />
-            <AlertDescription>
-              Scheduled to go live {formatDateTime(article.scheduledAt)}.
-            </AlertDescription>
-          </Alert>
-        )}
-        {article.retractedAt && (
-          <Alert variant="destructive">
-            <CircleSlash />
-            <AlertTitle>
-              Retracted {formatDateTime(article.retractedAt)}
-            </AlertTitle>
-            <AlertDescription>{article.retractionNote}</AlertDescription>
-          </Alert>
-        )}
-      </div>
-
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_360px]">
-        <div className="min-w-0 space-y-3">
+          {article.retractedAt && (
+            <Alert variant="destructive">
+              <CircleSlash />
+              <AlertTitle>
+                Retracted {formatDateTime(article.retractedAt)}
+              </AlertTitle>
+              <AlertDescription>{article.retractionNote}</AlertDescription>
+            </Alert>
+          )}
           <textarea
             value={draft.title}
             onChange={(e) =>
@@ -517,16 +540,24 @@ function Workspace({
             }}
           />
         </div>
-        <aside className="min-w-0">
+        <aside
+          data-scroll-pane="side"
+          // Focus scrolling clears the pinned tabs.
+          className={cn('min-w-0', PANE, 'xl:scroll-pt-16 xl:pb-8')}
+        >
           <Tabs defaultValue="details">
-            <TabsList className="w-full">
-              <TabsTrigger value="details">Details</TabsTrigger>
-              {showSeoTab && <TabsTrigger value="seo">SEO</TabsTrigger>}
-              <TabsTrigger value="team">Team</TabsTrigger>
-              <TabsTrigger value="ai">
-                {hasPermission(me, 'ai.use') ? 'AI' : 'Similar'}
-              </TabsTrigger>
-            </TabsList>
+            {/* The tabs stay at the top of the side column as it scrolls;
+                the backdrop runs down over the gap to the first card. */}
+            <div className="xl:sticky xl:top-0 xl:z-10 xl:-mb-5 xl:bg-background xl:pb-5">
+              <TabsList className="w-full">
+                <TabsTrigger value="details">Details</TabsTrigger>
+                {showSeoTab && <TabsTrigger value="seo">SEO</TabsTrigger>}
+                <TabsTrigger value="team">Team</TabsTrigger>
+                <TabsTrigger value="ai">
+                  {hasPermission(me, 'ai.use') ? 'AI' : 'Similar'}
+                </TabsTrigger>
+              </TabsList>
+            </div>
             <TabsContent value="details" className="mt-3">
               <DetailsPanel
                 article={article}

@@ -1,29 +1,114 @@
 /* ============================================================================
-   Article body typography, shared by the public news pages (news.css) and
+   Article body typography, shared by the public news pages (public.css) and
    the portal's editor and preview (portal.css), so a story reads the same in
-   both. Styles the HTML the API renders: sv-figure, sv-video, sv-callout,
-   sv-related and sv-table. Expects the area's --primary, --border, --muted,
-   --muted-foreground and --warning tokens.
+   both (spec §3.2.2, §3.10, §5.12). Styles the HTML the API renders:
+   sv-figure, sv-video, sv-callout, sv-related, sv-table and the sv-widget
+   fallback notes.
+
+   Area-level names ONLY, never a raw token from tokens.css, because each
+   area sets them for its own surfaces (the portal also for its dark mode): --prose-fg (body
+   text), --prose-callout-bg (callout fill), --primary, --muted,
+   --muted-foreground, --border, --warning, --font-display, --font-sans and
+   --font-serif-sv.
+
+   Unlayered on purpose: these rules beat the typography plugin's layered
+   `prose` and the portal's `dark:prose-invert`, so the colours below hold in
+   every mode. Element rules skip anything inside .not-prose (the editor's
+   widget cards sit inside the prose).
    ========================================================================== */
 .sv-prose {
-  --tw-prose-links: var(--primary);
+  --tw-prose-body: var(--prose-fg);
+  --tw-prose-headings: var(--prose-fg);
+  --tw-prose-lead: var(--prose-fg);
+  --tw-prose-links: var(--prose-fg);
+  --tw-prose-bold: var(--prose-fg);
+  --tw-prose-counters: var(--muted-foreground);
+  --tw-prose-bullets: var(--muted-foreground);
+  --tw-prose-hr: var(--border);
+  --tw-prose-quotes: var(--prose-fg);
+  --tw-prose-quote-borders: var(--border);
+  --tw-prose-captions: var(--muted-foreground);
+  --tw-prose-kbd: var(--prose-fg);
+  --tw-prose-code: var(--prose-fg);
+  --tw-prose-pre-code: var(--prose-fg);
+  --tw-prose-pre-bg: var(--prose-callout-bg);
+  --tw-prose-th-borders: var(--border);
+  --tw-prose-td-borders: var(--border);
+  color: var(--prose-fg);
+  /* prose: Source Serif 400, 18/30 → 19/32 from 768 px, about 70
+     characters a line at 34em (spec §3.2.2). */
   font-family: var(--font-serif-sv), Georgia, "Times New Roman", serif;
-  font-size: 1.125rem;
-  line-height: 1.75;
+  font-weight: 400;
+  font-size: 18px;
+  line-height: 30px;
+  max-width: 34em;
+  text-wrap: pretty;
 }
-.sv-prose :where(h2, h3, h4) {
+@media (min-width: 768px) {
+  .sv-prose {
+    font-size: 19px;
+    line-height: 32px;
+  }
+}
+
+/* prose-h2: Archivo 700 · 92%, 22/28 → 24/30. prose-h3 (h3, h4): Archivo
+   680 · 96%, 19/26 → 20/26. */
+.sv-prose :where(h2):not(:where(.not-prose, .not-prose *)) {
+  color: var(--prose-fg);
   font-family: var(--font-display);
-  letter-spacing: -0.01em;
+  font-weight: 700;
+  font-stretch: 92%;
+  font-size: 22px;
+  line-height: 28px;
+  letter-spacing: -0.005em;
+  text-wrap: balance;
 }
-.sv-prose :where(a) {
-  text-underline-offset: 3px;
+.sv-prose :where(h3, h4):not(:where(.not-prose, .not-prose *)) {
+  color: var(--prose-fg);
+  font-family: var(--font-display);
+  font-weight: 680;
+  font-stretch: 96%;
+  font-size: 19px;
+  line-height: 26px;
+  letter-spacing: 0;
+  text-wrap: balance;
 }
+@media (min-width: 768px) {
+  .sv-prose :where(h2):not(:where(.not-prose, .not-prose *)) {
+    font-size: 24px;
+    line-height: 30px;
+  }
+  .sv-prose :where(h3, h4):not(:where(.not-prose, .not-prose *)) {
+    font-size: 20px;
+  }
+}
+
+/* In-content links are quiet links: text colour, a 2 px green underline
+   (green means act; spec R14, §4.6), 3 px on hover. */
+.sv-prose :where(a):not(:where(.not-prose, .not-prose *)) {
+  color: var(--prose-fg);
+  font-weight: inherit;
+  text-decoration-line: underline;
+  text-decoration-color: var(--primary);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 4px;
+}
+@media (hover: hover) and (pointer: fine) {
+  .sv-prose :where(a):not(:where(.not-prose, .not-prose *)):hover {
+    text-decoration-thickness: 3px;
+  }
+}
+
+/* Callouts: a 3 px rule on the callout fill. The tones differ by rule and
+   fill only (green and blue mean "act" and "up" elsewhere, so neither is
+   decoration here): takeaway ink; info grey; warning amber; note grey with
+   no fill. */
 .sv-prose .sv-callout {
   margin: 1.5em 0;
-  border-left: 4px solid var(--primary);
-  border-radius: 0.625rem;
-  background: color-mix(in oklab, var(--primary) 7%, transparent);
-  padding: 0.75rem 1rem;
+  border-left: 3px solid var(--prose-fg);
+  border-radius: 0 4px 4px 0;
+  background: var(--prose-callout-bg);
+  padding: 12px 16px;
 }
 .sv-prose .sv-callout :where(p, ul, ol):first-child {
   margin-top: 0;
@@ -32,38 +117,40 @@
   margin-bottom: 0;
 }
 .sv-prose .sv-callout-info {
-  border-color: oklch(0.62 0.14 245);
-  background: color-mix(in oklab, oklch(0.62 0.14 245) 8%, transparent);
+  border-left-color: var(--muted-foreground);
 }
 .sv-prose .sv-callout-warning {
-  border-color: var(--warning);
-  background: color-mix(in oklab, var(--warning) 9%, transparent);
+  border-left-color: var(--warning);
 }
 .sv-prose .sv-callout-note {
-  border-color: var(--muted-foreground);
-  background: var(--muted);
+  border-left-color: var(--muted-foreground);
+  background: transparent;
 }
-.sv-prose figure {
+
+/* Figures and videos: radius 4; the caption in the meta style (13/18). */
+.sv-prose :where(figure):not(:where(.not-prose, .not-prose *)) {
   margin: 1.75em 0;
 }
-.sv-prose figure img {
+.sv-prose :where(figure img):not(:where(.not-prose, .not-prose *)) {
   margin: 0;
-  border-radius: 0.75rem;
+  border-radius: 4px;
 }
-.sv-prose figcaption {
-  margin-top: 0.5rem;
-  font-family: var(--font-sans, system-ui, sans-serif);
-  font-size: 0.875rem;
+.sv-prose :where(figcaption):not(:where(.not-prose, .not-prose *)) {
+  margin-top: 8px;
   color: var(--muted-foreground);
+  font-family: var(--font-sans, system-ui, sans-serif);
+  font-size: 13px;
+  line-height: 18px;
+  letter-spacing: 0.005em;
 }
 .sv-prose .sv-credit {
-  opacity: 0.75;
+  color: var(--muted-foreground);
 }
 .sv-prose .sv-video-frame {
   position: relative;
   aspect-ratio: 16 / 9;
   overflow: hidden;
-  border-radius: 0.75rem;
+  border-radius: 4px;
   background: #000;
 }
 .sv-prose .sv-video-frame iframe {
@@ -73,43 +160,369 @@
   height: 100%;
   border: 0;
 }
+
+/* "Related: {story}", a plain bordered line with a sentence-case label. */
 .sv-prose .sv-related {
   display: flex;
   align-items: baseline;
-  gap: 0.75rem;
+  gap: 12px;
   margin: 1.5em 0;
   border: 1px solid var(--border);
-  border-radius: 0.75rem;
-  padding: 0.75rem 1rem;
+  border-radius: 4px;
+  padding: 12px 16px;
   font-family: var(--font-sans, system-ui, sans-serif);
-  font-size: 1rem;
+  font-size: 16px;
+  line-height: 24px;
 }
 .sv-prose .sv-related-label {
-  font-size: 0.7rem;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--muted-foreground);
+  flex: none;
+  color: var(--prose-fg);
+  font-size: 13px;
+  line-height: 16px;
+  font-weight: 640;
+  letter-spacing: 0.01em;
 }
+
+/* Tables: small (14/22, 15 from 1280 px), hairlines, a muted head row. */
 .sv-prose .sv-table,
 .sv-prose .tableWrapper {
   margin: 1.5em 0;
   overflow-x: auto;
 }
-.sv-prose table {
+.sv-prose :where(table):not(:where(.not-prose, .not-prose *)) {
   margin: 0;
   font-family: var(--font-sans, system-ui, sans-serif);
-  font-size: 0.95rem;
+  font-size: 14px;
+  line-height: 22px;
+  font-variant-numeric: tabular-nums lining-nums;
 }
-.sv-prose :where(th, td) {
+@media (min-width: 1280px) {
+  .sv-prose :where(table):not(:where(.not-prose, .not-prose *)) {
+    font-size: 15px;
+  }
+}
+.sv-prose :where(th, td):not(:where(.not-prose, .not-prose *)) {
   position: relative;
   border: 1px solid var(--border);
-  padding: 0.45rem 0.65rem;
+  padding: 7px 10px;
   vertical-align: top;
 }
 .sv-prose :where(th, td) > p {
   margin: 0;
 }
-.sv-prose th {
+.sv-prose :where(th):not(:where(.not-prose, .not-prose *)) {
   background: var(--muted);
+}
+
+/* The API's plain-HTML stand-ins for widgets (feeds and other readers of
+   the story's html): plain bordered notes. */
+.sv-prose .sv-widget {
+  margin: 1.5em 0;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 12px 16px;
+  font-family: var(--font-sans, system-ui, sans-serif);
+  font-size: 16px;
+  line-height: 26px;
+}
+.sv-prose .sv-widget > :first-child {
+  margin-top: 0;
+}
+.sv-prose .sv-widget > :last-child {
+  margin-bottom: 0;
+}
+.sv-prose .sv-widget :where(p, ul) {
+  margin: 0.5em 0;
+}
+.sv-prose .sv-widget-kicker {
+  color: var(--muted-foreground);
+  font-size: 13px;
+  line-height: 16px;
+  font-weight: 640;
+}
+.sv-prose .sv-widget-title {
+  font-weight: 640;
+}
+
+/* ══ Emerald Terminal (6 Nov 2026): the public story only ════════════════════
+   Scoped to #sv-public, so the portal's editor and preview keep the rules
+   above. The face is Hanken Grotesk on the public site (public.css points
+   --font-serif-sv at the sans stack); here the headings get their weight,
+   links their emerald, and the furniture its 12 px corners, mono labels and
+   the emerald accent. */
+#sv-public .sv-prose {
+  font-family: var(--font-sans);
+  font-size: 18px;
+  line-height: 30px;
+  letter-spacing: 0;
+}
+@media (min-width: 768px) {
+  #sv-public .sv-prose {
+    font-size: 19px;
+    line-height: 32px;
+  }
+}
+#sv-public .sv-prose :where(h2):not(:where(.not-prose, .not-prose *)) {
+  font-family: var(--font-sans);
+  font-weight: 800;
+  font-stretch: 100%;
+  letter-spacing: -0.025em;
+}
+#sv-public .sv-prose :where(h3, h4):not(:where(.not-prose, .not-prose *)) {
+  font-family: var(--font-sans);
+  font-weight: 700;
+  font-stretch: 100%;
+  letter-spacing: -0.015em;
+}
+#sv-public .sv-prose :where(strong, b):not(:where(.not-prose, .not-prose *)) {
+  font-weight: 700;
+}
+/* Links: emerald on light (#0B7A4B, 5.4:1 on white), a 1 px underline that
+   thickens on hover. */
+#sv-public .sv-prose :where(a):not(:where(.not-prose, .not-prose *)) {
+  color: var(--sv-green-700);
+  text-decoration-color: currentColor;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+@media (hover: hover) and (pointer: fine) {
+  #sv-public .sv-prose :where(a):not(:where(.not-prose, .not-prose *)):hover {
+    color: var(--sv-green-800);
+    text-decoration-thickness: 2px;
+  }
+}
+/* Callouts: the mint fill, 12 px corners and the tone drawn inside the left
+   edge (a border would bend round the corner). */
+#sv-public .sv-prose .sv-callout {
+  border-left: 0;
+  border-radius: 12px;
+  padding: 14px 18px;
+  box-shadow: inset 3px 0 0 var(--sv-green-700);
+}
+#sv-public .sv-prose .sv-callout-info {
+  box-shadow: inset 3px 0 0 var(--sv-fg-3);
+}
+#sv-public .sv-prose .sv-callout-warning {
+  box-shadow: inset 3px 0 0 var(--sv-warning);
+}
+#sv-public .sv-prose .sv-callout-note {
+  border: 1px solid var(--sv-rule);
+  box-shadow: none;
+}
+#sv-public .sv-prose :where(figure img):not(:where(.not-prose, .not-prose *)),
+#sv-public .sv-prose .sv-video-frame {
+  border-radius: 12px;
+}
+#sv-public .sv-prose :where(figcaption):not(:where(.not-prose, .not-prose *)) {
+  font-family: var(--font-sans);
+}
+#sv-public .sv-prose .sv-related {
+  border-radius: 12px;
+  border-color: var(--sv-rule);
+  background: var(--sv-surface);
+}
+#sv-public .sv-prose .sv-related-label,
+#sv-public .sv-prose .sv-widget-kicker {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--sv-green-700);
+}
+#sv-public .sv-prose .sv-widget {
+  border-radius: 12px;
+  border-color: var(--sv-rule);
+}
+/* Tables: figures in IBM Plex Mono, compact rows, thin rules, the head row
+   in small mono capitals on the mint fill; the box keeps 12 px corners and
+   scrolls sideways inside itself when it is wider than the column. */
+#sv-public .sv-prose .sv-table,
+#sv-public .sv-prose .tableWrapper {
+  border: 1px solid var(--sv-rule);
+  border-radius: 12px;
+}
+#sv-public .sv-prose :where(table):not(:where(.not-prose, .not-prose *)) {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-mono);
+  font-size: 13.5px;
+  line-height: 20px;
+}
+#sv-public .sv-prose :where(th, td):not(:where(.not-prose, .not-prose *)) {
+  border: 0;
+  border-top: 1px solid var(--sv-rule);
+  padding: 8px 12px;
+}
+#sv-public .sv-prose :where(tr:first-child > *):not(:where(.not-prose, .not-prose *)) {
+  border-top: 0;
+}
+#sv-public .sv-prose :where(th):not(:where(.not-prose, .not-prose *)) {
+  background: var(--sv-surface-2);
+  color: var(--sv-fg-2);
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-align: left;
+}
+
+/* ══ Alignment, text colour and highlight (owner request, 6 Nov 2026) ═════════
+   A story stores palette NAMES only (web components/editor/formatting.ts and
+   backend newsroom/content/article-content.ts keep the same lists); the API
+   renders them as data attributes, and this block is the only place a name
+   becomes a colour:
+     <p|h2|h3|h4 data-text-align="center|right|justify">  (left: none)
+     <span data-text-color="gray|green|red|orange|blue|purple|pink">
+     <mark data-highlight="yellow|green|blue|red|purple">
+   Two shade sets. Light: the white story page and its mint callout and table
+   fills, and the portal in light mode. Dark: the portal's dark editor, menus
+   and preview (the portal follows the system setting; the public site is
+   light only, so the dark set never applies under #sv-public). Every text
+   shade is at least 4.6:1 on every background of its set, the default text
+   at least 9:1 on every highlight, and every text shade at least 4.5:1 on
+   every highlight of its set. The app maps the same names in
+   mobile/lib/features/news/reader/doc_view.dart. .sv-palette carries the
+   names for the editor's colour menus (they open outside the prose). */
+.sv-prose,
+.sv-palette {
+  --prose-text-gray: #55615B;
+  --prose-text-green: #0A6B41;
+  --prose-text-red: #B42318;
+  --prose-text-orange: #A84A0E;
+  --prose-text-blue: #1D57C7;
+  --prose-text-purple: #6D3FD6;
+  --prose-text-pink: #B3166B;
+  --prose-mark-yellow: #FFF0A3;
+  --prose-mark-green: #CFF2DC;
+  --prose-mark-blue: #DCE8FF;
+  --prose-mark-red: #FFDCD8;
+  --prose-mark-purple: #ECDFFF;
+}
+@media (prefers-color-scheme: dark) {
+  :where(.sv-prose, .sv-palette):not(#sv-public *) {
+    --prose-text-gray: #A7B3AD;
+    --prose-text-green: #34E089;
+    --prose-text-red: #FF8F87;
+    --prose-text-orange: #FDA868;
+    --prose-text-blue: #82B6FF;
+    --prose-text-purple: #BFA7FF;
+    --prose-text-pink: #F795C8;
+    --prose-mark-yellow: #4A3E0C;
+    --prose-mark-green: #16472E;
+    --prose-mark-blue: #1D3A63;
+    --prose-mark-red: #5A2424;
+    --prose-mark-purple: #40306A;
+  }
+}
+.sv-prose [data-text-align="center"] {
+  text-align: center;
+}
+.sv-prose [data-text-align="right"] {
+  text-align: right;
+}
+.sv-prose [data-text-align="justify"] {
+  text-align: justify;
+  hyphens: auto;
+}
+/* The editor's "Write the story…" hint follows the paragraph's alignment. */
+.sv-prose [data-text-align]:is(.is-empty, .is-editor-empty)::before {
+  width: 100%;
+}
+.sv-prose [data-text-color="gray"] {
+  color: var(--prose-text-gray);
+}
+.sv-prose [data-text-color="green"] {
+  color: var(--prose-text-green);
+}
+.sv-prose [data-text-color="red"] {
+  color: var(--prose-text-red);
+}
+.sv-prose [data-text-color="orange"] {
+  color: var(--prose-text-orange);
+}
+.sv-prose [data-text-color="blue"] {
+  color: var(--prose-text-blue);
+}
+.sv-prose [data-text-color="purple"] {
+  color: var(--prose-text-purple);
+}
+.sv-prose [data-text-color="pink"] {
+  color: var(--prose-text-pink);
+}
+/* Bold inside a coloured run keeps the colour (the typography plugin gives
+   <strong> the body colour). A link keeps its own colour and underline. */
+.sv-prose [data-text-color] :where(strong, b) {
+  color: inherit;
+}
+.sv-prose mark[data-highlight] {
+  color: inherit;
+  border-radius: 3px;
+  padding: 0.05em 0.1em;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+.sv-prose mark[data-highlight="yellow"] {
+  background-color: var(--prose-mark-yellow);
+}
+.sv-prose mark[data-highlight="green"] {
+  background-color: var(--prose-mark-green);
+}
+.sv-prose mark[data-highlight="blue"] {
+  background-color: var(--prose-mark-blue);
+}
+.sv-prose mark[data-highlight="red"] {
+  background-color: var(--prose-mark-red);
+}
+.sv-prose mark[data-highlight="purple"] {
+  background-color: var(--prose-mark-purple);
+}
+/* Windows high contrast: keep a highlight visible as the system's own mark
+   colours rather than losing it with the background. */
+@media (forced-colors: active) {
+  .sv-prose mark[data-highlight] {
+    background-color: Mark;
+    color: MarkText;
+    forced-color-adjust: none;
+  }
+}
+
+/* ══ Google AdSense Auto ads (news pages only; owner decision 3, 6 Nov 2026)
+   Auto ads insert ins.adsbygoogle units (inside Google's
+   div.google-auto-placed wrapper) between paragraphs, list items and
+   sections. These rules keep every in-page unit inside the column it lands
+   in, with sensible air around it, and never let it widen the page:
+   - the wrapper and the unit are at most their column's width and may
+     shrink in a flex or grid parent; whatever Google sizes inside them
+     (the aswift host, the iframe) is capped at that width too;
+   - in a CSS grid the wrapper takes a whole row (never a narrow rail
+     cell); in a CSS-columns list it never splits across columns;
+   - anchor, vignette and side-rail formats are fixed-position overlays
+     Google places itself, so they are left alone;
+   - as a last net, the news <main> clips anything still wider than the
+     page sideways (overflow-x: clip makes no scroll box, so sticky
+     elements keep working). */
+[data-rail="news"] main {
+  overflow-x: clip;
+}
+[data-rail="news"] main .google-auto-placed,
+[data-rail="news"] main ins.adsbygoogle:not([data-anchor-status], [data-vignette-loaded], [data-side-rail-status]) {
+  box-sizing: border-box;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  overflow: hidden;
+}
+[data-rail="news"] main .google-auto-placed {
+  clear: both;
+  grid-column: 1 / -1;
+  break-inside: avoid;
+  margin-block: 24px !important;
+}
+[data-rail="news"] main :is(.google-auto-placed, ins.adsbygoogle:not([data-anchor-status], [data-vignette-loaded], [data-side-rail-status])) :is(div, iframe) {
+  max-width: 100% !important;
+}
+/* Between a story's paragraphs the unit keeps the prose's own measure and
+   a paragraph's worth of air. */
+[data-rail="news"] .sv-prose > :is(.google-auto-placed, ins.adsbygoogle) {
+  margin-block: 1.5em !important;
 }

@@ -1,0 +1,395 @@
+/* ============================================================================
+   StockVirtue design tokens: Emerald Terminal (6 Nov 2026; brief
+   design/emerald-terminal-brief.md, design I). Raw values only, all
+   prefixed --sv-. public.css maps them to Tailwind theme names (§3.9);
+   portal.css maps only the names the shared widget code needs (§3.10).
+   Components use the semantic tokens (--sv-fg, --sv-fg-2, --sv-fg-3,
+   --sv-rule, --sv-control, --sv-selected, the --sv-up / --sv-down family,
+   the stamp and heat tokens), which the three grounds remap:
+   - light pages (default): mint paper, white surfaces, ink text;
+   - .sv-emerald: the emerald band (the header, the footer, the home hero,
+     the download band; #01261A at its darkest);
+   - .sv-terminal: the dark data panels (the home desk, the heatmap band,
+     dense modules, the dark ticker). .sv-stage is kept as its alias.
+   Every token name of the earlier light-paper system is kept; only values
+   changed. Every text/ground pair was checked with the WCAG 2.x formula
+   (redesign/fontwork/et-scripts/et_contrast.py, 6 Nov 2026): rerun it if a
+   value changes.
+   ========================================================================== */
+:root {
+  /* Light surfaces (default). */
+  --sv-paper: #F4F8F5; /* page ground (mint) */
+  --sv-surface: #FFFFFF;
+  --sv-surface-2: #EEF5F0;
+  --sv-surface-3: #E7F0EA;
+  --sv-ink: #0B1A13;
+  --sv-text-2: #4A5A51;
+  --sv-text-3: #5E6E65;
+  --sv-line: #DCE8E0;
+  --sv-line-strong: #7A8C81; /* 3:1 controls; never put inputs on surface-2 */
+
+  /* The emerald scale (was the green scale; same names). */
+  --sv-green-050: #EAF6EF;
+  --sv-green-100: #D3EEDD;
+  --sv-green-400: #34E089; /* the neon: on emerald or dark grounds only */
+  --sv-green-500: #12A866; /* graphics only */
+  --sv-green-600: #0E8F59; /* graphics only */
+  --sv-green-700: #0B7A4B; /* primary on light: buttons, links */
+  --sv-green-800: #075A37; /* primary hover */
+  --sv-green-900: #03442D;
+
+  /* Up and down on light. */
+  --sv-up: #0B7A4B;
+  --sv-down: #C0362C;
+  --sv-flat: #5E6E65; /* = --sv-text-3 */
+  --sv-up-tint: #E3F4EA;
+  --sv-down-tint: #FBE9E7;
+  /* Price stamps (components/market/Stamp, widgets' LabelPill). */
+  --sv-live-bg: #E6F4EC;
+  --sv-live-fg: #0B6B42;
+  --sv-live-dot: #12A866;
+  --sv-delayed-bg: #FBF0DC;
+  --sv-delayed-fg: #7A4504;
+  --sv-eod-bg: #EEF2EF;
+  --sv-eod-fg: #43554B;
+  --sv-breaking: #C2410C; /* graphic */
+  --sv-danger: #B91C1C;
+  --sv-warning: #B45309;
+  --sv-focus: #1D4ED8;
+
+  /* Heat scale on light: seven bins by day % change, each with its text
+     colour (-fg); every tile also prints its %. */
+  --sv-heat-n3: #A3271F;
+  --sv-heat-n2: #E8837A;
+  --sv-heat-n1: #F7CFCA;
+  --sv-heat-0: #E3EAE5;
+  --sv-heat-p1: #C4E8D3;
+  --sv-heat-p2: #4FBF86;
+  --sv-heat-p3: #0B7A4B;
+  --sv-heat-n3-fg: #FFFFFF;
+  --sv-heat-n2-fg: #0B1A13;
+  --sv-heat-n1-fg: #0B1A13;
+  --sv-heat-0-fg: #0B1A13;
+  --sv-heat-p1-fg: #0B1A13;
+  --sv-heat-p2-fg: #0B1A13;
+  --sv-heat-p3-fg: #FFFFFF;
+
+  /* Compare-chart series: never green or red. */
+  --sv-series-1: #0B1A13;
+  --sv-series-2: #2556C8;
+  --sv-series-3: #A35C00;
+  --sv-series-4: #7A3E9D;
+
+  /* The emerald band, as raw values (usable outside the scope too). */
+  --sv-emerald: #01261A; /* the solid header and footer */
+  --sv-emerald-2: #03442D;
+  --sv-emerald-3: #066B45;
+  --sv-emerald-band:
+    radial-gradient(60% 80% at 80% 30%, rgb(52 224 137 / .30), transparent 60%),
+    linear-gradient(160deg, #01261A 0%, #03442D 55%, #066B45 100%);
+  --sv-on-emerald: #F2FFF8;
+  --sv-on-emerald-2: #C6E6D4;
+  --sv-on-emerald-3: #A9CDB9;
+  --sv-emerald-line: rgb(214 243 227 / .14);
+  --sv-emerald-chip: rgb(1 14 9 / .35); /* chips and pills sitting on the band */
+  --sv-neon: #34E089;
+  --sv-neon-ink: #022416; /* text on the neon */
+  --sv-up-on-emerald: #34E089;
+  --sv-down-on-emerald: #FF8A80;
+
+  /* The terminal, as raw values. The old "stage" names point at it. */
+  --sv-term: #0A0D12;
+  --sv-term-2: #0E131A; /* panels */
+  --sv-term-3: #10151D; /* raised */
+  --sv-term-line: #1E2733;
+  --sv-on-term: #E6EDF5;
+  --sv-on-term-2: #9AA8B8;
+  --sv-on-term-3: #8A97A6;
+  --sv-up-on-term: #22D37A;
+  --sv-down-on-term: #FF6B6B;
+  --sv-amber: #FFB547; /* small mono labels only */
+  --sv-terminal-band:
+    radial-gradient(50% 70% at 0% 0%, rgb(52 224 137 / .12), transparent 70%),
+    radial-gradient(40% 60% at 100% 100%, rgb(255 107 107 / .07), transparent 70%),
+    #0B1016;
+
+  --sv-stage: #0A0D12;
+  --sv-stage-2: #0E131A;
+  --sv-stage-3: #161E28; /* hover and pressed fills on dark */
+  --sv-on-stage: #E6EDF5;
+  --sv-on-stage-2: #9AA8B8;
+  --sv-on-stage-3: #8A97A6;
+  --sv-stage-line: #1E2733;
+  --sv-up-on-stage: #22D37A;
+  --sv-down-on-stage: #FF6B6B;
+  --sv-focus-on-stage: #8AB4FF;
+  /* Test hook (privacy-e2e reads it on the footer's Cookie settings): keep. */
+  --sv-footer-link: rgb(231 243 236 / .7);
+
+  /* Semantic tokens (what components use). */
+  --sv-fg: var(--sv-ink);
+  --sv-fg-2: var(--sv-text-2);
+  --sv-fg-3: var(--sv-text-3);
+  --sv-rule: var(--sv-line);
+  --sv-control: var(--sv-line-strong);
+  --sv-selected: var(--sv-fg);
+
+  /* §3.4 Grid and container (phone values; wider ranges below). */
+  --sv-container-max: 1296px; /* 1232 content + 2 x 32 margins */
+  --sv-margin: 16px;
+  --sv-gutter: 16px;
+  --sv-cols: 4;
+
+  /* §4.1 Chrome heights. */
+  --sv-bar-h: 56px;
+  --sv-rail-h: 0px; /* 44px on news pages ([data-rail="news"], public.css) */
+  /* The sticky chrome once scrolled; every sticky top from 1024 px uses it.
+     Default = the full header (64 at >= 1024) on home and site pages; news
+     pages add the rail ([data-rail="news"], public.css); the compact values
+     come with the header compaction (§4.1, M0.4). */
+  --sv-chrome-h: var(--sv-bar-h);
+  --sv-sticky-top: calc(var(--sv-bar-h) + 12px); /* below 1024; 12px while the header hides */
+
+  /* §3.3 Spacing and rhythm (phone values; wider ranges below). */
+  --sv-section-home: 56px;
+  --sv-section-site: 40px;
+  --sv-block-news: 28px;
+  --sv-head-gap: 12px;
+  --sv-stack-s: 8px;
+  --sv-stack-m: 16px;
+  --sv-stack-l: 24px;
+
+  /* Radii: 8 controls, chips and small items; 16 cards and panels; 40 band
+     corners; 999 pills and buttons. Borders are written out where used
+     (hairline 1px solid var(--sv-rule); control 1px solid var(--sv-control)),
+     so they follow the grounds: a custom property built from another one
+     here would freeze the light value. */
+  --sv-r-xs: 8px;
+  --sv-r-sm: 8px;
+  --sv-r-md: 16px;
+  --sv-r-lg: 16px;
+  --sv-r-xl: 40px;
+  --sv-r-band: 40px;
+  --sv-r-pill: 999px;
+  --sv-shadow-1: 0 1px 2px rgb(3 68 45 / .08);
+  --sv-shadow-2: 0 16px 40px rgb(3 68 45 / .12); /* cards on light */
+  --sv-shadow-3: 0 40px 80px rgb(0 0 0 / .45); /* the desk on emerald */
+  --sv-shadow-card: var(--sv-shadow-2);
+  --sv-shadow-desk: var(--sv-shadow-3);
+  --sv-shadow-device: 0 40px 80px -24px rgb(0 0 0 / .6);
+
+  /* §3.7 Z-index. The consent banner keeps its own 2147483000. */
+  --sv-z-content: 0;
+  --sv-z-sharebar: 30;
+  --sv-z-contents: 45;
+  --sv-z-header: 50;
+  --sv-z-overlay: 60; /* drawer, sheets, dialogs */
+  --sv-z-popover: 70;
+  --sv-z-skip: 80;
+
+  /* §3.8 Motion. */
+  --sv-dur-1: 120ms; /* press, hover */
+  --sv-dur-2: 200ms; /* tabs, state changes, header hide and show */
+  --sv-dur-3: 320ms; /* drawer, popover, sheet, canvas cross-fade */
+  --sv-dur-4: 600ms; /* price wash, heat tile colour, bead heartbeat, chart draw-in */
+  --sv-dur-5: 900ms; /* sparkline and mini-chart draw-in (above the fold) */
+  --sv-dur-6: 1200ms;
+  --sv-ease-out: cubic-bezier(.22, 1, .36, 1);
+  --sv-ease-in-out: cubic-bezier(.65, 0, .35, 1);
+  --sv-stagger: 90ms;
+}
+
+@media (min-width: 640px) {
+  :root {
+    --sv-margin: 24px;
+    --sv-cols: 8;
+  }
+}
+@media (min-width: 768px) {
+  :root {
+    --sv-margin: 32px;
+    --sv-gutter: 24px;
+    --sv-bar-h: 60px;
+    --sv-section-home: 80px;
+    --sv-section-site: 56px;
+    --sv-block-news: 36px;
+    --sv-head-gap: 16px;
+  }
+}
+@media (min-width: 1024px) {
+  :root {
+    --sv-cols: 12;
+    --sv-bar-h: 64px;
+    --sv-section-home: 112px;
+    --sv-section-site: 72px;
+    --sv-block-news: 44px;
+  }
+}
+@media (min-width: 1280px) {
+  :root {
+    --sv-gutter: 32px;
+  }
+}
+
+/* ── The emerald ground: the header and its section rail, the footer, the
+   home hero and the download band (and the ticker's "brand" theme). The
+   scope sets no background: the header and footer paint solid #01261A,
+   the bands paint var(--sv-emerald-band). ─────────────────────────────── */
+.sv-emerald,
+.sv-header,
+.sv-footer,
+.sv-drawer,
+.sv-ticker[data-theme="brand"] {
+  --sv-fg: var(--sv-on-emerald);
+  --sv-fg-2: var(--sv-on-emerald-2);
+  --sv-fg-3: var(--sv-on-emerald-3);
+  --sv-rule: var(--sv-emerald-line);
+  --sv-control: rgb(214 243 227 / .45);
+  --sv-selected: var(--sv-neon);
+  --sv-up: var(--sv-up-on-emerald);
+  --sv-down: var(--sv-down-on-emerald);
+  --sv-flat: var(--sv-on-emerald-3);
+  --sv-up-tint: rgb(52 224 137 / .14);
+  --sv-down-tint: rgb(255 138 128 / .14);
+  --sv-focus: var(--sv-focus-on-stage);
+  --sv-live-bg: #0A3F2A;
+  --sv-live-fg: #6EEBAA;
+  --sv-live-dot: var(--sv-neon);
+  --sv-delayed-bg: #253A20;
+  --sv-delayed-fg: #FFCF85;
+  --sv-eod-bg: #17392C;
+  --sv-eod-fg: var(--sv-on-emerald-2);
+  /* Dark grounds take the terminal heat scale. */
+  --sv-heat-n3: #FF6B6B;
+  --sv-heat-n2: #A8383A;
+  --sv-heat-n1: #4A2327;
+  --sv-heat-0: #1E2733;
+  --sv-heat-p1: #134A33;
+  --sv-heat-p2: #17804F;
+  --sv-heat-p3: #34E089;
+  --sv-heat-n3-fg: #2A0707;
+  --sv-heat-n2-fg: #FFFFFF;
+  --sv-heat-n1-fg: #FFE1DF;
+  --sv-heat-0-fg: #E6EDF5;
+  --sv-heat-p1-fg: #DFF7EA;
+  --sv-heat-p2-fg: #FFFFFF;
+  --sv-heat-p3-fg: #03140B;
+  /* The shared area names widget code and the charts read (public.css
+     :root sets the light ones). --sv-surface* stay light on purpose: QR
+     boxes and inputs must stay white. */
+  --background: var(--sv-emerald);
+  --foreground: var(--sv-on-emerald);
+  --card: var(--sv-emerald-2);
+  --card-foreground: var(--sv-on-emerald);
+  --muted: var(--sv-emerald-chip);
+  --muted-foreground: var(--sv-on-emerald-3);
+  --border: var(--sv-emerald-line);
+  --accent: rgb(52 224 137 / .14);
+  --accent-foreground: var(--sv-neon);
+  --prose-fg: var(--sv-on-emerald);
+  color: var(--sv-fg);
+  color-scheme: dark;
+}
+
+/* ── The terminal ground: data panels on #0A0D12 / #0E131A, the dark ticker
+   and the old dark stage. ─────────────────────────────────────────────── */
+.sv-terminal,
+.sv-stage,
+.sv-ticker[data-theme="dark"] {
+  --sv-fg: var(--sv-on-term);
+  --sv-fg-2: var(--sv-on-term-2);
+  --sv-fg-3: var(--sv-on-term-3);
+  --sv-rule: var(--sv-term-line);
+  --sv-control: #64717F;
+  --sv-selected: var(--sv-on-term);
+  --sv-up: var(--sv-up-on-term);
+  --sv-down: var(--sv-down-on-term);
+  --sv-flat: var(--sv-on-term-3);
+  --sv-up-tint: rgb(34 211 122 / .12);
+  --sv-down-tint: rgb(255 107 107 / .12);
+  --sv-focus: var(--sv-focus-on-stage);
+  --sv-live-bg: #0F2A1E;
+  --sv-live-fg: var(--sv-up-on-term);
+  --sv-live-dot: var(--sv-up-on-term);
+  --sv-delayed-bg: #2A2416;
+  --sv-delayed-fg: var(--sv-amber);
+  --sv-eod-bg: #161E28;
+  --sv-eod-fg: #B4C0CC;
+  --sv-heat-n3: #FF6B6B;
+  --sv-heat-n2: #A8383A;
+  --sv-heat-n1: #4A2327;
+  --sv-heat-0: #1E2733;
+  --sv-heat-p1: #134A33;
+  --sv-heat-p2: #17804F;
+  --sv-heat-p3: #34E089;
+  --sv-heat-n3-fg: #2A0707;
+  --sv-heat-n2-fg: #FFFFFF;
+  --sv-heat-n1-fg: #FFE1DF;
+  --sv-heat-0-fg: #E6EDF5;
+  --sv-heat-p1-fg: #DFF7EA;
+  --sv-heat-p2-fg: #FFFFFF;
+  --sv-heat-p3-fg: #03140B;
+  --background: var(--sv-term);
+  --foreground: var(--sv-on-term);
+  --card: var(--sv-term-2);
+  --card-foreground: var(--sv-on-term);
+  --muted: #161E28;
+  --muted-foreground: var(--sv-on-term-3);
+  --border: var(--sv-term-line);
+  --accent: rgb(34 211 122 / .12);
+  --accent-foreground: var(--sv-up-on-term);
+  --prose-fg: var(--sv-on-term);
+  color: var(--sv-fg);
+  color-scheme: dark;
+}
+
+/* ── Colour-blind palette (opt-in, on #sv-public): blue for up, orange for
+   down, on all three grounds. Blue means "up" here, so on light the focus
+   ring turns ink, and on dark grounds it turns the light text colour. ── */
+[data-palette="bo"] {
+  --sv-up: #1D64C8;
+  --sv-down: #B4500A;
+  --sv-up-tint: #E8F0FB;
+  --sv-down-tint: #FDF1E6;
+  --sv-focus: #0B1A13;
+  --sv-heat-n3: #A84A06;
+  --sv-heat-n2: #E08A45;
+  --sv-heat-n1: #F6D3B5;
+  --sv-heat-p1: #C3D8F5;
+  --sv-heat-p2: #5B93DE;
+  --sv-heat-p3: #1D5FBF;
+  --sv-heat-n3-fg: #FFFFFF;
+  --sv-heat-n2-fg: #0B1A13;
+  --sv-heat-n1-fg: #0B1A13;
+  --sv-heat-p1-fg: #0B1A13;
+  --sv-heat-p2-fg: #0B1A13;
+  --sv-heat-p3-fg: #FFFFFF;
+}
+[data-palette="bo"] :is(.sv-emerald, .sv-header, .sv-footer, .sv-drawer, .sv-ticker[data-theme="brand"]) {
+  --sv-up: #8CC0FF;
+  --sv-down: #FFA766;
+  --sv-up-tint: rgb(140 192 255 / .14);
+  --sv-down-tint: rgb(255 167 102 / .14);
+  --sv-focus: var(--sv-on-emerald);
+}
+[data-palette="bo"] :is(.sv-terminal, .sv-stage, .sv-ticker[data-theme="dark"]) {
+  --sv-up: #5AA9FF;
+  --sv-down: #FF9F43;
+  --sv-up-tint: rgb(90 169 255 / .12);
+  --sv-down-tint: rgb(255 159 67 / .12);
+  --sv-focus: var(--sv-on-term);
+}
+[data-palette="bo"] :is(.sv-emerald, .sv-header, .sv-footer, .sv-drawer, .sv-terminal, .sv-stage, .sv-ticker[data-theme="dark"], .sv-ticker[data-theme="brand"]) {
+  --sv-heat-n3: #FF9F43;
+  --sv-heat-n2: #A65A17;
+  --sv-heat-n1: #4A3220;
+  --sv-heat-p1: #173A5E;
+  --sv-heat-p2: #2F6FC0;
+  --sv-heat-p3: #6CB2FF;
+  --sv-heat-n3-fg: #2A1400;
+  --sv-heat-n2-fg: #FFFFFF;
+  --sv-heat-n1-fg: #FFE7D1;
+  --sv-heat-p1-fg: #DCEBFF;
+  --sv-heat-p2-fg: #FFFFFF;
+  --sv-heat-p3-fg: #04121F;
+}

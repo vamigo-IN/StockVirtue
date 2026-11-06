@@ -14,6 +14,7 @@ import { Server, Socket } from 'socket.io';
 import { Exchange, isExchange } from '../common/exchange';
 import { AppConfig } from '../config/configuration';
 import { ScripMasterService } from '../market/scrip-master.service';
+import { NoticeGateService } from '../privacy/notice-gate.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RealtimeBusService } from './realtime-bus.service';
 import { SmartApiWsService } from './smartapi-ws.service';
@@ -58,11 +59,16 @@ export class TicksGateway
     private readonly jwt: JwtService,
     private readonly prisma: PrismaService,
     config: ConfigService<AppConfig, true>,
+    private readonly gate: NoticeGateService,
   ) {
     this.accessSecret = config.get('jwt', { infer: true }).accessSecret;
   }
 
   onModuleInit() {
+    // The app notice gate (W7 decision 2): when a material publish or the
+    // switch changes who is blocked, drop the blocked accounts' sockets here.
+    this.gate.onChange(() => void this.dropBlockedSockets());
+
     // Relay realtime notifications (from any fork, via Redis) to the target
     // user's sockets — or to everyone for an admin broadcast.
     this.realtime.onMessage((msg) => {
@@ -117,10 +123,16 @@ export class TicksGateway
       // live tick/notification stream on a still-valid access token.
       const user = await this.prisma.user.findUnique({
         where: { id: payload.sub },
-        select: { status: true },
+        select: { status: true, noticeVersion: true, adultConfirmedAt: true },
       });
       if (!user || user.status === 'BLOCKED') {
         throw new Error('account not active');
+      }
+      // The app notice gate: refused like a blocked status, by a disconnect
+      // here (never a connect_error, which the app answers by refreshing its
+      // token and retrying). The client doesn't reconnect after it.
+      if (this.gate.blocks(user)) {
+        throw new Error('privacy notice not accepted');
       }
       client.data.userId = payload.sub;
       // Personal room so services can push notifications to this user's
@@ -137,6 +149,50 @@ export class TicksGateway
     this.logger.log(
       `client connected ${client.id} (user ${client.data.userId})`,
     );
+  }
+
+  /**
+   * Disconnects this process's sockets whose accounts the app notice gate
+   * now blocks (W7 addendum §5.11.5), after one query for those accounts.
+   */
+  async dropBlockedSockets(): Promise<number> {
+    if (!this.gate.on() || !this.server) return 0;
+    const sockets = [...this.server.sockets.sockets.values()];
+    const ids = [
+      ...new Set(
+        sockets
+          .map((s) => s.data?.userId as string | undefined)
+          .filter((id): id is string => !!id),
+      ),
+    ];
+    if (!ids.length) return 0;
+    try {
+      const users = await this.prisma.user.findMany({
+        where: { id: { in: ids } },
+        select: { id: true, noticeVersion: true, adultConfirmedAt: true },
+      });
+      const blocked = new Set(
+        users.filter((u) => this.gate.blocks(u)).map((u) => u.id),
+      );
+      let dropped = 0;
+      for (const s of sockets) {
+        if (blocked.has(s.data?.userId as string)) {
+          s.disconnect(true);
+          dropped++;
+        }
+      }
+      if (dropped) {
+        this.logger.log(
+          `Disconnected ${dropped} socket(s) of accounts that must accept the privacy notice.`,
+        );
+      }
+      return dropped;
+    } catch (err) {
+      this.logger.warn(
+        `Couldn't check sockets against the notice gate: ${(err as Error).message}`,
+      );
+      return 0;
+    }
   }
 
   async handleDisconnect(client: Socket) {

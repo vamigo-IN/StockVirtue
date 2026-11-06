@@ -13,6 +13,10 @@ import { UpdateSourceDto, UpdateTickerDto } from './market-config.dto';
 
 export const SOURCE_KEY = 'angel-one';
 export const TICKER_KEY = 'market.ticker';
+/// The attribution a new licence row starts with; editable in the portal.
+/// It names the exchanges, not the data vendor (owner, 6 Nov 2026); the
+/// 20261113120000_market_attribution migration rewrites the old default.
+export const DEFAULT_ATTRIBUTION = 'NSE, BSE, MCX and NSE currency data';
 /// The source row is read on every public request; this long is fresh enough.
 const SOURCE_TTL_MS = 10_000;
 
@@ -126,7 +130,7 @@ export class MarketConfigService implements OnModuleInit {
             webRight: 'LIVE',
             appRight: 'LIVE',
             delayMinutes: 15,
-            attribution: 'NSE, BSE, MCX and NSE currency data via Angel One',
+            attribution: DEFAULT_ATTRIBUTION,
           },
         ],
         skipDuplicates: true,

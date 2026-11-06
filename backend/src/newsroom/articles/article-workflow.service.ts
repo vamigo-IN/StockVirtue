@@ -14,8 +14,17 @@ import {
 import { AuditService } from '../../audit/audit.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ClientInfo, StaffPrincipal } from '../../staff/staff-request';
+import { breakingAtForSwitch, breakingAtOnPublish } from '../breaking';
 import { NewsCache } from '../public/news-cache';
 import { PublishingQueue } from '../publishing/publishing.queue';
+import {
+  breakingNotifies,
+  EDITORS_PICK_WINDOW_MS,
+  editorsPickCampaign,
+  isLive,
+  NOTIFY_CAMPAIGN_INCLUDE,
+  notificationView,
+} from '../push/push-rules';
 import { ArticleCapabilities, capabilities, has } from './article-access';
 import { recordVersion } from './article-versions';
 import {
@@ -25,6 +34,39 @@ import {
 } from './articles.service';
 
 const S = NewsStatus;
+
+const NOTIFY_DENIED =
+  'Sending a notification to app readers needs news.publish and news.feature.';
+
+/**
+ * Writes `data` to a story without stamping its updatedAt, for changes that
+ * are not edits of the story (the Featured and Breaking switches): Prisma's
+ * @updatedAt would set it to now, and readers would see an "Updated" time.
+ * The write keeps the updatedAt it read and applies only while that is
+ * still current, so an edit saved in between keeps its own time (the row is
+ * read again and the write retried).
+ */
+export async function updateKeepingUpdatedAt(
+  tx: Prisma.TransactionClient,
+  id: string,
+  data: Prisma.NewsArticleUpdateManyMutationInput,
+): Promise<void> {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const cur = await tx.newsArticle.findUnique({
+      where: { id },
+      select: { updatedAt: true },
+    });
+    if (!cur) throw new NotFoundException('Article not found.');
+    const res = await tx.newsArticle.updateMany({
+      where: { id, updatedAt: cur.updatedAt },
+      data: { ...data, updatedAt: cur.updatedAt },
+    });
+    if (res.count === 1) return;
+  }
+  throw new ConflictException(
+    'The story was being saved at the same moment. Try the switch again.',
+  );
+}
 
 interface Move {
   action: string;
@@ -42,13 +84,6 @@ interface Move {
   meta?: Prisma.InputJsonValue;
   after?: (a: ArticleAccessRow) => Promise<void>;
 }
-
-const IST_DATE = new Intl.DateTimeFormat('en-IN', {
-  timeZone: 'Asia/Kolkata',
-  day: 'numeric',
-  month: 'short',
-  year: 'numeric',
-});
 
 /**
  * The editorial lifecycle. Every move checks the same capability map the
@@ -176,6 +211,8 @@ export class ArticleWorkflowService {
         publishedAt: now,
         firstPublishedAt: row.firstPublishedAt ?? now,
         scheduledAt: null,
+        // Marked breaking before it went out: its 24 hours start now.
+        ...breakingAtOnPublish(row, now),
       }),
       // Publishing straight from review is also the approval.
       review:
@@ -299,31 +336,15 @@ export class ArticleWorkflowService {
     });
   }
 
-  /** A public, dated correction note on a live story (its text is saved first). */
-  correct(
-    actor: StaffPrincipal,
-    id: string,
-    version: number,
-    note: string,
-    client: ClientInfo,
-  ) {
-    return this.move(actor, id, version, client, {
-      action: 'correct',
-      allowed: (c) => c.correct,
-      data: (a, now) => {
-        const line = `${IST_DATE.format(now)}: ${note.trim()}`;
-        return {
-          correctionNote: a.correctionNote
-            ? `${a.correctionNote}\n${line}`
-            : line,
-        };
-      },
-      versionReason: NewsVersionReason.CORRECTION,
-      meta: { note: note.trim() },
-    });
-  }
-
-  /** Retracted stories stay public with the retraction notice (transparency). */
+  /**
+   * Retracted stories stay public with the retraction notice (transparency).
+   *
+   * Correction notes were retired on 6 Nov 2026 (owner's decision): editors
+   * fix a live story by editing it, and readers see only its "Updated" time.
+   * Retraction keeps the names it shared with them: the `correct` capability
+   * (permission news.correct, a key stored roles hold) and the CORRECTION
+   * version reason (a stored enum value; the portal labels it "Live update").
+   */
   retract(
     actor: StaffPrincipal,
     id: string,
@@ -342,7 +363,10 @@ export class ArticleWorkflowService {
 
   /**
    * Featured and breaking flags. They don't change the story, so they don't
-   * bump the version (and never interrupt someone editing it).
+   * bump the version (and never interrupt someone editing it), and they keep
+   * its updatedAt: a live story's byline shows "Updated <time>" only for
+   * real edits (web news/format.ts wasUpdated), never for a placement
+   * switch.
    */
   async setFlags(
     actor: StaffPrincipal,
@@ -363,11 +387,20 @@ export class ArticleWorkflowService {
         ? { isFeatured: flags.isFeatured }
         : {}),
       ...(flags.isBreaking !== undefined
-        ? { isBreaking: flags.isBreaking }
+        ? {
+            isBreaking: flags.isBreaking,
+            // Its 24 hours start now if it's live, else at publication.
+            breakingAt: breakingAtForSwitch(
+              a,
+              flags.isBreaking,
+              a.status === S.PUBLISHED,
+              new Date(),
+            ),
+          }
         : {}),
     };
     await this.prisma.$transaction(async (tx) => {
-      await tx.newsArticle.update({ where: { id }, data });
+      await updateKeepingUpdatedAt(tx, id, data);
       await this.audit.record(
         {
           actor: { userId: actor.userId, email: actor.email },
@@ -382,6 +415,176 @@ export class ArticleWorkflowService {
     });
     if (a.status === S.PUBLISHED) await this.cache.invalidate('flags');
     return this.articles.get(actor, id);
+  }
+
+  // ── Notifications to app readers (push/push-rules.ts) ───────────────
+
+  /**
+   * "Send a notification when published". Kept on the story, so it holds
+   * through review and scheduled publishing: once the story is live the
+   * worker's push sweep sends one EDITORS_PICK push to app readers with
+   * breaking alerts on, unless breaking news notifies it anyway. Like the
+   * placement flags it doesn't bump the version. A live story is notified
+   * with notifyNow instead, which the portal confirms first.
+   */
+  async setNotify(
+    actor: StaffPrincipal,
+    id: string,
+    on: boolean,
+    client: ClientInfo,
+  ) {
+    const a = await this.notifyRow(id);
+    const can = capabilities(a, actor);
+    if (!can.read) throw new NotFoundException('Article not found.');
+    if (!can.notify) throw new ForbiddenException(NOTIFY_DENIED);
+    if (on && a.pushCampaigns.length) {
+      throw new ConflictException(
+        'This story has already sent its notification. A story sends one, ever.',
+      );
+    }
+    if (on && isLive(a)) {
+      throw new ConflictException(
+        'This story is already live. Use Send notification now to notify readers.',
+      );
+    }
+    await this.prisma.$transaction(async (tx) => {
+      await tx.newsArticle.update({
+        where: { id },
+        // Not an edit of the story: keep its updatedAt, so readers never see
+        // an "Updated" time for it (web news/format.ts wasUpdated).
+        data: { notifyOnPublish: on, updatedAt: a.updatedAt },
+      });
+      await this.audit.record(
+        {
+          actor: { userId: actor.userId, email: actor.email },
+          action: 'news.article.notify_on_publish',
+          entityType: 'NewsArticle',
+          entityId: id,
+          before: { notifyOnPublish: a.notifyOnPublish },
+          after: { notifyOnPublish: on },
+          ...client,
+        },
+        tx,
+      );
+    });
+    return this.articles.get(actor, id);
+  }
+
+  /**
+   * "Send notification now" for a story that is already live: queues its
+   * editor's notification (EDITORS_PICK) for the worker's next push sweep,
+   * which sends it to app readers with breaking alerts on, through the same
+   * pipeline as breaking news (one push per reader and story, the daily
+   * limit, quiet devices dropped). Once per story, ever; never as well as a
+   * breaking push; only within EDITORS_PICK_WINDOW_MS of first publication.
+   */
+  async notifyNow(actor: StaffPrincipal, id: string, client: ClientInfo) {
+    const a = await this.notifyRow(id);
+    const can = capabilities(a, actor);
+    if (!can.read) throw new NotFoundException('Article not found.');
+    if (!can.notify) throw new ForbiddenException(NOTIFY_DENIED);
+    const now = new Date();
+    if (!isLive(a, now)) {
+      throw new BadRequestException(
+        a.retractedAt
+          ? 'Retracted stories can’t send a notification.'
+          : 'Publish the story first, or turn on Send a notification when published.',
+      );
+    }
+    if (a.pushCampaigns.length) {
+      throw new ConflictException(
+        'This story has already sent its notification. A story sends one, ever.',
+      );
+    }
+    if (breakingNotifies(a, now)) {
+      throw new ConflictException(
+        'This is breaking news: readers with breaking alerts on get its notification automatically.',
+      );
+    }
+    if (
+      a.firstPublishedAt &&
+      now.getTime() - a.firstPublishedAt.getTime() > EDITORS_PICK_WINDOW_MS
+    ) {
+      throw new BadRequestException(
+        'A notification can only go out within 24 hours of a story first going live.',
+      );
+    }
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        // The campaign is the record; the story itself isn't written, so a
+        // live story never shows readers an "Updated" time for this.
+        const c = await tx.notificationCampaign.create({
+          data: editorsPickCampaign(a, now),
+          select: { id: true },
+        });
+        await this.audit.record(
+          {
+            actor: { userId: actor.userId, email: actor.email },
+            action: 'news.article.notify',
+            entityType: 'NewsArticle',
+            entityId: id,
+            after: { campaignId: c.id, kind: 'EDITORS_PICK' },
+            meta: {
+              title: a.title,
+              when: 'now',
+              audience: 'App readers with breaking alerts on',
+            },
+            ...client,
+          },
+          tx,
+        );
+      });
+    } catch (err) {
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === 'P2002'
+      ) {
+        throw new ConflictException(
+          'This story’s notification is already on its way.',
+        );
+      }
+      throw err;
+    }
+    return this.articles.get(actor, id);
+  }
+
+  /**
+   * The Placement card's notification state on its own, which the portal
+   * reads again while a notification is on its way (the article itself
+   * isn't reloaded, so nobody's editing is disturbed).
+   */
+  async notification(actor: StaffPrincipal, id: string) {
+    const a = await this.notifyRow(id);
+    if (!capabilities(a, actor).read) {
+      throw new NotFoundException('Article not found.');
+    }
+    return notificationView(a, a.pushCampaigns[0] ?? null);
+  }
+
+  /** What the notification rules need to know about a story. */
+  private async notifyRow(id: string) {
+    const a = await this.prisma.newsArticle.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        status: true,
+        title: true,
+        createdById: true,
+        isBreaking: true,
+        notifyOnPublish: true,
+        publishedAt: true,
+        firstPublishedAt: true,
+        retractedAt: true,
+        updatedAt: true,
+        assignments: {
+          select: { assigneeId: true, role: true, status: true },
+        },
+        // Its one every-reader push (breaking or an editor's), if any.
+        pushCampaigns: NOTIFY_CAMPAIGN_INCLUDE,
+      },
+    });
+    if (!a) throw new NotFoundException('Article not found.');
+    return a;
   }
 
   // ── Internals ───────────────────────────────────────────────────────
@@ -448,7 +651,7 @@ export class ArticleWorkflowService {
       );
     });
     await m.after?.(a);
-    // Going live, coming down, or a correction to a live story.
+    // Going live, coming down, or a retraction of a live story.
     if (a.status === S.PUBLISHED || m.to === S.PUBLISHED) {
       await this.cache.invalidate(m.action);
     }

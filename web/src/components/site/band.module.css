@@ -1,0 +1,171 @@
+/* The site pages' emerald band head (BandHead.tsx; Emerald Terminal brief,
+   6 Nov 2026) and the mono eyebrow. The band carries A's .sv-emerald scope
+   (tokens.css), so the semantic tokens read light inside it and shared
+   parts (Breadcrumbs, NoticeLine, buttons, quiet links) follow; it paints
+   var(--sv-emerald-band) itself (the scope sets no background). */
+
+.band {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  background: var(--sv-emerald-band);
+  border-radius: 0 0 var(--sv-r-band) var(--sv-r-band);
+}
+
+/* The design's faint 56 px grid, masked to the glow (decoration only). */
+.band::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgb(214 243 227 / 0.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(214 243 227 / 0.07) 1px, transparent 1px);
+  background-size: 56px 56px;
+  -webkit-mask-image: radial-gradient(55% 75% at 78% 35%, #000 0%, transparent 78%);
+  mask-image: radial-gradient(55% 75% at 78% 35%, #000 0%, transparent 78%);
+}
+
+.inner {
+  padding-block: 28px 40px;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  row-gap: 16px;
+}
+
+.main,
+.aside {
+  min-width: 0;
+}
+
+.crumbs {
+  margin-bottom: 16px;
+}
+
+.title {
+  margin: 0;
+  max-width: 20ch;
+  font-family: var(--font-sans);
+  font-weight: 800;
+  font-size: clamp(2.125rem, 1.6rem + 2.2vw, 3.5rem);
+  line-height: 1.04;
+  letter-spacing: -0.035em;
+  text-wrap: balance;
+  color: var(--sv-fg);
+}
+
+.meta {
+  margin: 14px 0 0;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  line-height: 20px;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+  color: var(--sv-fg-2);
+}
+
+/* Mono has no Devanagari: the Hindi meta line stays in the sans face. */
+.meta[data-lang='hi'] {
+  font-family: var(--font-sans);
+  letter-spacing: 0;
+}
+
+.lead {
+  margin: 14px 0 0;
+  max-width: 46ch;
+  font-family: var(--font-sans);
+  font-size: clamp(1.0625rem, 1rem + 0.3vw, 1.1875rem);
+  line-height: 1.55;
+  color: var(--sv-fg-2);
+}
+
+/* Links in the band: light text, a neon underline. */
+.band :where(a:not([class])) {
+  color: var(--sv-fg);
+  text-decoration: underline 1px var(--sv-neon);
+  text-underline-offset: 3px;
+}
+
+@media (min-width: 768px) {
+  .inner {
+    padding-block: 40px 56px;
+  }
+  .grid {
+    row-gap: 28px;
+  }
+  .meta {
+    margin-top: 16px;
+  }
+  .lead {
+    margin-top: 16px;
+  }
+}
+
+/* `asideFrom="lg-only"`: no aside below 1024 px (the page renders the same
+   content after the band there). */
+@media (max-width: 1023.98px) {
+  .grid[data-from='lg-only'] > .aside {
+    display: none;
+  }
+}
+
+/* `asideFrom="md"`: the aside sits beside the text from 768 px (the
+   /download QR card, which keeps its own width). */
+@media (min-width: 768px) {
+  .grid[data-aside][data-from='md'] {
+    grid-template-columns: minmax(0, 1fr) auto;
+    column-gap: var(--sv-gutter);
+    align-items: start;
+  }
+}
+
+@media (min-width: 1024px) {
+  .inner {
+    padding-block: 52px 72px;
+  }
+  /* The /features fact file: the card wider than the text (its rows wrap
+     less), the text centred beside it (the band's hero object). */
+  .grid[data-aside]:not([data-from='md']) {
+    grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+    column-gap: var(--sv-gutter);
+    align-items: center;
+  }
+  .grid[data-aside]:not([data-from='md']) > .aside {
+    padding-left: 24px;
+  }
+}
+
+/* ── The mono eyebrow above an H2 ─────────────────────────────────────── */
+
+.eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 14px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--sv-green-700);
+}
+
+.eyebrow[data-tone='band'] {
+  color: var(--sv-neon);
+}
+
+.eyebrowRule {
+  flex: none;
+  width: 20px;
+  height: 2px;
+  background: currentColor;
+}
+
+.eyebrowIndex {
+  font-variant-numeric: tabular-nums;
+}

@@ -346,6 +346,8 @@ class _TradeEmailToggle extends ConsumerWidget {
 
 /// Breaking-news and followed-stock pushes. Saved on the account (the
 /// server decides who gets each push), so they apply on every device.
+/// "Breaking news" also covers the stories editors choose to notify readers
+/// about (the server's EDITORS_PICK pushes go to the same readers).
 class _NewsAlertToggles extends ConsumerWidget {
   const _NewsAlertToggles();
 
@@ -399,7 +401,10 @@ class _NewsAlertToggles extends ConsumerWidget {
             'Breaking news',
             style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5),
           ),
-          subtitle: Text('Major market stories, as they happen.', style: hint),
+          subtitle: Text(
+            'Major market stories as they happen, and editors’ picks.',
+            style: hint,
+          ),
           contentPadding: const EdgeInsets.symmetric(horizontal: 14),
           dense: true,
         ),

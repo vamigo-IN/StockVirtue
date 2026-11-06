@@ -16,6 +16,8 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { Exchange, isExchange } from '../common/exchange';
 import { rupeesToPaise } from '../common/money';
 import { ScripMasterService } from '../market/scrip-master.service';
+import { NoticeGateExempt } from '../privacy/notice-gate.decorator';
+import { NoticeGateService } from '../privacy/notice-gate.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { AlertWatcherService } from './alert-watcher.service';
 import { NotificationsService } from './notifications.service';
@@ -31,6 +33,7 @@ export class NotificationsController {
     private readonly scripMaster: ScripMasterService,
     private readonly watcher: AlertWatcherService,
     private readonly notifications: NotificationsService,
+    private readonly gate: NoticeGateService,
   ) {}
 
   // ── Inbox ────────────────────────────────────────────────────────
@@ -81,7 +84,10 @@ export class NotificationsController {
     return { id: device.id, platform: device.platform };
   }
 
+  // Open while the notice gate is on: signing out removes the phone's push
+  // token first, "while the session can still say so" (W7 addendum §5.11.3).
   @Delete('devices/:token')
+  @NoticeGateExempt()
   async unregisterDevice(
     @CurrentUser() user: User,
     @Param('token') token: string,
@@ -94,8 +100,13 @@ export class NotificationsController {
 
   // ── Email preferences ────────────────────────────────────────────
 
+  // Open while the notice gate is on, withdraw-only: switching the per-trade
+  // emails off is withdrawing consent (DPDP s.6(4)); switching them on is
+  // gated (W7 addendum §5.11.3).
   @Patch('preferences')
+  @NoticeGateExempt()
   async setPreferences(@CurrentUser() user: User, @Body() dto: UpdatePrefsDto) {
+    if (dto.tradeEmails) this.gate.assertOpen(user);
     const updated = await this.prisma.user.update({
       where: { id: user.id },
       data: { tradeEmailsOptIn: dto.tradeEmails },

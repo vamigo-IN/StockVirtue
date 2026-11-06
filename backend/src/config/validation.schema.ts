@@ -112,6 +112,10 @@ export const validationSchema = Joi.object({
   PRIVACY_REQUIRE_SIGNUP_CONSENT: Joi.string()
     .valid('true', 'false')
     .default('false'),
+  // Forces the app notice gate off whatever Settings → Privacy says (W7).
+  PRIVACY_NOTICE_GATE_DISABLED: Joi.string()
+    .valid('true', 'false')
+    .default('false'),
 
   // ─── Public market feed (the /fincalc WebSocket namespace) ─────────────
   // Every value is optional-with-default, deliberately: ConfigModule

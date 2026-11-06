@@ -16,14 +16,16 @@ import {
   Megaphone,
   Newspaper,
   Rocket,
+  Rows3,
   ShieldAlert,
+  TableProperties,
   TrendingDown,
   TrendingUp,
 } from 'lucide-react';
 import type { NewsCard } from '@/news/types';
 
 /**
- * The twenty article widgets, as the editor, the library and the readers'
+ * The 22 article widgets, as the editor, the library and the readers'
  * pages know them. The API validates every config (widget-registry.ts in the
  * backend); these are labels, defaults and grouping for people.
  */
@@ -48,8 +50,26 @@ export const WIDGET_TYPES = [
   'educational',
   'risk_disclaimer',
   'promo_banner',
+  'stock_list',
+  'index_table',
 ] as const;
 export type WidgetType = (typeof WIDGET_TYPES)[number];
+
+/** Rows in a stock list or an index table (the API checks the same). */
+export const TABLE_ROWS = { min: 2, max: 15 } as const;
+
+/**
+ * The index table's one-click preset, in this order: the indices a market
+ * wrap usually leads with. The form keeps only those on the market list.
+ */
+export const MAJOR_INDICES: readonly string[] = [
+  'NSE:NIFTY',
+  'BSE:SENSEX',
+  'NSE:BANKNIFTY',
+  'NSE:NIFTY IT',
+  'NSE:NIFTYNXT50',
+  'NSE:INDIA VIX',
+];
 export type WidgetConfig = Record<string, unknown>;
 
 export interface WidgetBlock {
@@ -94,6 +114,20 @@ export const WIDGET_META: Record<
     icon: ListChecks,
     defaults: { symbols: [], refresh: 15 },
   },
+  stock_list: {
+    label: 'Stock list',
+    group: 'Prices',
+    description: 'A table of the stocks you pick, in your order.',
+    icon: Rows3,
+    defaults: { symbols: [], dayRange: true, refresh: 15 },
+  },
+  index_table: {
+    label: 'Index table',
+    group: 'Prices',
+    description: 'Several indices in one table, such as the majors.',
+    icon: TableProperties,
+    defaults: { symbols: [], dayRange: true, refresh: 15 },
+  },
   commodities: {
     label: 'Commodities',
     group: 'Prices',
@@ -120,7 +154,9 @@ export const WIDGET_META: Record<
     group: 'Charts',
     description: 'A small price line with today’s move.',
     icon: ChartSpline,
-    defaults: { symbol: 'NSE:NIFTY', range: '1D', refresh: 60 },
+    // Fix g (spec §7.9): an index has daily candles only, so 1D drew a single
+    // candle; 1M (about three months of an index) always draws.
+    defaults: { symbol: 'NSE:NIFTY', range: '1M', refresh: 60 },
   },
   candle_chart: {
     label: 'Candlestick chart',

@@ -141,7 +141,14 @@ export function selectQuote(editor: Editor, quote: string): boolean {
     return false;
   });
   if (!range) return false;
-  editor.chain().focus().setTextSelection(range).scrollIntoView().run();
+  editor.chain().focus().setTextSelection(range).run();
+  // Centre it in the story's scroll area: scrolled only to the top edge it
+  // would sit under the pinned formatting toolbar (or, below xl, under the
+  // portal header too).
+  const at = editor.view.domAtPos(editor.state.selection.from).node;
+  (at instanceof Element ? at : at.parentElement)?.scrollIntoView({
+    block: 'center',
+  });
   return true;
 }
 

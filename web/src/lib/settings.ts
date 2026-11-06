@@ -133,6 +133,14 @@ export interface SiteSettings {
   bodyStartCode: string;
   /** Raw HTML injected right before </body> closes. */
   bodyEndCode: string;
+  /**
+   * The website's cookie choice version (W7 addendum §5.13): a visitor's
+   * stored choice is current when its version is at least this. A new
+   * version starts with a material privacy change that affects cookies, or
+   * a Settings save that switches a service on. An API from before W7 sends
+   * none: 1.
+   */
+  cookieConsent: { version: number };
   config: SiteConfig;
 }
 
@@ -145,8 +153,15 @@ export const DEFAULT_SETTINGS: SiteSettings = {
   headCode: '',
   bodyStartCode: '',
   bodyEndCode: '',
+  cookieConsent: { version: 1 },
   config: DEFAULT_CONFIG,
 };
+
+/** The payload's cookie choice version: a whole number from 1, else 1. */
+function cookieConsentOf(raw: unknown): { version: number } {
+  const v = (raw as { version?: unknown } | null | undefined)?.version;
+  return { version: typeof v === 'number' && Number.isInteger(v) && v >= 1 ? v : 1 };
+}
 
 function mergeConfig(c: Partial<SiteConfig> | undefined): SiteConfig {
   return {
@@ -208,6 +223,7 @@ export async function getSettings(): Promise<SiteSettings> {
       ...DEFAULT_SETTINGS,
       ...data,
       social: { ...DEFAULT_SETTINGS.social, ...(data.social ?? {}) },
+      cookieConsent: cookieConsentOf(data.cookieConsent),
       config: mergeConfig(data.config),
     };
   } catch {

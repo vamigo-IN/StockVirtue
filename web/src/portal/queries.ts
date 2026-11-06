@@ -35,11 +35,18 @@ import type {
   MySession,
   MyWork,
   NewsSourceView,
+  NoticeGateView,
   Paged,
   PermissionInfo,
+  PrivacyNoticeView,
   RoleInfo,
   SimilarStories,
   SiteConfigView,
+  SiteContentList,
+  SiteContentTypes,
+  SiteItemView,
+  SiteRevisionDetail,
+  SiteRevisionList,
   SiteSettingsView,
   SourceItemDetail,
   SourceItemPage,
@@ -99,6 +106,15 @@ export const qk = {
   aiJobs: (f: AiJobFilters) => ['ai', 'jobs', f] as const,
   aiJob: (id: string) => ['ai', 'job', id] as const,
   similar: (id: string) => ['article', id, 'similar'] as const,
+  // Website content (W7)
+  siteContent: ['site-content', 'list'] as const,
+  siteTypes: ['site-content', 'types'] as const,
+  siteItem: (key: string) => ['site-content', 'item', key] as const,
+  siteRevisions: (key: string) => ['site-content', 'revisions', key] as const,
+  siteRevision: (key: string, id: string) =>
+    ['site-content', 'revision', key, id] as const,
+  privacyNotice: ['site-content', 'privacy-notice'] as const,
+  noticeGate: ['site-content', 'notice-gate'] as const,
 };
 
 export interface FetchLogFilters {
@@ -524,3 +540,80 @@ export const useAiJob = (id: string | null) =>
     refetchInterval: (q) =>
       q.state.data && AI_DONE.includes(q.state.data.status) ? false : 1_500,
   });
+
+// ── Website content (W7: pages, menus and footer, legal documents) ──────
+
+/** The Pages list: every fixed item (built-in ones too) and the custom pages. */
+export const useSiteContentList = (enabled = true) =>
+  useQuery({
+    queryKey: qk.siteContent,
+    queryFn: () => api<SiteContentList>('staff/site/content'),
+    enabled,
+  });
+
+/** Limits, tokens and the legal profiles (TERMS_MIN_NOTICE_DAYS). */
+export const useSiteContentTypes = () =>
+  useQuery({
+    queryKey: qk.siteTypes,
+    queryFn: () => api<SiteContentTypes>('staff/site/content/types'),
+    staleTime: 5 * 60_000,
+  });
+
+/**
+ * One item being edited: fetched fresh each time the editor opens, then the
+ * editor owns it (no background refetch overwrites typing).
+ */
+export const useSiteItem = (key: string, enabled = true) =>
+  useQuery({
+    queryKey: qk.siteItem(key),
+    queryFn: () =>
+      api<SiteItemView>(`staff/site/content/${encodeURIComponent(key)}`),
+    enabled,
+    staleTime: Infinity,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: false,
+  });
+
+export const useSiteRevisions = (key: string, enabled = true) =>
+  useQuery({
+    queryKey: qk.siteRevisions(key),
+    queryFn: () =>
+      api<SiteRevisionList>(
+        `staff/site/content/${encodeURIComponent(key)}/revisions`,
+      ),
+    enabled,
+  });
+
+export const useSiteRevision = (key: string, id: string | null) =>
+  useQuery({
+    queryKey: qk.siteRevision(key, id ?? ''),
+    queryFn: () =>
+      api<SiteRevisionDetail>(
+        `staff/site/content/${encodeURIComponent(key)}/revisions/${id}`,
+      ),
+    enabled: !!id,
+    staleTime: Infinity,
+  });
+
+/** The notice versions, the next id and what the system does (§4.7). */
+export const usePrivacyNotice = (enabled = true) =>
+  useQuery({
+    queryKey: qk.privacyNotice,
+    queryFn: () => api<PrivacyNoticeView>('staff/site/privacy-notice'),
+    enabled,
+  });
+
+/** The app notice gate and how many accounts it would block (cached 60 s by the API). */
+export const useNoticeGate = (enabled = true) =>
+  useQuery({
+    queryKey: qk.noticeGate,
+    queryFn: () => api<NoticeGateView>('staff/site/privacy-notice/gate'),
+    enabled,
+  });
+
+/** After a save, publish or restore: the list, the item's history and the audit feed. */
+export function invalidateSiteContent(qc: QueryClient, key?: string) {
+  void qc.invalidateQueries({ queryKey: qk.siteContent });
+  if (key) void qc.invalidateQueries({ queryKey: qk.siteRevisions(key) });
+  void qc.invalidateQueries({ queryKey: ['audit'] });
+}

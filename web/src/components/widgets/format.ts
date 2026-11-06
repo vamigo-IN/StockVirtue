@@ -60,16 +60,25 @@ const DAY = new Intl.DateTimeFormat('en-IN', {
 });
 const YMD = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' });
 
-/** "3:05 pm IST" today, else "31 Oct, 3:30 pm IST". */
+/**
+ * "3 Nov, 3:05 pm IST". Without `today` the text never depends on the
+ * clock, so the server HTML and the first browser render always agree (the
+ * fix for hydration error #418, constraints map §8.4), and a cached page
+ * never says "3:30 pm IST" when it means yesterday.
+ *
+ * Pass `today` only from code that runs after hydration (`useToday()`,
+ * which is null until then): when `iso` falls on that IST day, the short
+ * form "3:05 pm IST" is used.
+ */
 export function fmtStamp(
   iso: string | null | undefined,
-  now = new Date(),
+  today?: Date | null,
 ): string {
   if (!iso) return '';
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '';
   const time = TIME.format(d).toLowerCase();
-  return YMD.format(d) === YMD.format(now)
+  return today && YMD.format(d) === YMD.format(today)
     ? `${time} IST`
     : `${DAY.format(d)}, ${time} IST`;
 }

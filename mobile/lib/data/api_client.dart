@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:pretty_dio_logger/pretty_dio_logger.dart';
 
 import '../core/config.dart';
+import '../core/notice_events.dart';
 import 'auth_storage.dart';
 import 'models/tokens.dart';
 
@@ -90,6 +91,15 @@ final apiClientProvider = Provider<ApiClient>((ref) {
             }
           }
         }
+        // 403 notice_required: the app notice gate refuses this account
+        // until it accepts the current privacy notice. Tell the privacy
+        // lifecycle, which brings the notice screen up; the error still
+        // reaches the caller.
+        final notice = noticeRequiredIn(
+          error.response?.statusCode,
+          error.response?.data,
+        );
+        if (notice != null) reportNoticeRequired(notice);
         handler.next(error);
       },
     ),

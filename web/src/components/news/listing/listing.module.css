@@ -1,0 +1,314 @@
+/* ============================================================================
+   Listings and the hubs' story areas (spec §5.10, §5.11; W5). Layout only:
+   the units are StoryCard's, the modules W0m's, the heads PageHead's.
+
+   The story area is the page grid (--sv-cols: 4 on phones, 8 from 640,
+   12 from 1024). With an aside the stories take cols 1–9 and the aside
+   10–12 from 1024, 1–5 and 6–8 from 768 (spec §5.11: "5 + 3"); below 768
+   the aside follows the list. Without one the stories take cols 1–9 from
+   1024 (a 12-column measure is too long for headlines) and the whole
+   width below.
+
+   An aside counts only while it shows something: a client module that drew
+   nothing (the licence switched to OFF after the page was cached) leaves its
+   slot empty, and the stories take the width again (:has(); browsers
+   without it keep the column).
+   ========================================================================== */
+
+.area {
+  padding-block: var(--sv-block-news) calc(var(--sv-block-news) * 1.5);
+}
+/* Phones end on one band gap: the phone budgets (spec §5.11, §8.3: Latest
+   ≤ 2,530 px) leave nothing for a longer run-out before the footer. */
+@media (max-width: 767.98px) {
+  .area {
+    padding-bottom: var(--sv-block-news);
+  }
+}
+
+.grid {
+  row-gap: 32px;
+}
+
+.main {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+.side {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+
+/* ── Emerald Terminal (6 Nov 2026): the story list is a white sheet on the
+   mint ground (16 px corners, a hairline, the soft emerald card shadow),
+   and each aside module is a white card of its own. Ad units Google
+   inserts between list items stay inside the sheet's padding (the ad rules
+   in article-prose.css keep them to the column's width). ─────────────── */
+.main {
+  padding: 16px;
+  border: 1px solid var(--sv-rule);
+  border-radius: var(--sv-r-lg, 16px);
+  background: var(--sv-surface);
+  box-shadow: var(--sv-shadow-card, 0 16px 40px rgb(3 68 45 / 0.12));
+}
+@media (min-width: 768px) {
+  .main {
+    padding: 24px;
+  }
+}
+@media (min-width: 1280px) {
+  .main {
+    padding: 28px 32px 32px;
+  }
+}
+.side:empty,
+.side:has(> aside:empty) {
+  display: none;
+}
+
+@media (min-width: 768px) {
+  .grid[data-aside] > .main {
+    grid-column: 1 / span 5;
+  }
+  .grid[data-aside] > .side {
+    grid-column: 6 / span 3;
+  }
+  /* The aside's module drew nothing: the stories take the width again. */
+  .grid[data-aside]:has(> .side:empty) > .main,
+  .grid[data-aside]:has(> .side > aside:empty) > .main {
+    grid-column: 1 / -1;
+  }
+  /* "rows, Most read after the list" (the Markets hub on tablets). */
+  .grid[data-aside="below-tablet"] > .main,
+  .grid[data-aside="below-tablet"] > .side {
+    grid-column: 1 / -1;
+  }
+}
+/* Tablets with the aside beside the stories (5 + 3): the main column is
+   about 480 px, so the horizontal splash would leave its text about 200 px
+   and the headline six lines. Here the splash stacks, image then text,
+   spec §4.8's splash (its sizes already give 472 px at this width), with
+   the 16 px the stacked splash keeps between the image and the kicker. */
+@media (min-width: 768px) and (max-width: 1023.98px) {
+  .grid[data-aside=""] > .main :global(article[data-orientation="horizontal"]) {
+    display: block;
+  }
+  .grid[data-aside=""] > .main :global(article[data-orientation="horizontal"]) > :last-child {
+    margin-top: 16px;
+  }
+}
+@media (min-width: 1024px) {
+  .main,
+  .grid[data-aside] > .main,
+  .grid[data-aside="below-tablet"] > .main,
+  .grid[data-aside]:has(> .side:empty) > .main,
+  .grid[data-aside]:has(> .side > aside:empty) > .main {
+    grid-column: 1 / span 9;
+  }
+  .grid[data-aside] > .side,
+  .grid[data-aside="below-tablet"] > .side {
+    grid-column: 10 / span 3;
+  }
+}
+
+/* Sub-sections (SubSections): quiet links in a row, 44 px tall. */
+.subs {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 24px;
+  margin-top: 16px;
+  padding: 0;
+  list-style: none;
+}
+.subs a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+}
+
+/* The head's row under the summary: sub-sections on the left, the
+   MarketStatus line on the right from 1024 (Markets and Commodities). */
+.headRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  column-gap: 24px;
+}
+.headRow:empty {
+  display: none;
+}
+.headStatus {
+  display: none;
+}
+@media (min-width: 1024px) {
+  .headStatus {
+    display: block;
+    margin-left: auto;
+    padding-block: 12px;
+  }
+}
+
+/* Markets now on listings (spec §5.11): six index rows, four on phones. */
+@media (max-width: 767.98px) {
+  .marketsNow tbody tr:nth-child(n + 5) {
+    display: none;
+  }
+}
+
+/* The author's profile head (spec §5.11): on paper, a 96 px photo (72 on
+   phones) beside the name, the bio and the social links. */
+.author {
+  background: var(--sv-paper);
+}
+.authorBody {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  column-gap: 16px;
+  align-items: start;
+}
+@media (min-width: 768px) {
+  .authorBody {
+    grid-template-columns: 96px minmax(0, 1fr);
+    column-gap: 24px;
+  }
+}
+.avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 72px;
+  height: 72px;
+  border-radius: 999px;
+  object-fit: cover;
+  background: var(--sv-green-100);
+  color: var(--sv-green-900);
+}
+@media (min-width: 768px) {
+  .avatar {
+    width: 96px;
+    height: 96px;
+  }
+}
+.socials {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 20px;
+  margin-top: 12px;
+  padding: 0;
+  list-style: none;
+}
+.socials a {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+}
+
+/* Search (spec §4.12, §5.11): one 56 px field with a leading icon. */
+.searchForm {
+  display: flex;
+  gap: 8px;
+  max-width: 42rem;
+  margin-top: 24px;
+}
+.searchField {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+.searchIcon {
+  position: absolute;
+  top: 50%;
+  left: 16px;
+  width: 20px;
+  height: 20px;
+  transform: translateY(-50%);
+  color: var(--sv-fg-3);
+  pointer-events: none;
+}
+/* On W0's .sv-input (white, the light control line): 56 px tall, room
+   for the icon. */
+.searchInput {
+  height: 56px;
+  padding: 0 16px 0 48px;
+  font-size: 17px;
+}
+.searchButton {
+  height: 56px;
+}
+
+/* Matching instruments (SearchInstruments): chips in a row that wraps from
+   768 px and scrolls sideways below it. */
+.instruments {
+  margin-top: 20px;
+}
+.chips {
+  display: flex;
+  gap: 8px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.chips > li {
+  flex: none;
+}
+@media (max-width: 767.98px) {
+  .chips {
+    margin-inline: calc(-1 * var(--sv-margin));
+    padding-inline: var(--sv-margin);
+    overflow-x: auto;
+    scroll-snap-type: x proximity;
+    scroll-padding-inline: var(--sv-margin);
+    scrollbar-width: none;
+  }
+  .chips > li {
+    scroll-snap-align: start;
+  }
+}
+@media (min-width: 768px) {
+  .chips {
+    flex-wrap: wrap;
+  }
+}
+
+/* The same white sheet and aside card, for pages that lay their own grid
+   (the stock page, Learn, the story's related stories). */
+.sheet {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--sv-rule);
+  border-radius: var(--sv-r-lg, 16px);
+  background: var(--sv-surface);
+  box-shadow: var(--sv-shadow-card, 0 16px 40px rgb(3 68 45 / 0.12));
+}
+@media (min-width: 768px) {
+  .sheet {
+    padding: 24px;
+  }
+}
+@media (min-width: 1280px) {
+  .sheet {
+    padding: 28px 32px 32px;
+  }
+}
+.card {
+  min-width: 0;
+  padding: 16px 20px;
+  border: 1px solid var(--sv-rule);
+  border-radius: var(--sv-r-lg, 16px);
+  background: var(--sv-surface);
+  box-shadow: var(--sv-shadow-card, 0 16px 40px rgb(3 68 45 / 0.12));
+}
+.card:empty {
+  display: none;
+}
+/* The stock page's terminal panel: a little more room than a rail card. */
+.termPad {
+  padding: 16px;
+}
+@media (min-width: 768px) {
+  .termPad {
+    padding: 24px;
+  }
+}

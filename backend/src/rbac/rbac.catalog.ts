@@ -32,7 +32,10 @@ export const PERMISSIONS = [
   { key: 'news.delete', description: 'Delete never-published articles' },
   { key: 'news.assign', description: 'Assign writers and reviewers' },
   { key: 'news.feature', description: 'Mark articles featured or breaking' },
-  { key: 'news.correct', description: 'Issue corrections and retractions' },
+  // Since correction notes were retired (6 Nov 2026) this gates retraction
+  // only. The key keeps its name: custom roles store it, and the boot sync
+  // never deletes a permission (it does refresh this description).
+  { key: 'news.correct', description: 'Retract published stories' },
   { key: 'news.comment', description: 'Leave editorial comments' },
   { key: 'taxonomy.manage', description: 'Manage categories and tags' },
 
@@ -91,6 +94,18 @@ export const PERMISSIONS = [
   { key: 'seo.read', description: 'View SEO settings and redirects' },
   { key: 'seo.update', description: 'Edit SEO settings and redirects' },
   { key: 'notifications.send', description: 'Send push notifications' },
+
+  // Legal pages (W7: the admin-managed public site)
+  {
+    key: 'legal.manage',
+    description:
+      'Edit and publish the terms, the disclaimer, the privacy requests page and the legal lines in the footer, About and Contact, and publish small fixes to the privacy notice',
+  },
+  {
+    key: 'legal.material',
+    description:
+      'Publish a material change to the privacy notice (every app user must read and accept it again), or a minor change bigger than a small fix, and switch the app notice gate on or off',
+  },
 
   // Insight and security
   { key: 'analytics.read', description: 'View analytics and reports' },
@@ -153,6 +168,8 @@ const SUPER_ADMIN_ONLY: PermissionKey[] = [
   'media.storage',
   'security.manage',
   'roles.manage',
+  // Re-prompts every app user, or decides that a bigger change is "minor".
+  'legal.material',
 ];
 
 export const SUPER_ADMIN = 'SUPER_ADMIN';
@@ -177,7 +194,7 @@ export const SYSTEM_ROLES: readonly SystemRoleDef[] = [
     key: 'MANAGING_EDITOR',
     name: 'Managing Editor',
     description:
-      'Owns the editorial desk: assigns work, approves, publishes and corrects.',
+      'Owns the editorial desk: assigns work, approves and publishes.',
     permissions: [
       ...EDITING,
       'news.archive',

@@ -25,11 +25,14 @@ import { CompanyDirectoryService } from '../market/company-directory.service';
 import { MediaService } from '../newsroom/media/media.service';
 import { AccountErasureService } from '../privacy/account-erasure.service';
 import { ConsentService } from '../privacy/consent.service';
+import { NoticeGateService } from '../privacy/notice-gate.service';
+import { PrivacyNoticeService } from '../privacy/privacy-notice.service';
 import { PrivacyRetentionService } from '../privacy/privacy-retention.service';
 import { PrivacyService } from '../privacy/privacy.service';
 import { NewsCache } from '../newsroom/public/news-cache';
 import { SiteRevalidator } from '../newsroom/public/site-revalidator';
 import { ArticlePublisher } from '../newsroom/publishing/article-publisher';
+import { BreakingExpiry } from '../newsroom/publishing/breaking-expiry';
 import {
   PublishingProcessor,
   PublishingScheduler,
@@ -88,6 +91,8 @@ import {
     AccountErasureService,
     PrivacyRetentionService,
     ArticlePublisher,
+    // Breaking news ends 24 hours after it started (a 2-minute sweep).
+    BreakingExpiry,
     NewsCache,
     SiteRevalidator,
     PublishingProcessor,
@@ -117,6 +122,11 @@ import {
     NewsPushService,
     NewsPushProcessor,
     NewsPushScheduler,
+    // W7: the current privacy notice version (consent, data exports,
+    // erasure) and the app notice gate's switch (news-push audiences),
+    // reloaded on the API's Redis message.
+    PrivacyNoticeService,
+    NoticeGateService,
   ],
 })
 export class WorkerModule {}

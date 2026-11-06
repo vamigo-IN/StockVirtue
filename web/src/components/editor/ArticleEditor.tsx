@@ -1,5 +1,6 @@
 'use client';
 
+import { NodeSelection } from '@tiptap/pm/state';
 import {
   EditorContent,
   useEditor,
@@ -9,7 +10,6 @@ import {
 import {
   Bold,
   ChartCandlestick,
-  ChevronDown,
   Clapperboard,
   Code,
   Columns3,
@@ -35,12 +35,10 @@ import {
 import { useEffect, useRef, useState } from 'react';
 import { MediaPicker } from '@/components/portal/MediaPicker';
 import { usePortalMe } from '@/components/portal/PortalShell';
-import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import {
   Select,
@@ -59,6 +57,13 @@ import { cn } from '@/lib/utils';
 import { can } from '@/portal/access';
 import { LinkDialog, RelatedDialog, VideoDialog } from './EditorDialogs';
 import { articleExtensions } from './extensions';
+import { AlignMenu, ColourMenu, markValue, MenuButton } from './FormatMenus';
+import {
+  type Alignment,
+  HIGHLIGHT_IDS,
+  TEXT_ALIGNS,
+  TEXT_COLOR_IDS,
+} from './formatting';
 import { emptyTable, insertBlock } from './insert';
 import { WidgetDialog } from './WidgetDialog';
 
@@ -136,6 +141,14 @@ function Toolbar({
       quote: e.isActive('blockquote'),
       callout: e.isActive('callout'),
       table: e.isActive('table'),
+      // A picked image, video or widget block has no text to align or colour.
+      onBlock:
+        e.state.selection instanceof NodeSelection &&
+        !e.state.selection.node.isTextblock,
+      align: (TEXT_ALIGNS.find((a) => e.isActive({ textAlign: a })) ??
+        'left') as Alignment,
+      textColor: markValue(e, 'textColor', TEXT_COLOR_IDS),
+      highlight: markValue(e, 'highlight', HIGHLIGHT_IDS),
       canUndo: e.can().undo(),
       canRedo: e.can().redo(),
     }),
@@ -159,7 +172,7 @@ function Toolbar({
     <div
       role="toolbar"
       aria-label="Formatting"
-      className="sticky top-16 z-10 flex flex-wrap items-center gap-0.5 rounded-t-xl border-b bg-card/95 px-2 py-1.5 backdrop-blur"
+      className="sticky top-[var(--sv-toolbar-top,4rem)] z-10 flex flex-wrap items-center gap-0.5 rounded-t-xl border-b bg-card/95 px-2 py-1.5 backdrop-blur"
     >
       <ToolButton
         icon={Undo2}
@@ -173,7 +186,7 @@ function Toolbar({
         onClick={() => run().redo().run()}
         disabled={disabled || !s.canRedo}
       />
-      <Separator orientation="vertical" className="mx-1 h-6" />
+      <Separator orientation="vertical" className="mx-0.5 h-6" />
       <Select
         value={s.block}
         onValueChange={(v) => setBlock(v as Block)}
@@ -181,7 +194,7 @@ function Toolbar({
       >
         <SelectTrigger
           size="sm"
-          className="h-8 w-32 border-0 shadow-none"
+          className="h-8 w-28 gap-1 border-0 pr-1.5 pl-2 shadow-none"
           aria-label="Text style"
         >
           <SelectValue />
@@ -193,7 +206,7 @@ function Toolbar({
           <SelectItem value="h4">Minor heading</SelectItem>
         </SelectContent>
       </Select>
-      <Separator orientation="vertical" className="mx-1 h-6" />
+      <Separator orientation="vertical" className="mx-0.5 h-6" />
       <ToolButton
         icon={Bold}
         label="Bold"
@@ -236,7 +249,14 @@ function Toolbar({
         disabled={disabled}
         onClick={() => setLinkOpen(true)}
       />
-      <Separator orientation="vertical" className="mx-1 h-6" />
+      <ColourMenu
+        editor={editor}
+        text={s.textColor}
+        highlight={s.highlight}
+        disabled={disabled || s.onBlock}
+        onCloseAutoFocus={backToStory}
+      />
+      <Separator orientation="vertical" className="mx-0.5 h-6" />
       <ToolButton
         icon={List}
         label="Bulleted list"
@@ -258,18 +278,18 @@ function Toolbar({
         disabled={disabled}
         onClick={() => run().toggleBlockquote().run()}
       />
-      <Separator orientation="vertical" className="mx-1 h-6" />
+      <AlignMenu
+        editor={editor}
+        value={s.align}
+        disabled={disabled || s.onBlock}
+        onCloseAutoFocus={backToStory}
+      />
+      <Separator orientation="vertical" className="mx-0.5 h-6" />
       <DropdownMenu>
-        <DropdownMenuTrigger asChild disabled={disabled}>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-8 gap-1 px-2 text-muted-foreground"
-            onMouseDown={(e) => e.preventDefault()}
-          >
-            <Plus /> Insert <ChevronDown className="size-3.5" />
-          </Button>
-        </DropdownMenuTrigger>
+        {/* Icon-only, named "Insert" (the menu of images, videos, widgets…). */}
+        <MenuButton label="Insert" tip="Insert" disabled={disabled}>
+          <Plus aria-hidden="true" className="size-4" />
+        </MenuButton>
         <DropdownMenuContent
           align="start"
           className="w-60"
@@ -312,7 +332,7 @@ function Toolbar({
       </DropdownMenu>
       {s.table && !disabled && (
         <>
-          <Separator orientation="vertical" className="mx-1 h-6" />
+          <Separator orientation="vertical" className="mx-0.5 h-6" />
           <ToolButton
             icon={Rows3}
             label="Add row below"

@@ -1,0 +1,2749 @@
+/* ============================================================================
+   The public website's one stylesheet: the home page, the site pages, the
+   news site and the root 404 (spec §3.9, §3.11). Loaded only by
+   src/app/(public)/layout.tsx and src/app/not-found.tsx; the /admin portal
+   has portal.css and never sees this file.
+   Emerald Terminal (6 Nov 2026): stream A owns this file and tokens.css.
+   Others use the utilities below (bg-paper, text-fg-2, border-rule,
+   text-up, …), the .t-* type classes, the primitives (.sv-btn, .sv-chip,
+   .sv-card, .sv-table, …), the grounds (.sv-emerald, .sv-terminal) or a
+   CSS Module next to the component.
+   ========================================================================== */
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "../../styles/tokens.css";
+@import "../../styles/article-prose.css";
+@import "../../styles/widgets.css";
+@plugin "@tailwindcss/typography";
+
+/* Only scan the public site's code for class names (one folder per line). */
+@source not "../admin";
+@source not "../../components/portal";
+@source not "../../components/editor";
+@source not "../../components/ui";
+@source not "../../components/newswire";
+@source not "../../portal";
+
+/* No reader dark mode in v1: an OS dark setting never fires dark: utilities. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* The Archivo "stage" display cuts and the Source Serif reading face are
+   retired on the public site (Emerald Terminal). Their files stay in
+   public/fonts until no layout preloads them. */
+
+/* ── Tailwind theme names (inline: each utility resolves its token on the
+   element it styles, so the surface scopes and the palette switch apply) ── */
+@theme inline {
+  /* One sans (Hanken Grotesk, with the ₹ face ahead of it) and one mono
+     (SV Mono). The old display and serif names point at the sans. */
+  --font-sans: var(--font-sv-rupee), var(--font-hanken), "Segoe UI", Roboto, system-ui, sans-serif;
+  --font-stage-1: var(--font-sans);
+  --font-stage-2: var(--font-sans);
+  --font-display: var(--font-sans); /* article-prose.css h2–h4 */
+  --font-serif: var(--font-sans);
+  --font-mono: var(--font-sv-mono), ui-monospace, "SFMono-Regular", Consolas, monospace;
+
+  /* Semantic (follow .sv-stage / .sv-footer and the palette switch). */
+  --color-fg: var(--sv-fg);
+  --color-fg-2: var(--sv-fg-2);
+  --color-fg-3: var(--sv-fg-3);
+  --color-rule: var(--sv-rule);
+  --color-control: var(--sv-control);
+  --color-selected: var(--sv-selected);
+
+  --color-paper: var(--sv-paper);
+  --color-surface: var(--sv-surface);
+  --color-surface-2: var(--sv-surface-2);
+  --color-surface-3: var(--sv-surface-3);
+  --color-ink: var(--sv-ink);
+  --color-text-2: var(--sv-text-2);
+  --color-text-3: var(--sv-text-3);
+  --color-line: var(--sv-line);
+  --color-line-strong: var(--sv-line-strong);
+  --color-up: var(--sv-up);
+  --color-down: var(--sv-down);
+  --color-flat: var(--sv-flat);
+  --color-up-tint: var(--sv-up-tint);
+  --color-down-tint: var(--sv-down-tint);
+  --color-live-bg: var(--sv-live-bg);
+  --color-live-fg: var(--sv-live-fg);
+  --color-live-dot: var(--sv-live-dot);
+  --color-delayed-bg: var(--sv-delayed-bg);
+  --color-delayed-fg: var(--sv-delayed-fg);
+  --color-eod-bg: var(--sv-eod-bg);
+  --color-eod-fg: var(--sv-eod-fg);
+  --color-green-700: var(--sv-green-700);
+  --color-green-800: var(--sv-green-800);
+  --color-heat-n3: var(--sv-heat-n3);
+  --color-heat-n2: var(--sv-heat-n2);
+  --color-heat-n1: var(--sv-heat-n1);
+  --color-heat-0: var(--sv-heat-0);
+  --color-heat-p1: var(--sv-heat-p1);
+  --color-heat-p2: var(--sv-heat-p2);
+  --color-heat-p3: var(--sv-heat-p3);
+  --color-breaking: var(--sv-breaking);
+  --color-danger: var(--sv-danger);
+  --color-focus: var(--sv-focus);
+  --color-stage: var(--sv-stage);
+  --color-stage-2: var(--sv-stage-2);
+  --color-stage-3: var(--sv-stage-3);
+  --color-emerald: var(--sv-emerald);
+  --color-emerald-2: var(--sv-emerald-2);
+  --color-emerald-3: var(--sv-emerald-3);
+  --color-neon: var(--sv-neon);
+  --color-neon-ink: var(--sv-neon-ink);
+  --color-term: var(--sv-term);
+  --color-term-2: var(--sv-term-2);
+  --color-term-3: var(--sv-term-3);
+  --color-amber: var(--sv-amber);
+
+  /* The names shared widget code already uses (light values; §3.10). */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+
+  /* Radii: 8 controls and chips, 16 cards and panels, 40 band corners,
+     999 pills (rounded-band, rounded-pill). */
+  --radius-sm: 8px;
+  --radius-md: 8px;
+  --radius-lg: 16px;
+  --radius-xl: 16px;
+  --radius-band: 40px;
+  --radius-pill: 999px;
+
+  --shadow-card: var(--sv-shadow-2);
+  --shadow-desk: var(--sv-shadow-3);
+}
+
+:root {
+  --background: var(--sv-surface);
+  --foreground: var(--sv-ink);
+  --paper: var(--sv-paper);
+  --card: var(--sv-surface);
+  --card-foreground: var(--sv-ink);
+  --muted: var(--sv-surface-2);
+  --muted-foreground: var(--sv-text-3);
+  --border: var(--sv-line);
+  --primary: var(--sv-green-700);
+  --primary-foreground: #fff;
+  --accent: var(--sv-green-100);
+  --accent-foreground: var(--sv-green-900);
+  --warning: var(--sv-warning);
+  --destructive: var(--sv-danger);
+  color-scheme: light;
+  /* Area-level names shared with the portal (article-prose.css and the
+     widgets read only these; §3.10). */
+  --prose-fg: var(--sv-ink);
+  --prose-callout-bg: var(--sv-surface-2);
+}
+
+/* The font variables live on #sv-public (and the root 404's wrapper), so
+   the stacks that use them are declared there too: a custom property that
+   names --font-hanken only resolves on or under that element. The ₹ face
+   (unicode-range U+20B9) comes first: Hanken has no rupee sign. Source
+   Serif's variable is re-pointed here (the ID beats next/font's class on
+   the same element), so any var(--font-serif-sv) left in a stylesheet
+   reads Hanken and the serif is never downloaded. */
+#sv-public {
+  --font-sans: var(--font-sv-rupee), var(--font-hanken), "Segoe UI", Roboto, system-ui, sans-serif;
+  --font-stage-1: var(--font-sans);
+  --font-stage-2: var(--font-sans);
+  --font-display: var(--font-sans);
+  --font-serif: var(--font-sans);
+  --font-serif-sv: var(--font-sv-rupee), var(--font-hanken), "Segoe UI", Roboto, system-ui, sans-serif;
+  --font-mono: var(--font-sv-mono), ui-monospace, "SFMono-Regular", Consolas, monospace;
+}
+/* News pages: the news layout wraps its output in
+   <div data-rail="news" style="display: contents"> (#sv-public belongs to the
+   (public) layout). The header there is the brand bar plus the 44 px section
+   rail, so the sticky chrome is taller too (§3.9, §4.1). These are the full
+   values; the compact ones come with the header compaction below. */
+[data-rail="news"] {
+  --sv-rail-h: 44px;
+  --sv-chrome-h: calc(var(--sv-bar-h) + 44px);
+}
+/* Below 1024 the header hides on scroll (§4.1): sticky bits move up with it. */
+#sv-public:has(.sv-header[data-hidden="true"]) {
+  --sv-sticky-top: 12px;
+}
+
+/* ── Header compaction (§4.1), >= 1024 px. Pure CSS: the page's own scroll
+   over its first 80 px drives it, only where scroll-driven animations exist
+   and the reader has no reduced-motion preference. The bar goes 64 → 56 px,
+   the logo 32 → 28 px and --sv-shadow-1 fades in; on story pages
+   (SiteHeader sets data-condense) the section rail folds 44 → 0 in the same
+   80 px, its links hidden (out of the tab order) once folded. The sticky
+   offset --sv-chrome-h takes its compact values ONLY here: 56 px on home,
+   site and story pages, 100 px on news fronts, hubs and listings. Wherever
+   compaction doesn't run the header keeps its full height, and so does
+   --sv-chrome-h (64; 108 on every news page: the defaults above). Without
+   :has() a story page keeps 100 px: sticky items sit 44 px lower, never
+   under the header. Below 1024 px useHeadroom hides the header instead. ── */
+@supports (animation-timeline: scroll()) {
+  @media (min-width: 1024px) and (prefers-reduced-motion: no-preference) {
+    :root {
+      --sv-chrome-h: 56px;
+    }
+    [data-rail="news"] {
+      --sv-chrome-h: 100px;
+    }
+    [data-rail="news"]:has(> .sv-header[data-condense]) {
+      --sv-chrome-h: 56px;
+    }
+    .sv-header {
+      animation: sv-header-shadow linear both;
+      animation-timeline: scroll(root);
+      animation-range: 0px 80px;
+    }
+    .sv-brandbar {
+      animation: sv-bar-compact linear both;
+      animation-timeline: scroll(root);
+      animation-range: 0px 80px;
+    }
+    .sv-logo > img {
+      animation: sv-logo-compact linear both;
+      animation-timeline: scroll(root);
+      animation-range: 0px 80px;
+    }
+    .sv-header[data-condense] .sv-rail {
+      animation: sv-rail-fold linear both;
+      animation-timeline: scroll(root);
+      animation-range: 0px 80px;
+    }
+  }
+
+  /* The reading wire (§5.12): 2 px of --sv-green-600 hung from the story
+     header's bottom edge (SiteHeader draws it only with condenseRail), its
+     width the reader's own progress through the page. Scroll-linked, so it
+     also runs under reduced motion (§6.3); not drawn without support. */
+  .sv-progress {
+    display: block;
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: var(--sv-neon);
+    transform-origin: 0 50%;
+    pointer-events: none;
+    animation: sv-progress linear both;
+    animation-timeline: scroll(root);
+  }
+
+  /* A story address that 404s keeps the news front's header (W6, B-11):
+     SiteHeader decides "story" from the URL alone, so the news not-found
+     page marks its content with data-news-404 (W3) and this cancels the
+     rail fold, the compact sticky offset and the reading wire there. */
+  @media (min-width: 1024px) and (prefers-reduced-motion: no-preference) {
+    [data-rail="news"]:has(> .sv-header[data-condense]):has([data-news-404]) {
+      --sv-chrome-h: 100px;
+    }
+    [data-rail="news"]:has([data-news-404]) .sv-header[data-condense] .sv-rail {
+      animation: none;
+    }
+  }
+  [data-rail="news"]:has([data-news-404]) .sv-progress {
+    display: none;
+  }
+}
+@keyframes sv-header-shadow {
+  from {
+    box-shadow: 0 1px 2px rgb(17 23 20 / 0);
+  }
+  to {
+    box-shadow: var(--sv-shadow-1);
+  }
+}
+@keyframes sv-bar-compact {
+  from {
+    height: 64px;
+  }
+  to {
+    height: 56px;
+  }
+}
+@keyframes sv-logo-compact {
+  from {
+    height: 32px;
+  }
+  to {
+    height: 28px;
+  }
+}
+@keyframes sv-rail-fold {
+  from {
+    height: 44px;
+    visibility: visible;
+  }
+  to {
+    height: 0px;
+    visibility: hidden;
+  }
+}
+@keyframes sv-progress {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+.font-mono,
+.tabular {
+  font-variant-numeric: tabular-nums lining-nums;
+}
+
+/* The wdth-* utilities are gone: Hanken has no width axis. */
+
+/* ── Layout primitives (§3.4) ────────────────────────────────────────────── */
+@layer components {
+  .sv-container {
+    width: 100%;
+    max-width: var(--sv-container-max);
+    margin-inline: auto;
+    padding-inline: var(--sv-margin);
+  }
+  .sv-grid {
+    display: grid;
+    grid-template-columns: repeat(var(--sv-cols), minmax(0, 1fr));
+    column-gap: var(--sv-gutter);
+  }
+}
+
+/* ── Type (Emerald Terminal): Hanken Grotesk for all text and headings,
+   SV Mono (IBM Plex Mono) for every number, table figure and small label.
+   One class per token, in the components layer, so a Tailwind utility on
+   the same element still wins. Sizes are px at 390, 834 and 1280+; fluid
+   ones interpolate. The class names are the earlier system's (streams use
+   them); .t-head-*, .t-standfirst* and .t-prose were serif and are Hanken
+   now. Numbers: .t-num*, .t-numeral and .t-mono are monospaced, so their
+   figures are tabular by construction (Hanken has no tnum). ──────────── */
+@layer components {
+  .t-stage-1 {
+    font-family: var(--font-sans);
+    font-weight: 800;
+    font-size: clamp(2.5rem, 4.6vw, 4rem); /* 40 → 64 */
+    line-height: 1.02;
+    letter-spacing: -0.035em;
+    text-wrap: balance;
+  }
+  .t-stage-2 {
+    font-family: var(--font-sans);
+    font-weight: 800;
+    font-size: clamp(1.875rem, 3.4vw, 2.875rem); /* 30 → 46 */
+    line-height: 1.05;
+    letter-spacing: -0.035em;
+    text-wrap: balance;
+  }
+  .t-stage-3 {
+    font-family: var(--font-sans);
+    font-weight: 800;
+    font-size: clamp(1.5rem, 1.171rem + 1.348vw, 2.25rem);
+    line-height: 1.1;
+    letter-spacing: -0.025em;
+    text-wrap: balance;
+  }
+  .t-head-1,
+  .t-hub-1 {
+    font-family: var(--font-sans);
+    font-weight: 800;
+    font-size: clamp(2rem, 1.452rem + 2.247vw, 3.25rem);
+    line-height: 1.05;
+    letter-spacing: -0.035em;
+    text-wrap: balance;
+  }
+  .t-head-splash {
+    font-family: var(--font-sans);
+    font-weight: 800;
+    font-size: clamp(1.75rem, 1.421rem + 1.348vw, 2.5rem);
+    line-height: 1.12;
+    letter-spacing: -0.025em;
+    text-wrap: balance;
+  }
+  .t-head-2 {
+    font-family: var(--font-sans);
+    font-weight: 700;
+    font-size: clamp(1.25rem, 1.14rem + 0.449vw, 1.5rem);
+    line-height: calc(1em + 6px);
+    letter-spacing: -0.015em;
+    text-wrap: balance;
+  }
+  .t-head-3 {
+    font-family: var(--font-sans);
+    font-weight: 700;
+    font-size: 17px;
+    line-height: 22px;
+    letter-spacing: -0.005em;
+    text-wrap: balance;
+  }
+  .t-rule-head {
+    font-family: var(--font-sans);
+    font-weight: 800;
+    font-size: clamp(1.25rem, 1.14rem + 0.449vw, 1.5rem);
+    line-height: calc(1em + 4px);
+    letter-spacing: -0.02em;
+    text-wrap: balance;
+  }
+  .t-title {
+    font-family: var(--font-sans);
+    font-weight: 700;
+    font-size: clamp(1.125rem, 1.07rem + 0.225vw, 1.25rem);
+    line-height: calc(1em + 6px);
+    letter-spacing: -0.01em;
+  }
+  .t-rail-title {
+    font-family: var(--font-sans);
+    font-weight: 700;
+    font-size: 15px;
+    line-height: 20px;
+    letter-spacing: 0;
+  }
+  .t-lead {
+    font-family: var(--font-sans);
+    font-weight: 400;
+    font-size: clamp(1.0625rem, 1.01rem + 0.225vw, 1.1875rem); /* 17 → 19 */
+    line-height: 1.55;
+    letter-spacing: 0;
+    text-wrap: pretty;
+  }
+  .t-body {
+    font-family: var(--font-sans);
+    font-weight: 400;
+    font-size: 16px;
+    line-height: 26px;
+    letter-spacing: 0;
+  }
+  .t-standfirst {
+    font-family: var(--font-sans);
+    font-weight: 400;
+    font-size: clamp(1.125rem, 1.06rem + 0.27vw, 1.3125rem);
+    line-height: 1.5;
+    letter-spacing: 0;
+    text-wrap: pretty;
+  }
+  .t-standfirst-s {
+    font-family: var(--font-sans);
+    font-weight: 400;
+    font-size: 16px;
+    line-height: 24px;
+    letter-spacing: 0;
+    text-wrap: pretty;
+  }
+  .t-prose {
+    font-family: var(--font-sans);
+    font-weight: 400;
+    font-size: 18px;
+    line-height: 30px;
+    letter-spacing: 0;
+    text-wrap: pretty;
+  }
+  .t-prose-h2 {
+    font-family: var(--font-sans);
+    font-weight: 800;
+    font-size: 22px;
+    line-height: 28px;
+    letter-spacing: -0.02em;
+    text-wrap: balance;
+  }
+  .t-prose-h3 {
+    font-family: var(--font-sans);
+    font-weight: 700;
+    font-size: 19px;
+    line-height: 26px;
+    letter-spacing: -0.01em;
+    text-wrap: balance;
+  }
+  .t-small {
+    font-family: var(--font-sans);
+    font-weight: 400;
+    font-size: 14px;
+    line-height: 22px;
+    letter-spacing: 0;
+  }
+  .t-meta {
+    font-family: var(--font-sans);
+    font-weight: 450;
+    font-size: 13px;
+    line-height: 18px;
+    letter-spacing: 0.005em;
+  }
+  .t-label {
+    font-family: var(--font-sans);
+    font-weight: 600;
+    font-size: 13px;
+    line-height: 16px;
+    letter-spacing: 0.01em;
+  }
+  /* Numbers: SV Mono (tabular by construction). */
+  .t-num-hero {
+    font-family: var(--font-mono);
+    font-weight: 500;
+    font-variant-numeric: tabular-nums lining-nums;
+    font-size: clamp(1.875rem, 1.48rem + 1.62vw, 2.75rem);
+    line-height: calc(1em + 4px);
+    letter-spacing: -0.02em;
+  }
+  .t-num {
+    font-family: var(--font-mono);
+    font-weight: 500;
+    font-variant-numeric: tabular-nums lining-nums;
+    font-size: 13.5px;
+    line-height: 20px;
+    letter-spacing: 0;
+  }
+  .t-num-s {
+    font-family: var(--font-mono);
+    font-weight: 400;
+    font-variant-numeric: tabular-nums lining-nums;
+    font-size: 12.5px;
+    line-height: 18px;
+    letter-spacing: 0;
+  }
+  .t-numeral {
+    font-family: var(--font-mono);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums lining-nums;
+    font-size: 30px;
+    line-height: 1;
+    letter-spacing: -0.02em;
+  }
+  /* The mono numeral class: the size and weight of the text around it. */
+  .t-mono {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums lining-nums;
+    letter-spacing: 0;
+  }
+  /* Small mono labels: table heads, "SAMPLE", kickers. Upper case by CSS
+     only (the words stay sentence case in the source and for readers). */
+  .t-mono-label {
+    font-family: var(--font-mono);
+    font-weight: 500;
+    font-size: 11px;
+    line-height: 16px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  /* A section kicker ("Market overview"): mono, green on light, neon on
+     dark, after a 20 × 2 px rule. */
+  .t-kicker {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--sv-green-700);
+    font-family: var(--font-mono);
+    font-weight: 500;
+    font-size: 12px;
+    line-height: 16px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  .t-kicker::before {
+    content: "";
+    flex: none;
+    width: 20px;
+    height: 2px;
+    background: currentColor;
+  }
+  :is(.sv-emerald, .sv-terminal, .sv-stage, .sv-header, .sv-footer) .t-kicker {
+    color: var(--sv-neon);
+  }
+
+  @media (min-width: 768px) {
+    .t-head-3 {
+      font-size: 18px;
+      line-height: 23px;
+    }
+    .t-body {
+      font-size: 17px;
+      line-height: 28px;
+    }
+    .t-prose {
+      font-size: 19px;
+      line-height: 32px;
+    }
+    .t-prose-h2 {
+      font-size: 24px;
+      line-height: 30px;
+    }
+    .t-prose-h3 {
+      font-size: 20px;
+    }
+    .t-numeral {
+      font-size: 34px;
+    }
+  }
+  @media (min-width: 1280px) {
+    .t-head-3 {
+      line-height: 24px;
+    }
+    .t-rail-title {
+      font-size: 16px;
+    }
+    .t-standfirst-s {
+      font-size: 17px;
+      line-height: 26px;
+    }
+    .t-small {
+      font-size: 15px;
+    }
+    .t-label {
+      font-size: 14px;
+      line-height: 18px;
+    }
+    .t-num {
+      font-size: 14px;
+      line-height: 22px;
+    }
+    .t-numeral {
+      font-size: 38px;
+    }
+  }
+}
+
+/* ── Primitives (§4.6, §4.11, §4.14; M0.4). In the components layer, so a
+   utility passed through className still wins. Every hover style sits
+   inside (hover: hover) and (pointer: fine) (R20), and every colour is a
+   semantic token, so the same class reads right on paper, on white, on the
+   stage and in the footer. Components: src/components/public/*. ────────── */
+@layer components {
+  /* Buttons (Button.tsx). One primary action per view (R13). */
+  .sv-btn {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    height: 44px;
+    padding-inline: 20px;
+    border: 1px solid transparent;
+    border-radius: var(--sv-r-pill);
+    font-family: var(--font-sans);
+    font-size: 15px;
+    line-height: 20px;
+    font-weight: 700;
+    letter-spacing: 0;
+    text-decoration: none;
+    white-space: nowrap;
+    cursor: pointer;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    transition:
+      background-color var(--sv-dur-1) var(--sv-ease-out),
+      border-color var(--sv-dur-1) var(--sv-ease-out),
+      transform var(--sv-dur-1) var(--sv-ease-out);
+  }
+  .sv-btn[data-size="sm"] {
+    height: 36px;
+  }
+  /* A 36 px button still has a 44 px hit area. */
+  .sv-btn[data-size="sm"]::after {
+    content: "";
+    position: absolute;
+    inset: -4px 0;
+  }
+  .sv-btn[data-size="lg"] {
+    height: 48px;
+  }
+  .sv-btn:active:not(:disabled, [aria-disabled="true"]) {
+    transform: translateY(1px);
+  }
+  .sv-btn:disabled,
+  .sv-btn[aria-disabled="true"] {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+  .sv-btn > svg {
+    flex: none;
+  }
+  /* Primary: #0B7A4B with white text on light (5.38); on the emerald and
+     terminal grounds it turns neon with #022416 text (9.61). "stage" and
+     "neon" are the neon pill anywhere. Secondary: an outline pill. */
+  .sv-btn-primary {
+    background: var(--sv-green-700);
+    color: #fff;
+  }
+  :is(.sv-emerald, .sv-terminal, .sv-stage, .sv-header, .sv-footer, .sv-drawer) .sv-btn-primary,
+  .sv-btn-stage,
+  .sv-btn-neon {
+    background: var(--sv-neon);
+    color: var(--sv-neon-ink);
+  }
+  .sv-btn-secondary {
+    background: transparent;
+    border-color: var(--sv-control);
+    color: var(--sv-fg);
+  }
+
+  /* Icon buttons: 44 × 44, a 20 px glyph, an aria-label always. */
+  .sv-icon-btn {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    width: 44px;
+    height: 44px;
+    padding: 0;
+    border: 0;
+    border-radius: var(--sv-r-sm);
+    background: transparent;
+    color: var(--sv-fg);
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition: background-color var(--sv-dur-1) var(--sv-ease-out);
+  }
+  /* The header's Menu button: an outlined 44 px square (design I). */
+  .sv-menu-slot .sv-icon-btn {
+    border: 1px solid rgb(214 243 227 / .3);
+  }
+  .sv-icon-btn > svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  /* Quiet links: ink text, a 2 px green underline (R14: green means act). */
+  .sv-quiet {
+    color: var(--sv-fg);
+    text-decoration-line: underline;
+    text-decoration-thickness: 2px;
+    text-decoration-color: var(--sv-green-700);
+    text-underline-offset: 4px;
+  }
+  :is(.sv-emerald, .sv-terminal, .sv-stage, .sv-header, .sv-footer, .sv-drawer) .sv-quiet {
+    text-decoration-color: var(--sv-neon);
+  }
+  /* A quiet link that stands alone (a section head's "More from …", a
+     module's "IPO calendar", a popover's "How to read our prices"): on
+     touch screens its hit area grows to 44 px tall without moving anything
+     (spec §8.1 item 7, §10; W6, B-8). Never on links in running text,
+     where it would reach into the lines around them. */
+  @media (pointer: coarse) {
+    .sv-quiet-hit {
+      position: relative;
+    }
+    .sv-quiet-hit::after {
+      content: "";
+      position: absolute;
+      left: -4px;
+      right: -4px;
+      top: 50%;
+      height: 44px;
+      transform: translateY(-50%);
+    }
+  }
+  /* The arrow is glued to the last word (a word joiner in a nowrap span). */
+  .sv-quiet-tail {
+    white-space: nowrap;
+  }
+  .sv-quiet-arrow {
+    display: inline-block;
+    width: 14px;
+    height: 14px;
+    margin-left: 4px;
+    vertical-align: -1px;
+  }
+
+  /* The official Google Play badge (PlayBadge.tsx). The file is Google's
+     646 × 250 PNG: a 564 × 168 badge inside a 41 px transparent margin. The
+     link is cropped to the visible badge, so --sv-play-h is the height a
+     reader sees (48; 52 below 768 and for size "lg") and the badge lines
+     up with the text beside it. Callers keep >= 1/4 of that height clear
+     around it (Google's clear space). */
+  .sv-play {
+    --sv-play-h: 48px;
+    display: inline-block;
+    flex: none;
+    width: calc(var(--sv-play-h) * 564 / 168);
+    height: var(--sv-play-h);
+    overflow: hidden;
+    border-radius: calc(var(--sv-play-h) * 0.11); /* the badge's own corner (19.5/168), never cutting into it */
+    line-height: 0;
+    vertical-align: middle;
+  }
+  .sv-play[data-size="lg"] {
+    --sv-play-h: 52px;
+  }
+  @media (max-width: 767.98px) {
+    .sv-play {
+      --sv-play-h: 52px;
+    }
+  }
+  .sv-play > img {
+    display: block;
+    max-width: none;
+    width: calc(var(--sv-play-h) * 646 / 168);
+    height: calc(var(--sv-play-h) * 250 / 168);
+    margin: calc(var(--sv-play-h) * -41 / 168);
+  }
+
+  /* Tabs (ui/Tabs.tsx): 44 px targets, a 2 px --sv-selected indicator
+     (ink on light, --sv-on-stage on the stage; R14), --sv-dur-2. */
+  .sv-tabs-list {
+    display: flex;
+    gap: 4px;
+    border-bottom: 1px solid var(--sv-rule);
+  }
+  .sv-tabs-list[data-orientation="vertical"] {
+    flex-direction: column;
+    gap: 0;
+    border-bottom: 0;
+    border-left: 1px solid var(--sv-rule);
+  }
+  .sv-tabs-list[data-scroll],
+  .sv-toggles[data-scroll] {
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+  }
+  .sv-tabs-list[data-scroll]::-webkit-scrollbar,
+  .sv-toggles[data-scroll]::-webkit-scrollbar {
+    display: none;
+  }
+  .sv-tab,
+  .sv-toggle {
+    position: relative;
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    padding: 0 12px;
+    border: 0;
+    background: none;
+    color: var(--sv-fg-2);
+    font-family: var(--font-sans);
+    font-size: 13px;
+    line-height: 16px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+    white-space: nowrap;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    transition:
+      color var(--sv-dur-2) var(--sv-ease-out),
+      background-color var(--sv-dur-2) var(--sv-ease-out),
+      box-shadow var(--sv-dur-2) var(--sv-ease-out);
+  }
+  .sv-tab::after,
+  .sv-toggles[data-variant="line"] .sv-toggle::after {
+    content: "";
+    position: absolute;
+    left: 12px;
+    right: 12px;
+    bottom: -1px;
+    height: 2px;
+    background: var(--sv-selected);
+    transform: scaleX(0);
+    transition: transform var(--sv-dur-2) var(--sv-ease-out);
+  }
+  .sv-tab[data-state="active"],
+  .sv-toggle[data-state="on"] {
+    color: var(--sv-fg);
+  }
+  .sv-tab[data-state="active"]::after,
+  .sv-toggles[data-variant="line"] .sv-toggle[data-state="on"]::after {
+    transform: scaleX(1);
+  }
+  /* Vertical tabs read as blocks (the home stage's steps): left aligned,
+     wrapping, the indicator a 2 px rule on the left. */
+  .sv-tab[data-orientation="vertical"] {
+    justify-content: flex-start;
+    padding: 12px 16px;
+    text-align: left;
+    white-space: normal;
+  }
+  .sv-tab[data-orientation="vertical"]::after {
+    top: 0;
+    bottom: 0;
+    left: -1px;
+    right: auto;
+    width: 2px;
+    height: auto;
+    transform: scaleY(0);
+  }
+  .sv-tab[data-orientation="vertical"][data-state="active"]::after {
+    transform: scaleY(1);
+  }
+  .sv-tab[data-disabled],
+  .sv-toggle[data-disabled] {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  /* ToggleGroup (ui/ToggleGroup.tsx): "line" looks like the tabs; the
+     default "segmented" sits on a --sv-surface-2 track, the chosen segment
+     white with a 2 px ink outline. */
+  .sv-toggles {
+    display: flex;
+    gap: 4px;
+  }
+  .sv-toggles[data-variant="line"] {
+    border-bottom: 1px solid var(--sv-rule);
+  }
+  .sv-toggles[data-variant="segmented"] {
+    display: inline-flex;
+    width: fit-content;
+    max-width: 100%;
+    gap: 0;
+    border-radius: var(--sv-r-sm);
+    background: var(--sv-surface-2);
+  }
+  .sv-toggles[data-variant="segmented"] .sv-toggle {
+    border-radius: var(--sv-r-sm);
+  }
+  .sv-toggles[data-variant="segmented"] .sv-toggle[data-state="on"] {
+    background: var(--sv-surface);
+    box-shadow: inset 0 0 0 2px var(--sv-selected);
+  }
+  :is(.sv-emerald, .sv-terminal, .sv-stage, .sv-header, .sv-footer, .sv-drawer) .sv-toggles[data-variant="segmented"] {
+    background: rgb(255 255 255 / .06);
+  }
+  :is(.sv-emerald, .sv-terminal, .sv-stage, .sv-header, .sv-footer, .sv-drawer) .sv-toggles[data-variant="segmented"] .sv-toggle[data-state="on"] {
+    background: rgb(255 255 255 / .12);
+  }
+
+  /* PhoneDisclosure (§4.11): closed on phones, open from 768 px (the
+     DISCLOSURE_SCRIPT and DisclosureInit set the real open attribute). */
+  .sv-pd > summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    min-height: 48px;
+    cursor: pointer;
+    list-style: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .sv-pd > summary::-webkit-details-marker {
+    display: none;
+  }
+  .sv-pd[data-pd="tail"] > summary {
+    justify-content: flex-start;
+    gap: 8px;
+  }
+  .sv-pd-chev {
+    flex: none;
+    width: 20px;
+    height: 20px;
+    transition: transform var(--sv-dur-2) var(--sv-ease-out);
+  }
+  .sv-pd[open] > summary .sv-pd-chev {
+    transform: rotate(180deg);
+  }
+  @media (min-width: 768px) {
+    /* "head": the summary keeps showing as the section's heading, with no
+       marker; "tail": once open, its "Show …" line goes and the content
+       reads as normal page content. Without JS both stay working,
+       closed disclosures. */
+    .sv-pd[data-pd="head"] > summary {
+      min-height: 0;
+      cursor: auto;
+    }
+    .sv-pd[data-pd="head"] > summary .sv-pd-chev {
+      display: none;
+    }
+    .sv-pd[data-pd="tail"][open] > summary {
+      display: none;
+    }
+  }
+
+  /* DiagramPlayer's Replay: only where motion can run (data-motion="ok"
+     is set before paint by PRE_PAINT_SCRIPT; §6.8, §6.9). */
+  #sv-public:not([data-motion="ok"]) .sv-replay {
+    display: none;
+  }
+
+  /* QrCode (§4.6): the white box is the quiet zone (16 px), so the code
+     scans on paper, on white and on the dark stage alike. */
+  .sv-qr {
+    display: inline-flex;
+    flex-direction: column;
+    gap: 12px;
+    max-width: 100%;
+  }
+  .sv-qr-box {
+    align-self: flex-start;
+    padding: 16px;
+    border-radius: var(--sv-r-sm);
+    background: var(--sv-surface);
+    line-height: 0;
+  }
+  .sv-qr-box > svg {
+    display: block;
+    max-width: 100%;
+    height: auto;
+  }
+
+  /* Section heads (Heads.tsx, §4.7). */
+  .sv-sidehead {
+    grid-column: 1 / -1;
+    row-gap: 8px;
+  }
+  .sv-sidehead > * {
+    grid-column: 1 / -1;
+    margin: 0;
+  }
+  .sv-sidehead > .sv-sidehead-lead {
+    margin-top: 8px; /* 16 px below the H2 with the row gap */
+    max-width: 34em;
+  }
+  @media (min-width: 1024px) {
+    /* The label sits in cols 1–2 on the H2's first baseline. */
+    .sv-sidehead {
+      align-items: baseline;
+    }
+    .sv-sidehead > .sv-sidehead-label {
+      grid-column: 1 / span 2;
+      grid-row: 1;
+    }
+    .sv-sidehead > .sv-sidehead-title {
+      grid-column: 3 / span 8;
+      grid-row: 1;
+    }
+    .sv-sidehead > .sv-sidehead-lead {
+      grid-column: 3 / span 6;
+      grid-row: 2;
+    }
+  }
+  .sv-rulehead {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 4px 16px;
+    padding-top: 10px;
+    border-top: 2px solid var(--sv-fg);
+  }
+  .sv-rulehead > h2 {
+    margin: 0;
+    min-width: 0;
+  }
+  .sv-rulehead-aside {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 8px 16px;
+  }
+  .sv-pagehead {
+    padding-block: var(--sv-section-site);
+    border-bottom: 1px solid var(--sv-rule);
+  }
+  .sv-pagehead-crumbs {
+    margin-bottom: 16px;
+  }
+  .sv-pagehead-title {
+    margin: 0;
+    max-width: 24ch;
+  }
+  .sv-pagehead-meta {
+    margin-top: 12px;
+  }
+  .sv-pagehead-summary {
+    margin-top: 16px;
+    max-width: 34em;
+  }
+  .sv-pagehead[data-family="news"] .sv-pagehead-summary {
+    max-width: 36em;
+  }
+
+  /* DeviceFrame (§4.11): a CSS frame around a real screenshot only. The
+     width is --sv-device-w (set by size on the wrapper; a utility in
+     className overrides it); the height follows the screenshot. */
+  .sv-device-wrap {
+    --sv-device-w: 260px;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    max-width: 100%;
+  }
+  .sv-device-wrap[data-size="sm"] {
+    --sv-device-w: 160px;
+  }
+  .sv-device-wrap[data-size="md"] {
+    --sv-device-w: 220px;
+  }
+  .sv-device-wrap[data-size="stage"] {
+    --sv-device-w: 300px;
+  }
+  @media (max-width: 1023.98px) {
+    .sv-device-wrap[data-size="lg"] {
+      --sv-device-w: 200px;
+    }
+    .sv-device-wrap[data-size="stage"] {
+      --sv-device-w: 240px;
+    }
+  }
+  @media (max-width: 639.98px) {
+    .sv-device-wrap[data-size="sm"] {
+      --sv-device-w: 120px;
+    }
+  }
+  .sv-device {
+    position: relative;
+    width: var(--sv-device-w);
+    max-width: 100%;
+    padding: 10px;
+    border-radius: 32px; /* concentric with the 22 px screen */
+    background: var(--sv-stage-3);
+  }
+  :is(.sv-stage, .sv-terminal, .sv-emerald) .sv-device {
+    box-shadow: var(--sv-shadow-device);
+  }
+  .sv-device-screen {
+    position: relative;
+    overflow: hidden;
+    border-radius: 22px;
+    background: var(--sv-stage);
+  }
+  .sv-device-screen > img {
+    display: block;
+    width: 100%;
+    height: auto;
+  }
+  .sv-device-camera {
+    position: absolute;
+    top: 9px; /* centred 12 px from the top */
+    left: calc(50% - 3px);
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--sv-stage);
+  }
+  .sv-device-callout {
+    position: absolute;
+    display: grid;
+    place-items: center;
+    width: 24px;
+    height: 24px;
+    transform: translate(-50%, -50%);
+    border-radius: 50%;
+    background: #fff;
+    color: var(--sv-ink);
+    font-size: 12px;
+    line-height: 16px;
+    font-weight: 650;
+    box-shadow: 0 1px 3px rgb(0 0 0 / 0.4);
+  }
+  .sv-device-callouts {
+    display: grid;
+    gap: 6px;
+    max-width: calc(var(--sv-device-w) + 120px);
+    margin: 12px 0 0;
+    padding: 0;
+    list-style: none;
+  }
+  .sv-device-callouts > li {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+  }
+  .sv-device-num {
+    display: inline-grid;
+    flex: none;
+    place-items: center;
+    width: 20px;
+    height: 20px;
+    border: 1.5px solid currentColor;
+    border-radius: 50%;
+    color: var(--sv-fg);
+    font-size: 12px;
+    line-height: 16px;
+    font-weight: 650;
+  }
+
+  /* FactFile (§4.11): caption, then rows with hairlines. Emerald Terminal:
+     a 1 px rule under the caption (design I's card-head hairline), not the
+     old 2 px ink rule, which sat heavy on white cards. */
+  .sv-factfile {
+    width: 100%;
+    border-collapse: collapse;
+    border-top: 1px solid var(--sv-rule);
+  }
+  .sv-factfile > caption {
+    caption-side: top;
+    padding-bottom: 12px;
+    text-align: left;
+    color: var(--sv-fg);
+    font-family: var(--font-sans);
+    font-size: 16px;
+    line-height: 22px;
+    font-weight: 800;
+    letter-spacing: -0.01em;
+  }
+  .sv-factfile th,
+  .sv-factfile td {
+    padding: 12px 0;
+    border-bottom: 1px solid var(--sv-rule);
+    text-align: left;
+    vertical-align: top;
+  }
+  .sv-factfile th {
+    width: 40%;
+    padding-right: 16px;
+  }
+  .sv-factfile tr:last-child > * {
+    border-bottom: 0;
+  }
+
+  /* WontDo (§4.11, §9.4). Compact (home page): below 768 px only the lead
+     phrases and the "Why these limits" link. */
+  .sv-wontdo {
+    padding: 24px;
+    border: 1px solid var(--sv-rule);
+    border-radius: var(--sv-r-md);
+    background: var(--sv-surface);
+  }
+  .sv-wontdo-title {
+    margin: 0;
+    font-family: var(--font-sans);
+    font-size: 20px;
+    line-height: 26px;
+    font-weight: 800;
+    letter-spacing: -0.015em;
+  }
+  .sv-wontdo-list {
+    display: grid;
+    gap: 12px;
+    margin: 16px 0 0;
+    padding: 0 0 0 16px;
+    list-style: disc;
+  }
+  .sv-wontdo-list > li::marker {
+    color: var(--sv-fg-3);
+  }
+  .sv-wontdo-lead {
+    font-weight: 700;
+  }
+  .sv-wontdo-more {
+    display: none;
+    margin-top: 16px;
+  }
+  @media (min-width: 768px) {
+    .sv-wontdo {
+      padding: 32px;
+    }
+  }
+  @media (max-width: 767.98px) {
+    .sv-wontdo[data-compact] .sv-wontdo-list {
+      gap: 4px;
+    }
+    .sv-wontdo[data-compact] .sv-wontdo-body {
+      display: none;
+    }
+    .sv-wontdo[data-compact] .sv-wontdo-more {
+      display: block;
+    }
+  }
+
+  /* Teaching diagrams (DiagramFrame, §6.8). The drawing and its labels are
+     the diagram's own (W2); this is only the frame. */
+  .sv-diagram-drawing {
+    position: relative;
+    margin-top: 16px;
+  }
+  .sv-diagram-actions {
+    display: flex;
+    margin-top: 12px;
+  }
+
+  /* Form fields (forms/Field.tsx, §4.12). Inputs are always white, so they
+     use the light control colour, never the surface-scoped one. */
+  .sv-field {
+    display: grid;
+    gap: 6px;
+    min-width: 0;
+  }
+  .sv-field-label {
+    color: var(--sv-fg);
+    font-size: 14px;
+    line-height: 20px;
+    font-weight: 600;
+  }
+  .sv-input {
+    display: block;
+    width: 100%;
+    height: 48px;
+    padding: 0 14px;
+    border: 1px solid var(--sv-line-strong);
+    border-radius: var(--sv-r-sm);
+    background: var(--sv-surface);
+    color: var(--sv-ink);
+    font: inherit;
+    font-size: 16px; /* no iOS zoom */
+    line-height: 24px;
+  }
+  .sv-input::placeholder {
+    color: var(--sv-text-3);
+    opacity: 1;
+  }
+  .sv-input[aria-invalid="true"] {
+    border-color: var(--sv-danger);
+  }
+  .sv-input:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+  .sv-textarea {
+    height: auto;
+    min-height: 160px;
+    padding-block: 12px;
+    resize: vertical;
+  }
+  .sv-select {
+    position: relative;
+    display: block;
+  }
+  .sv-select > select {
+    appearance: none;
+    padding-right: 44px;
+    cursor: pointer;
+  }
+  .sv-select > svg {
+    position: absolute;
+    top: 14px;
+    right: 14px;
+    width: 20px;
+    height: 20px;
+    color: var(--sv-text-2);
+    pointer-events: none;
+  }
+  .sv-check {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  .sv-check > input {
+    flex: none;
+    width: 20px;
+    height: 20px;
+    margin: 1px 0 0;
+    accent-color: var(--sv-green-700);
+  }
+  .sv-form-err {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    color: var(--sv-danger);
+  }
+  .sv-form-err > svg {
+    flex: none;
+    width: 18px;
+    height: 18px;
+    margin-top: 2px;
+  }
+  .sv-form-ok {
+    padding: 12px 16px;
+    border-radius: var(--sv-r-sm);
+    background: var(--sv-green-050);
+    color: var(--sv-green-900);
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .sv-btn-primary:not(:disabled, [aria-disabled="true"]):hover {
+      background: var(--sv-green-800);
+    }
+    :is(.sv-emerald, .sv-terminal, .sv-stage, .sv-header, .sv-footer, .sv-drawer) .sv-btn-primary:not(:disabled, [aria-disabled="true"]):hover,
+    :is(.sv-btn-stage, .sv-btn-neon):not(:disabled, [aria-disabled="true"]):hover {
+      background: #6EEBAA; /* 11.15 with #022416 */
+    }
+    .sv-btn-secondary:not(:disabled, [aria-disabled="true"]):hover {
+      border-color: var(--sv-fg);
+      background: var(--sv-surface-2);
+    }
+    :is(.sv-emerald, .sv-terminal, .sv-stage, .sv-header, .sv-footer, .sv-drawer) .sv-btn-secondary:not(:disabled, [aria-disabled="true"]):hover {
+      background: rgb(255 255 255 / .08);
+    }
+    .sv-icon-btn:hover {
+      background: var(--sv-surface-2);
+    }
+    :is(.sv-emerald, .sv-terminal, .sv-stage, .sv-header, .sv-footer, .sv-drawer) .sv-icon-btn:hover {
+      background: rgb(255 255 255 / .08);
+    }
+    .sv-quiet:hover {
+      text-decoration-thickness: 3px;
+    }
+    .sv-tab:not([data-state="active"], [data-disabled]):hover,
+    .sv-toggle:not([data-state="on"], [data-disabled]):hover {
+      color: var(--sv-fg);
+    }
+  }
+}
+
+/* ── Emerald Terminal primitives (6 Nov 2026): grounds, bands, cards,
+   panels, chips and data tables. In the components layer, so a utility
+   passed through className still wins. Colours are semantic tokens, so the
+   same class reads right on light, emerald and terminal grounds. ──────── */
+@layer components {
+  /* Grounds. .sv-emerald / .sv-terminal only remap the tokens (tokens.css);
+     these paint them. A band is a full-bleed block with 40 px corners. */
+  .sv-emerald-band {
+    position: relative;
+    background: var(--sv-emerald-band);
+    color: var(--sv-fg);
+  }
+  /* The faint 56 px grid behind the hero and the download band (design I). */
+  .sv-emerald-grid {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background-image:
+      linear-gradient(rgb(214 243 227 / .07) 1px, transparent 1px),
+      linear-gradient(90deg, rgb(214 243 227 / .07) 1px, transparent 1px);
+    background-size: 56px 56px;
+    mask-image: radial-gradient(55% 65% at 72% 52%, #000 0%, transparent 78%);
+  }
+  .sv-terminal-band {
+    position: relative;
+    background: var(--sv-terminal-band);
+    color: var(--sv-fg);
+  }
+  .sv-band {
+    border-radius: var(--sv-r-band);
+    overflow: hidden;
+  }
+  .sv-band-bottom {
+    border-radius: 0 0 var(--sv-r-band) var(--sv-r-band);
+    overflow: hidden;
+  }
+  @media (max-width: 639.98px) {
+    .sv-band {
+      border-radius: 24px;
+    }
+    .sv-band-bottom {
+      border-radius: 0 0 24px 24px;
+    }
+  }
+
+  /* Cards on light: white, a 1 px line, 16 px corners; .sv-card-raised adds
+     the card shadow. A card's head row: 52 px, the title left, a stamp or
+     chip right, a hairline under it. */
+  .sv-card {
+    min-width: 0;
+    border: 1px solid var(--sv-rule);
+    border-radius: var(--sv-r-md);
+    background: var(--sv-surface);
+    color: var(--sv-fg);
+    overflow: hidden;
+  }
+  .sv-card-raised {
+    box-shadow: var(--sv-shadow-2);
+  }
+  .sv-card-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px 10px;
+    min-height: 52px;
+    padding: 8px 18px;
+    border-bottom: 1px solid var(--sv-rule);
+  }
+  .sv-card-head > :is(h2, h3, h4) {
+    margin: 0;
+    font-size: 15px;
+    line-height: 20px;
+    font-weight: 700;
+    letter-spacing: -0.005em;
+  }
+  .sv-card-body {
+    padding: 16px 18px 18px;
+  }
+  /* A card's foot (attribution, "All markets"): a tinted strip. */
+  .sv-card-foot {
+    padding: 12px 18px;
+    border-top: 1px solid var(--sv-rule);
+    background: var(--sv-surface-2);
+    color: var(--sv-fg-3);
+  }
+
+  /* Terminal panels: #0E131A on the terminal ground, 1 px #1E2733, 16 px
+     corners (8 for panels nested in a panel). Put them inside .sv-terminal
+     (or give them the class too) so the text tokens follow. */
+  .sv-panel {
+    min-width: 0;
+    border: 1px solid var(--sv-term-line);
+    border-radius: var(--sv-r-md);
+    background: var(--sv-term-2);
+    color: var(--sv-fg);
+  }
+  .sv-panel .sv-panel {
+    border-radius: var(--sv-r-sm);
+  }
+  .sv-panel-raised {
+    background: var(--sv-term-3);
+  }
+  /* The trading desk on emerald (design I): a terminal panel with the desk
+     shadow. */
+  .sv-desk {
+    padding: 12px;
+    border: 1px solid var(--sv-term-line);
+    border-radius: var(--sv-r-md);
+    background: #0A0E13;
+    box-shadow: var(--sv-shadow-3);
+  }
+
+  /* Chips: 8 px corners, mono 11.5 px. Tones: default (a 1 px line),
+     "sample" (dashed: every illustrative block says so), "solid" (the
+     primary fill, "Open"), "quiet" (a tinted fill). */
+  .sv-chip {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: 6px;
+    height: 26px;
+    padding: 0 10px;
+    border: 1px solid var(--sv-rule);
+    border-radius: var(--sv-r-sm);
+    color: var(--sv-fg-2);
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    line-height: 16px;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+  }
+  .sv-chip[data-tone="sample"] {
+    border-style: dashed;
+    border-color: var(--sv-control);
+    text-transform: uppercase;
+  }
+  .sv-chip[data-tone="solid"] {
+    border-color: transparent;
+    background: var(--sv-green-700);
+    color: #fff;
+  }
+  :is(.sv-emerald, .sv-terminal, .sv-stage, .sv-header, .sv-footer, .sv-drawer) .sv-chip[data-tone="solid"] {
+    background: var(--sv-neon);
+    color: var(--sv-neon-ink);
+  }
+  .sv-chip[data-tone="quiet"] {
+    border-color: transparent;
+    background: var(--sv-surface-2);
+  }
+  :is(.sv-emerald, .sv-header, .sv-footer, .sv-drawer) .sv-chip[data-tone="quiet"] {
+    background: var(--sv-emerald-chip);
+  }
+  :is(.sv-terminal, .sv-stage) .sv-chip[data-tone="quiet"] {
+    background: #161E28;
+  }
+  .sv-chip-dot {
+    flex: none;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+
+  /* Data tables: mono, right-aligned figures, thin 1 px rows, compact.
+     The first column (names) stays Hanken; .sv-num cells right-align. A
+     wide table scrolls inside its own box (.sv-table-scroll). */
+  .sv-table-scroll {
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+  }
+  .sv-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    line-height: 18px;
+    font-variant-numeric: tabular-nums;
+  }
+  .sv-table > caption {
+    caption-side: top;
+    padding: 12px 18px 4px;
+    text-align: left;
+    font-family: var(--font-sans);
+    font-size: 13px;
+    font-weight: 700;
+  }
+  .sv-table th {
+    padding: 10px 8px 6px;
+    color: var(--sv-fg-3);
+    font-size: 11px;
+    line-height: 16px;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    text-align: left;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+  .sv-table td {
+    padding: 9px 8px;
+    border-top: 1px solid var(--sv-rule);
+    vertical-align: middle;
+  }
+  .sv-table :is(th, td):first-child {
+    padding-left: 18px;
+  }
+  .sv-table :is(th, td):last-child {
+    padding-right: 18px;
+  }
+  .sv-table :is(th, td).sv-num,
+  .sv-table :is(th, td)[data-num] {
+    text-align: right;
+    white-space: nowrap;
+  }
+  .sv-table .sv-name {
+    font-family: var(--font-sans);
+    font-weight: 600;
+    white-space: nowrap;
+  }
+}
+
+/* ── Chrome (§4.1–§4.5, §4.14; M0.4): SiteHeader, SkipLink, SectionRail,
+   NavDrawer, MarketStatus, SiteFooter, PaletteToggle, and the root 404's
+   StaticHeader / StaticFooter. Components: src/components/public/* and
+   src/components/market/MarketStatus.tsx. The compaction, the reading wire
+   and the compact --sv-chrome-h values are unlayered, near the top. ────── */
+@layer components {
+  /* SkipLink (§4.14): visually hidden until it takes focus, then a 44 px
+     ink pill at the top left (z 80) with white text. */
+  .sv-skip {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .sv-skip:focus {
+    position: fixed;
+    top: 8px;
+    left: 8px;
+    z-index: var(--sv-z-skip);
+    display: inline-flex;
+    align-items: center;
+    width: auto;
+    height: 44px;
+    margin: 0;
+    padding: 0 18px;
+    overflow: visible;
+    clip-path: none;
+    border-radius: 999px;
+    background: var(--sv-neon);
+    color: var(--sv-neon-ink);
+    font-family: var(--font-sans);
+    font-size: 15px;
+    line-height: 20px;
+    font-weight: 700;
+    text-decoration: none;
+    box-shadow: 0 0 0 2px var(--sv-emerald);
+  }
+  /* The skip link's target: focus lands on <main>, with no ring around the
+     whole page (the next Tab goes to the first link inside it). */
+  main[tabindex="-1"]:focus {
+    outline: none;
+  }
+
+  /* The header (§4.1): the whole <header> is the sticky unit. Below 1024 px
+     useHeadroom slides it away on the way down (data-hidden). Emerald
+     Terminal: solid #01261A on every public page, in the emerald scope
+     (tokens.css), so its text, rules and focus ring read on dark. */
+  .sv-header {
+    position: sticky;
+    top: 0;
+    z-index: var(--sv-z-header);
+    background: var(--sv-emerald);
+    transition: transform var(--sv-dur-2) var(--sv-ease-out);
+  }
+  .sv-header[data-hidden="true"] {
+    transform: translateY(-100%);
+  }
+  /* The brand bar: 56 / 60 / 64 px (--sv-bar-h) with a hairline below,
+     pixel-identical in every family. */
+  .sv-brandbar {
+    height: var(--sv-bar-h);
+    border-bottom: 1px solid var(--sv-rule);
+    background: var(--sv-emerald);
+  }
+  .sv-brandbar-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 100%;
+  }
+  .sv-logo {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    min-height: 44px;
+    border-radius: 2px;
+  }
+  /* The owner's logo as it is: 28 px tall (110 px wide), 32 px from 1024. */
+  .sv-logo > img {
+    display: block;
+    width: auto;
+    max-width: none;
+    height: 28px;
+  }
+  /* Primary nav, from 768 px: 15/20 at 560, 44 px targets 4 px apart. The
+     current item has a 2 px --sv-selected bar 6 px below the text. */
+  .nav-desktop {
+    display: none;
+  }
+  .sv-nav-link {
+    position: relative;
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    height: 44px;
+    padding-inline: 10px;
+    border-radius: var(--sv-r-sm);
+    color: var(--sv-fg-2);
+    font-family: var(--font-sans);
+    font-size: 15px;
+    line-height: 20px;
+    font-weight: 600;
+    text-decoration: none;
+    white-space: nowrap;
+    transition:
+      color var(--sv-dur-1) var(--sv-ease-out),
+      background-color var(--sv-dur-1) var(--sv-ease-out);
+  }
+  .sv-nav-link[aria-current="page"] {
+    color: var(--sv-fg);
+  }
+  .sv-nav-link[aria-current="page"]::after {
+    content: "";
+    position: absolute;
+    left: 10px;
+    right: 10px;
+    bottom: 4px;
+    height: 2px;
+    border-radius: 2px;
+    background: var(--sv-selected);
+  }
+  /* Utilities, right-aligned and 8 px apart: Search, the status chip
+     (>= 1024 px), "Get the app" and, below 768 px, Menu. */
+  .sv-utils {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: 8px;
+    margin-left: auto;
+  }
+  .sv-status-slot {
+    display: none;
+  }
+  .sv-menu-slot {
+    display: inline-flex;
+  }
+  /* "Get the app": 36 px with 14 px type below 768, 40 px at 15 px above;
+     the hit area is padded to 44 px either way. */
+  .sv-getapp {
+    height: 36px;
+    padding-inline: 16px;
+    font-size: 14px;
+  }
+  .sv-getapp::before {
+    content: "";
+    position: absolute;
+    inset: -4px 0;
+  }
+  /* Below 400 px the row is 7 px too wide at 18 px padding (logo 110 +
+     Search 44 + "Get the app" 113 + Menu 44, 8 px apart = 335 in a 328 px
+     container at 360): 12 px brings it to 323 (W6, B-10). */
+  @media (max-width: 399.98px) {
+    .sv-getapp {
+      padding-inline: 12px;
+    }
+  }
+  @media (min-width: 768px) {
+    .sv-brandbar-row {
+      gap: 16px;
+    }
+    .nav-desktop {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      min-width: 0;
+    }
+    .sv-getapp {
+      height: 40px;
+      font-size: 15px;
+    }
+    .sv-menu-slot {
+      display: none;
+    }
+  }
+  @media (min-width: 1024px) {
+    .sv-brandbar-row {
+      gap: 24px;
+    }
+    .sv-logo > img {
+      height: 32px;
+    }
+    .sv-nav-link {
+      padding-inline: 12px;
+    }
+    .sv-nav-link[aria-current="page"]::after {
+      left: 12px;
+      right: 12px;
+    }
+  }
+  /* The market status pill shows from 1280 px (beside the nav at 1024 it
+     would crowd the bar; HeaderStatus loads it from 1280 too). */
+  @media (min-width: 1280px) {
+    .sv-status-slot {
+      display: inline-flex;
+    }
+  }
+  /* The root 404's StaticHeader (§4.14): no drawer, so below 768 px the
+     five nav links wrap into a second row of 44 px links. */
+  @media (max-width: 767.98px) {
+    .sv-brandbar[data-static] {
+      height: auto;
+    }
+    .sv-brandbar[data-static] .sv-brandbar-row {
+      flex-wrap: wrap;
+      row-gap: 0;
+      height: auto;
+    }
+    .sv-brandbar[data-static] .sv-logo {
+      min-height: var(--sv-bar-h);
+    }
+    .sv-brandbar[data-static] .nav-desktop {
+      display: flex;
+      flex-wrap: wrap;
+      order: 3;
+      gap: 0 4px;
+      width: calc(100% + 20px);
+      margin-inline: -10px;
+    }
+  }
+
+  /* The section rail (§4.2): 44 px on paper, a hairline below. It folds to
+     0 below 1024 px when the header comes back far down the page
+     (data-compact), and on story pages with the compaction (unlayered). */
+  .sv-rail {
+    height: 44px;
+    overflow: hidden;
+    background: var(--sv-emerald);
+    box-shadow: inset 0 -1px 0 var(--sv-rule);
+    transition:
+      height var(--sv-dur-2) var(--sv-ease-out),
+      visibility var(--sv-dur-2);
+  }
+  .sv-header[data-compact="true"] .sv-rail {
+    height: 0;
+    visibility: hidden;
+  }
+  /* The list spans the container's whole box, so items scroll under its
+     margins; the first item's text lines up with the content edge. */
+  .sv-rail-list {
+    display: flex;
+    height: 44px;
+    margin: 0 calc(-1 * var(--sv-margin));
+    padding: 0 calc(var(--sv-margin) - 12px);
+    list-style: none;
+    overflow-x: auto;
+    overflow-y: hidden;
+    overscroll-behavior-x: contain;
+    scroll-snap-type: x proximity;
+    scroll-padding-inline: var(--sv-margin);
+    scrollbar-width: none;
+  }
+  .sv-rail-list::-webkit-scrollbar {
+    display: none;
+  }
+  .sv-rail-list > li {
+    flex: none;
+    scroll-snap-align: start;
+  }
+  /* A 24 px fade only on a side that hides content (SectionRail sets the
+     attributes after mount). */
+  .sv-rail-list[data-fade-start] {
+    mask-image: linear-gradient(to right, transparent, #000 24px);
+  }
+  .sv-rail-list[data-fade-end] {
+    mask-image: linear-gradient(to left, transparent, #000 24px);
+  }
+  .sv-rail-list[data-fade-start][data-fade-end] {
+    mask-image: linear-gradient(to right, transparent, #000 24px, #000 calc(100% - 24px), transparent);
+  }
+  .sv-rail-link {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    height: 44px;
+    padding-inline: 12px;
+    color: var(--sv-fg-2);
+    font-family: var(--font-sans);
+    font-size: 14.5px;
+    line-height: 20px;
+    font-weight: 600;
+    text-decoration: none;
+    white-space: nowrap;
+  }
+  .sv-rail-link:focus-visible {
+    outline-offset: -2px; /* the scrolling list clips anything outside it */
+  }
+  .sv-rail-link[aria-current="page"] {
+    color: var(--sv-fg);
+  }
+  .sv-rail-link[aria-current="page"]::after {
+    content: "";
+    position: absolute;
+    left: 12px;
+    right: 12px;
+    bottom: 0;
+    height: 2px;
+    background: var(--sv-selected);
+  }
+  .sv-progress {
+    display: none; /* drawn only with scroll-driven animations (unlayered) */
+  }
+
+  /* MarketStatus (§4.10). Empty, with its final box, until data arrives. */
+  .sv-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--sv-fg-2);
+    font-family: var(--font-sans);
+    font-size: 13px;
+    line-height: 18px;
+    font-weight: 450;
+    letter-spacing: 0.005em;
+  }
+  /* The header's status pill (design I): mono 12 px on the emerald chip
+     ground, "NSE · BSE · MCX open". It reserves the common text's width
+     (20ch plus the dot) from the server render on, so the text arriving
+     moves nothing; a mixed state ("NSE · BSE open · MCX closed") grows it. */
+  .sv-status[data-variant="chip"] {
+    min-width: calc(20ch + 46px);
+    height: 32px;
+    padding: 0 13px;
+    gap: 9px;
+    border: 1px solid transparent;
+    border-radius: var(--sv-r-pill);
+    color: var(--sv-fg);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 400;
+    letter-spacing: 0;
+    white-space: nowrap;
+  }
+  .sv-status[data-variant="chip"][data-ready] {
+    border-color: rgb(214 243 227 / .22);
+    background: var(--sv-emerald-chip);
+  }
+  .sv-status[data-variant="chip"] .sv-status-dot {
+    width: 7px;
+    height: 7px;
+  }
+  .sv-status[data-variant="chip"] .sv-status-dot[data-open="true"] {
+    box-shadow: 0 0 0 3px rgb(52 224 137 / .22);
+  }
+  .sv-status[data-variant="line"] {
+    flex-wrap: wrap;
+    gap: 0;
+    min-height: 18px;
+  }
+  .sv-status[data-variant="block"] {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+  }
+  .sv-status-part {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .sv-status-item {
+    display: inline-flex;
+    align-items: center;
+    white-space: nowrap;
+  }
+  .sv-status-sep {
+    white-space: pre;
+  }
+  .sv-status-dot {
+    flex: none;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--sv-live-dot);
+  }
+  .sv-status-dot[data-open="false"] {
+    background: transparent;
+    box-shadow: inset 0 0 0 1.5px var(--sv-fg-3);
+  }
+
+  /* NavDrawer (§4.3): the right-hand sheet's contents (the sheet itself is
+     ui/Dialog "right"). */
+  .sv-drawer-logo {
+    display: block;
+    width: auto;
+    max-width: none;
+    height: 28px;
+  }
+  .sv-drawer-body {
+    display: flex;
+    flex-direction: column;
+    padding-top: 8px;
+  }
+  .sv-drawer-search {
+    position: relative;
+  }
+  .sv-drawer-search > .sv-input {
+    padding-right: 48px;
+  }
+  .sv-drawer-search > .sv-icon-btn {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+  }
+  .sv-drawer-status {
+    margin-top: 16px;
+    padding: 12px 14px;
+    border: 1px solid var(--sv-rule);
+    border-radius: var(--sv-r-sm);
+  }
+  .sv-drawer-group {
+    margin-top: 16px;
+  }
+  .sv-drawer-head {
+    margin: 8px 0 4px;
+    color: var(--sv-fg-3);
+  }
+  .sv-drawer-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  /* Features, Download, FAQ and Contact: a block of their own, set off by
+     space (each row already has its rule), so on news pages they don't read
+     as more sections. After .sv-drawer-list, whose margin: 0 it overrides. */
+  .sv-drawer-more {
+    margin-top: 24px;
+  }
+  .sv-drawer-link {
+    position: relative;
+    display: flex;
+    align-items: center;
+    min-height: 48px;
+    border-bottom: 1px solid var(--sv-rule);
+    color: var(--sv-fg-2);
+    font-family: var(--font-sans);
+    font-size: 16px;
+    line-height: 26px;
+    font-weight: 500;
+    text-decoration: none;
+  }
+  .sv-drawer-link[aria-current="page"] {
+    color: var(--sv-fg);
+  }
+  .sv-drawer-list[data-size="lg"] .sv-drawer-link {
+    min-height: 52px;
+    color: var(--sv-fg);
+    font-size: 20px;
+    line-height: 28px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+  /* The current page: a 2 px --sv-selected rule at the sheet's edge. */
+  .sv-drawer-link[aria-current="page"]::before {
+    content: "";
+    position: absolute;
+    top: 12px;
+    bottom: 12px;
+    left: -16px;
+    width: 2px;
+    background: var(--sv-selected);
+  }
+  .sv-drawer-cta {
+    width: 100%;
+    margin-top: 24px;
+  }
+  .sv-drawer-legal {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 20px;
+    margin: 12px 0 0;
+    padding: 0;
+    list-style: none;
+  }
+  .sv-drawer-legal a {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    color: var(--sv-fg-3);
+    text-decoration: none;
+  }
+
+  /* The footer (§4.5): solid emerald #01261A (the emerald scope, tokens.css),
+     always the last <footer>. */
+  .sv-footer {
+    padding-block: 48px 32px;
+    background: var(--sv-emerald);
+  }
+  .sv-footer-top {
+    display: grid;
+    grid-template-columns: repeat(var(--sv-cols), minmax(0, 1fr));
+    column-gap: var(--sv-gutter);
+  }
+  .sv-footer-brand,
+  .sv-footer-col {
+    grid-column: 1 / -1;
+    min-width: 0;
+  }
+  .sv-footer-brand {
+    padding-bottom: 24px;
+  }
+  .sv-footer-logo {
+    display: inline-flex;
+    border-radius: 2px;
+  }
+  /* The owner's logo, on-dark copy, 36 px tall: no box behind it. */
+  .sv-footer-logo > img {
+    display: block;
+    width: auto;
+    max-width: none;
+    height: 36px;
+  }
+  .sv-footer-blurb {
+    max-width: 34em;
+    margin: 16px 0 0;
+    color: var(--sv-fg-2);
+  }
+  .sv-footer-social {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 20px;
+    margin: 12px 0 0;
+    padding: 0;
+    list-style: none;
+  }
+  .sv-footer-head {
+    margin: 0;
+    color: var(--sv-fg);
+    font-size: 14px;
+    font-weight: 800;
+    letter-spacing: 0.02em;
+  }
+  .sv-footer-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  /* Links: 15/24 at a 32 px pitch, 44 px on touch screens. */
+  .sv-footer-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    min-height: 32px;
+    font-family: var(--font-sans);
+    font-size: 15px;
+    line-height: 24px;
+    font-weight: 400;
+    text-decoration: none;
+  }
+  .sv-footer-link > svg {
+    flex: none;
+  }
+  @media (pointer: coarse) {
+    .sv-footer-link {
+      min-height: 44px;
+    }
+    /* A social link can be one short word ("X" is 10 px wide while it shows
+       as text): its hit area is at least 44 px wide, centred on it, without
+       moving anything. It reaches only into the 20 px gaps of the row, and
+       a later link paints over it, so no tap lands on the wrong link. */
+    .sv-footer-social .sv-footer-link {
+      position: relative;
+    }
+    .sv-footer-social .sv-footer-link::after {
+      content: "";
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 50%;
+      width: 44px;
+      min-width: 100%;
+      transform: translateX(-50%);
+    }
+  }
+  /* The editors' phone-length meter measures in a frame inside the desktop
+     portal, which never has a coarse pointer: PreviewMeasure marks that
+     frame's <html data-sv-pointer="coarse"> so the 44 px rows count (W6 F2). */
+  :root[data-sv-pointer="coarse"] .sv-footer-link {
+    min-height: 44px;
+  }
+  /* Phones: News, The app and Company are accordions (their heading is the
+     48 px summary); Legal stays open. Hairlines between them. */
+  .sv-footer-col {
+    padding-block: 16px;
+    border-top: 1px solid var(--sv-rule);
+  }
+  .sv-footer-col[data-collapsible] {
+    padding-block: 0;
+  }
+  .sv-footer-col .sv-pd-body {
+    padding-bottom: 12px;
+  }
+  .sv-footer-head + .sv-footer-list {
+    margin-top: 4px;
+  }
+  .sv-footer-bottom {
+    display: grid;
+    gap: 12px;
+    padding-top: 24px;
+    border-top: 1px solid var(--sv-rule);
+  }
+  .sv-footer-lines {
+    display: grid;
+    gap: 4px;
+    color: var(--sv-fg-2);
+  }
+  .sv-footer-lines > p {
+    margin: 0;
+  }
+  .sv-footer-palette {
+    color: var(--sv-fg-2);
+  }
+  @media (min-width: 768px) {
+    .sv-footer {
+      padding-block: 64px 40px;
+    }
+    .sv-footer-top {
+      row-gap: 40px;
+    }
+    .sv-footer-brand {
+      padding-bottom: 0;
+    }
+    .sv-footer-col {
+      grid-column: span 2;
+      padding-block: 0;
+      border-top: 0;
+    }
+    .sv-footer-col .sv-pd-body {
+      margin-top: 8px;
+      padding-bottom: 0;
+    }
+    .sv-footer-head + .sv-footer-list {
+      margin-top: 8px;
+    }
+    .sv-footer-bottom {
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: start;
+      column-gap: 32px;
+      margin-top: 48px;
+    }
+  }
+  @media (min-width: 1024px) {
+    .sv-footer {
+      padding-block: 80px 40px;
+    }
+    .sv-footer-brand {
+      grid-column: 1 / span 4;
+    }
+  }
+  /* Phones, compact (W6, 5 Nov 2026; spec §4.5's phone footer, measured at
+     773-915 px against the 380 px spec §5.1.3 budgets). Same parts, same
+     order, nothing hidden:
+     - the three accordions (News, The app, Company) sit side by side, one
+       48 px row of headings with one hairline above it (a column opens
+       under its own heading);
+     - Legal stays open (with Cookie settings), its links in two columns
+       of 44 px touch rows;
+     - the bottom block is unchanged (market data line, not-a-broker line,
+       company line, palette switch).
+     SiteFooter only: the 404's StaticFooter has no data-collapsible or
+     data-open-col columns and keeps its open lists. */
+  @media (max-width: 767.98px) {
+    /* The inline-flex logo link sat on the text baseline, which added 8 px
+       under it. */
+    .sv-footer-logo {
+      vertical-align: top;
+    }
+    .sv-footer-top {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      column-gap: 0;
+    }
+    .sv-footer-col[data-collapsible] {
+      grid-column: auto;
+    }
+    .sv-footer-col[data-collapsible] .sv-pd > summary {
+      justify-content: flex-start;
+      gap: 4px;
+      padding-inline-end: 8px;
+    }
+    .sv-footer-col[data-collapsible] .sv-pd > summary .sv-footer-head {
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }
+    .sv-footer-col[data-collapsible] .sv-pd-chev {
+      width: 16px;
+      height: 16px;
+    }
+    .sv-footer-col[data-open-col] {
+      padding-block: 16px 4px;
+    }
+    .sv-footer-col[data-open-col] .sv-footer-list {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      column-gap: var(--sv-gutter);
+    }
+  }
+
+  /* PaletteToggle (§3.1.3): a switch-like button with aria-pressed. The
+     track fills --sv-fg when on: ink on paper, light in the footer. */
+  .sv-switch {
+    display: inline-flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 44px;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 22px;
+    font-weight: 400;
+    text-align: left;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+  }
+  .sv-switch-track {
+    position: relative;
+    flex: none;
+    width: 36px;
+    height: 20px;
+    border: 1px solid var(--sv-control);
+    border-radius: 999px;
+    background: transparent;
+    transition:
+      background-color var(--sv-dur-1) var(--sv-ease-out),
+      border-color var(--sv-dur-1) var(--sv-ease-out);
+  }
+  .sv-switch-knob {
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--sv-fg-2);
+    transition:
+      transform var(--sv-dur-1) var(--sv-ease-out),
+      background-color var(--sv-dur-1) var(--sv-ease-out);
+  }
+  .sv-switch[aria-pressed="true"] .sv-switch-track {
+    border-color: var(--sv-fg);
+    background: var(--sv-fg);
+  }
+  .sv-switch[aria-pressed="true"] .sv-switch-knob {
+    transform: translateX(16px);
+    background: var(--sv-surface);
+  }
+  :is(.sv-emerald, .sv-header, .sv-footer, .sv-drawer) .sv-switch[aria-pressed="true"] .sv-switch-knob {
+    background: var(--sv-emerald);
+  }
+  :is(.sv-terminal, .sv-stage) .sv-switch[aria-pressed="true"] .sv-switch-knob {
+    background: var(--sv-stage);
+  }
+
+  @media (hover: hover) and (pointer: fine) {
+    .sv-nav-link:not([aria-current="page"]):hover {
+      color: var(--sv-fg);
+      background: rgb(255 255 255 / .06);
+    }
+    .sv-rail-link:hover {
+      color: var(--sv-fg);
+    }
+    .sv-drawer-legal a:hover,
+    .sv-footer a.sv-footer-link:hover,
+    .sv-footer .footer-cookie button:hover {
+      text-decoration-line: underline;
+      text-underline-offset: 4px;
+    }
+    .sv-switch:hover .sv-switch-track {
+      border-color: var(--sv-fg);
+    }
+  }
+}
+
+/* The drawer (NavDrawer in ui/Dialog "right"): an emerald sheet like the
+   header it opens from (its tokens: .sv-drawer in tokens.css's emerald
+   scope). Its top row (the logo and "Close menu": ui/Dialog's sticky head)
+   is an opaque band, edge to edge, with the brand bar's hairline under it,
+   so the scrolled list passes cleanly underneath. Unlayered on purpose: it
+   has to beat the sheet's and the head's own utilities (bg-surface,
+   text-fg, and the sheet's 16 px px-4 inset). The head is found by its
+   class hook (lead decision 2), not by its position. */
+.sv-drawer {
+  background: var(--sv-emerald);
+  color: var(--sv-fg);
+}
+.sv-drawer .sv-dialog-head {
+  margin-inline: -16px;
+  padding-inline: 16px;
+  border-bottom: 1px solid var(--sv-rule);
+  background: var(--sv-emerald);
+}
+
+/* ── Base layer (§3.11) ───────────────────────────────────────────────────── */
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+  /* Body sits outside #sv-public, where the font variables aren't defined;
+     #sv-public sets Hanken Grotesk for everything inside it. */
+  body {
+    background: var(--sv-paper);
+    color: var(--sv-ink);
+    font-family: "Segoe UI", Roboto, system-ui, sans-serif;
+    font-size: 16px;
+    line-height: 26px;
+    text-rendering: optimizeLegibility;
+  }
+  @media (min-width: 768px) {
+    body {
+      font-size: 17px;
+      line-height: 28px;
+    }
+  }
+  /* position: relative makes #sv-public the containing block of every
+     absolutely positioned descendant (sr-only text included), so its
+     overflow-x clip catches them too: an sr-only span in a table cell that
+     overflows can never widen the page (W6, B-3). */
+  #sv-public {
+    position: relative;
+    overflow-x: clip;
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    font-family: var(--font-sans);
+  }
+  main {
+    flex: 1;
+  }
+  /* Focus: 2 px of --sv-focus, 2 px off the element. Each ground sets its
+     own --sv-focus (blue on light, light blue on emerald and terminal; ink
+     or the light text colour in the colour-blind palette), so the ring
+     shows on all three. The outline follows each element's own radius
+     (pills stay pills); bare links get a 2 px rounding. */
+  :focus-visible {
+    outline: 2px solid var(--sv-focus);
+    outline-offset: 2px;
+  }
+  a:not([class*="sv-btn"]):focus-visible {
+    border-radius: 2px;
+  }
+  ::selection {
+    background: var(--sv-green-100);
+    color: var(--sv-green-900);
+  }
+  h1,
+  h2,
+  h3,
+  h4 {
+    text-wrap: balance;
+  }
+  p {
+    text-wrap: pretty;
+  }
+  [id] {
+    scroll-margin-top: calc(var(--sv-bar-h) + var(--sv-rail-h) + 16px);
+  }
+  img {
+    max-width: 100%;
+    height: auto;
+  }
+  /* The Hindi privacy notice uses the system's Devanagari face (§3.2.1). */
+  :lang(hi) {
+    font-family: "Nirmala UI", "Noto Sans Devanagari", "Mangal", system-ui, sans-serif;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html {
+      scroll-behavior: auto;
+    }
+  }
+}
+
+/* ── Reduced motion (§6.9): the global switch. Content never waits for
+   motion, so stopping it shows every final frame. ───────────────────────── */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Drawers, sheets and dialogs (ui/Dialog.tsx, .sv-overlay) keep a 60 ms
+   fade under reduced motion, with no slide or zoom (§6.9). The ID beats the
+   global switch above. */
+@media (prefers-reduced-motion: reduce) {
+  #sv-public .sv-overlay {
+    --tw-enter-translate-x: 0;
+    --tw-enter-translate-y: 0;
+    --tw-enter-scale: 1;
+    --tw-exit-translate-x: 0;
+    --tw-exit-translate-y: 0;
+    --tw-exit-scale: 1;
+    animation-duration: 60ms !important;
+  }
+}
+
+/* ── Test hook kept by the footer (§4.5; privacy-e2e reads this colour) ─── */
+.sv-footer .footer-link,
+.sv-footer .footer-cookie button {
+  color: var(--sv-footer-link);
+}
+/* Touch screens: the Cookie settings button fills its 44 px footer row,
+   like the links beside it (the row's min-height is on its wrapper; B-7). */
+@media (pointer: coarse) {
+  .sv-footer .footer-cookie button {
+    min-height: 44px;
+  }
+}
+/* The same row in the phone-length meter's frame (see .sv-footer-link above). */
+:root[data-sv-pointer="coarse"] .sv-footer .footer-cookie button {
+  min-height: 44px;
+}
+
+/* ── The headline link (kept from the old news stylesheet): StoryCard's
+   `a.headline-link`, an underline that grows on hover and focus. */
+@utility headline-link {
+  background-image: linear-gradient(currentColor, currentColor);
+  background-size: 0% 1px;
+  background-position: 0 100%;
+  background-repeat: no-repeat;
+  transition: background-size 0.25s ease;
+  &:hover,
+  &:focus-visible {
+    background-size: 100% 1px;
+  }
+}
+
+/* ── The ticker strip (Emerald Terminal; TickerTrack, MarketTicker).
+   Unlayered and after widgets.css, so these beat its theme rules. Every
+   theme is mono; "dark" is the terminal strip (#0A0D12, tokens from
+   .sv-terminal), "brand" the emerald one (#01261A, .sv-emerald), "light"
+   the white card. Names are small upper-case mono labels; 1 px
+   separators between items (widgets.css draws them in --sv-tk-line). ── */
+.sv-ticker {
+  font-family: var(--font-mono);
+}
+.sv-ticker[data-theme="dark"] {
+  background: var(--sv-term);
+  --sv-tk-2: var(--sv-on-term-3);
+  --sv-tk-line: rgb(230 237 245 / .1);
+}
+.sv-ticker[data-theme="brand"] {
+  background: var(--sv-emerald);
+  color: var(--sv-fg);
+  --sv-fg: var(--sv-on-emerald);
+  --sv-fg-2: var(--sv-on-emerald-2);
+  --sv-fg-3: var(--sv-on-emerald-3);
+  --sv-up: var(--sv-up-on-emerald);
+  --sv-down: var(--sv-down-on-emerald);
+  --sv-focus: var(--sv-focus-on-stage);
+  --sv-tk-2: var(--sv-on-emerald-3);
+  --sv-tk-line: var(--sv-emerald-line);
+}
+[data-palette="bo"] .sv-ticker[data-theme="brand"] {
+  --sv-up: #8CC0FF;
+  --sv-down: #FFA766;
+}
+.sv-ticker .sv-tk-name {
+  color: var(--sv-tk-2);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+.sv-ticker li .font-mono {
+  color: var(--sv-fg);
+}
+.sv-ticker:is([data-theme="dark"], [data-theme="brand"]) .sv-quiet {
+  text-decoration-color: var(--sv-neon);
+}
+
+/* ── Heat tiles: each bin's own text colour (tokens.css --sv-heat-*-fg),
+   so a tile reads on light, emerald and terminal grounds alike, in both
+   palettes. Beats widgets.css's fixed ink / white. ──────────────────── */
+.sv-heat {
+  color: var(--sv-heat-0-fg);
+}
+.sv-heat[data-bin="n3"] {
+  color: var(--sv-heat-n3-fg);
+}
+.sv-heat[data-bin="n2"] {
+  color: var(--sv-heat-n2-fg);
+}
+.sv-heat[data-bin="n1"] {
+  color: var(--sv-heat-n1-fg);
+}
+.sv-heat[data-bin="p1"] {
+  color: var(--sv-heat-p1-fg);
+}
+.sv-heat[data-bin="p2"] {
+  color: var(--sv-heat-p2-fg);
+}
+.sv-heat[data-bin="p3"] {
+  color: var(--sv-heat-p3-fg);
+}
+
+/* ── Market modules, Emerald Terminal (stream A owns src/components/market;
+   their layout CSS is widgets.css, C's). Only the look changes here:
+   unlayered, after widgets.css. ─────────────────────────────────────── */
+/* HeatGrid's scale (design I): one bar of seven bins, edges labelled. */
+.sv-heat-legend.sv-heat-scale {
+  display: grid;
+  gap: 6px;
+  width: min(100%, 340px);
+  margin-top: 12px;
+}
+.sv-heat-scale-bar {
+  display: flex;
+  gap: 2px;
+  height: 10px;
+}
+.sv-heat-scale-bar > span {
+  flex: 1;
+}
+.sv-heat-scale-bar > span:first-child {
+  border-radius: 2px 0 0 2px;
+}
+.sv-heat-scale-bar > span:last-child {
+  border-radius: 0 2px 2px 0;
+}
+.sv-heat-scale-ticks {
+  position: relative;
+  height: 16px;
+  color: var(--sv-fg-3);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 16px;
+}
+.sv-heat-scale-ticks > span {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+/* SectorBars: diverging from zero on a faint 12 px track (design I). */
+.sv-sector-plot::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  height: 12px;
+  margin-top: -6px;
+  background: var(--sv-surface-2);
+}
+:is(.sv-terminal, .sv-stage, .sv-emerald) .sv-sector-plot::before {
+  background: rgb(255 255 255 / .05);
+}
+.sv-sector-axis {
+  z-index: 1;
+}
+.sv-sector-bar {
+  height: 12px;
+  margin-top: -6px;
+  border-radius: 0;
+}
+.sv-sector-val {
+  font-family: var(--font-mono);
+}
+/* IPO tags: 8 px chips, mono. */
+.sv-ipo-tag {
+  padding: 1px 7px;
+  border-radius: var(--sv-r-sm);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+}
+.sv-ipo-subbar {
+  border-radius: 0;
+}
+.sv-ipo-subbar > span {
+  background: var(--sv-green-700);
+}
+:is(.sv-terminal, .sv-stage, .sv-emerald) .sv-ipo-subbar > span {
+  background: var(--sv-neon);
+}
+/* Mini charts: the line and its area in the range's direction. */
+.sv-mini[data-dir="up"] .sv-mini-line {
+  stroke: var(--sv-up);
+}
+.sv-mini[data-dir="up"] .sv-mini-area {
+  fill: var(--sv-up);
+  fill-opacity: 0.1;
+}
+.sv-mini[data-dir="down"] .sv-mini-line {
+  stroke: var(--sv-down);
+}
+.sv-mini[data-dir="down"] .sv-mini-area {
+  fill: var(--sv-down);
+  fill-opacity: 0.1;
+}
+/* Data tables: figures mono and right-aligned already (t-num); the head
+   row as small mono labels. */
+.sv-mk-table thead th {
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+}
+
+/* ── The root 404 (src/app/not-found.tsx): text, then from 1024 px a
+   decorative terminal panel with the status code. ───────────────────── */
+.sv-404 {
+  display: grid;
+  gap: 40px;
+  align-items: center;
+  padding-block: var(--sv-section-site) calc(var(--sv-section-site) + 16px);
+}
+.sv-404-panel {
+  display: none;
+}
+@media (min-width: 1024px) {
+  .sv-404 {
+    grid-template-columns: minmax(0, 1fr) 360px;
+    gap: 64px;
+  }
+  .sv-404-panel {
+    display: grid;
+    gap: 8px;
+    justify-items: start;
+    padding: 28px 32px;
+    border: 1px solid var(--sv-term-line);
+    border-radius: var(--sv-r-md);
+    background: var(--sv-terminal-band);
+    box-shadow: var(--sv-shadow-2);
+  }
+}
+.sv-404-panel-label {
+  color: var(--sv-fg-3);
+}
+.sv-404-code {
+  color: var(--sv-neon);
+  font-family: var(--font-mono);
+  font-size: 96px;
+  line-height: 1;
+  font-weight: 600;
+  letter-spacing: -0.04em;
+}

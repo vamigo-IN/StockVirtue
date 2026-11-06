@@ -43,6 +43,8 @@ import { RbacModule } from './rbac/rbac.module';
 import { AuditModule } from './audit/audit.module';
 import { StaffModule } from './staff/staff.module';
 import { StorageModule } from './storage/storage.module';
+import { SiteContentModule } from './site-content/site-content.module';
+import { NoticeGateModule } from './privacy/notice-gate.module';
 
 @Module({
   imports: [
@@ -96,6 +98,10 @@ import { StorageModule } from './storage/storage.module';
     IngestionModule,
     AiModule,
     StorageModule,
+    // W7: the admin-managed public site (/api/v1/site, staff/site/content).
+    SiteContentModule,
+    // W7: the app notice gate inside JwtAuthGuard (global; ships switched off).
+    NoticeGateModule,
   ],
   controllers: [AppController],
   providers: [

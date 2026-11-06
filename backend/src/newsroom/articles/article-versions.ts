@@ -18,7 +18,6 @@ export const SNAPSHOT_SELECT = {
   seo: true,
   sourceAttribution: true,
   isAiGenerated: true,
-  correctionNote: true,
   retractionNote: true,
   tags: { select: { tagId: true } },
   related: { select: { relatedId: true }, orderBy: { position: 'asc' } },
@@ -47,7 +46,6 @@ export interface ArticleSnapshot {
   seo: Prisma.JsonValue;
   sourceAttribution: Prisma.JsonValue;
   isAiGenerated: boolean;
-  correctionNote: string | null;
   retractionNote: string | null;
   tagIds: string[];
   relatedIds: string[];
@@ -73,7 +71,6 @@ export function snapshotOf(a: SnapshotSource): ArticleSnapshot {
     seo: a.seo,
     sourceAttribution: a.sourceAttribution,
     isAiGenerated: a.isAiGenerated,
-    correctionNote: a.correctionNote,
     retractionNote: a.retractionNote,
     tagIds: a.tags.map((t) => t.tagId).sort(),
     relatedIds: a.related.map((r) => r.relatedId),
@@ -81,6 +78,19 @@ export function snapshotOf(a: SnapshotSource): ArticleSnapshot {
   };
   const hash = createHash('sha256').update(JSON.stringify(data)).digest('hex');
   return { ...data, hash };
+}
+
+/**
+ * A stored version's snapshot, as the portal gets it. Versions saved before
+ * correction notes were retired (6 Nov 2026) still carry `correctionNote`
+ * in their JSON: it is never returned, compared or restored.
+ */
+export function storedSnapshot(raw: Prisma.JsonValue): ArticleSnapshot {
+  const snapshot = { ...(raw as object) } as ArticleSnapshot & {
+    correctionNote?: unknown;
+  };
+  delete snapshot.correctionNote;
+  return snapshot;
 }
 
 /**

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { PrivacyRequestStatus, User } from '@prisma/client';
 import { enforceRateLimit } from '../common/rate-limit';
 import { PrismaService } from '../prisma/prisma.service';
@@ -6,7 +6,8 @@ import { RedisService } from '../redis/redis.service';
 import { DEFAULT_CONFIG, PrivacyConfig, readConfig } from '../site/site-config';
 import { ConsentService } from './consent.service';
 import { WebConsentDto } from './privacy.dto';
-import { PRIVACY_NOTICE_VERSION, RECIPIENTS } from './privacy.constants';
+import { PrivacyNoticeService } from './privacy-notice.service';
+import { RECIPIENTS } from './privacy.constants';
 
 /** Most rows of one kind put in a data export (the newest). */
 const EXPORT_ROWS = 20_000;
@@ -37,7 +38,13 @@ export class PrivacyService {
     private readonly prisma: PrismaService,
     private readonly redis: RedisService,
     private readonly consent: ConsentService,
+    private readonly notice: PrivacyNoticeService,
   ) {}
+
+  /** The current privacy notice version (from the database, §5.4). */
+  currentNoticeVersion(): string {
+    return this.notice.current().version;
+  }
 
   /** The grievance officer and response time, as saved under Site settings. */
   async contact(): Promise<PrivacyConfig> {
@@ -56,11 +63,20 @@ export class PrivacyService {
     };
   }
 
-  /** What the app and website show: the notice version and who to contact. */
+  /**
+   * What the app and website show: the notice version, when it last changed
+   * in substance and what changed (W7 addendum §5.7; the summary is null
+   * for the seed version), and who to contact.
+   */
   async publicInfo() {
     const c = await this.contact();
+    const notice = this.notice.current();
     return {
-      noticeVersion: PRIVACY_NOTICE_VERSION,
+      noticeVersion: notice.version,
+      noticeUpdatedAt: notice.materialAt,
+      noticeChangeSummary: notice.announce
+        ? { en: notice.summaryEn, hi: notice.summaryHi }
+        : null,
       legalName: c.legalName,
       postalAddress: c.postalAddress || null,
       grievanceOfficer: {
@@ -214,7 +230,7 @@ export class PrivacyService {
       about:
         'Your StockVirtue data, as of the time below. Amounts are in paise (100 paise = 1 rupee). Lists hold at most the newest 20,000 entries.',
       generatedAt: new Date(),
-      noticeVersion: PRIVACY_NOTICE_VERSION,
+      noticeVersion: this.notice.current().version,
       account: {
         id,
         displayName: user.displayName,
@@ -311,7 +327,11 @@ export class PrivacyService {
 
   /**
    * One cookie choice from the website, kept as proof of consent. Only the
-   * random id from the visitor's cookie: no IP address, nothing else.
+   * random id from the visitor's cookie: no IP address, nothing else. The
+   * version is the cookie choice version the banner showed (W7 decision 4,
+   * §5.13): one above the current version is refused, after a database read
+   * so a reload still in flight never loses a record; a lower one (a page
+   * cached just before a change) is kept.
    */
   async logWebConsent(dto: WebConsentDto, ip: string | null) {
     await enforceRateLimit(
@@ -321,6 +341,15 @@ export class PrivacyService {
       60,
       'Too many requests.',
     );
+    if (
+      dto.version > this.notice.cookieVersion() &&
+      dto.version > (await this.notice.cookieVersionFromDb())
+    ) {
+      throw new BadRequestException({
+        message: 'That cookie choice version is not known.',
+        code: 'cookie_version_unknown',
+      });
+    }
     const granted = [
       ...(dto.analytics ? ['analytics'] : []),
       ...(dto.advertising ? ['advertising'] : []),

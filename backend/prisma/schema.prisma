@@ -1280,6 +1280,12 @@ model NewsArticle {
   sectors              String[]   @default([])
   isFeatured           Boolean    @default(false)
   isBreaking           Boolean    @default(false)
+  /// When the story became breaking news: when the switch was turned on for
+  /// a live story, or its publication if it went out already marked. Breaking
+  /// lasts 24 hours from here (newsroom/breaking.ts): readers stop seeing the
+  /// label then and the worker's sweep turns the switch off. Null while not
+  /// breaking, or marked but not yet out.
+  breakingAt           DateTime?
   isAiGenerated        Boolean    @default(false)
   readingMinutes       Int        @default(1)
   /// { title, description, canonicalUrl, noIndex, noFollow, ogImageId }
@@ -1287,6 +1293,10 @@ model NewsArticle {
   /// [{ name, url, publishedAt, licence }]
   sourceAttribution    Json       @default("[]")
   editorialNotes       String?    @db.Text
+  /// RETIRED 6 Nov 2026: correction notes were removed from the newsroom and
+  /// the site (stories show only their updated time). Nothing reads or writes
+  /// this column; it is kept to avoid a destructive migration and can be
+  /// dropped by a later one.
   correctionNote       String?    @db.Text
   retractedAt          DateTime?
   retractionNote       String?    @db.Text
@@ -1294,6 +1304,13 @@ model NewsArticle {
   scheduledAt          DateTime?
   publishedAt          DateTime?
   firstPublishedAt     DateTime?
+  /// "Send a notification when published": when the story goes live (now,
+  /// or at its scheduled time) the worker sends one EDITORS_PICK push to app
+  /// readers with breaking alerts on. Breaking stories notify by themselves,
+  /// so it is ignored while a breaking push is due. ("Send notification now"
+  /// on a live story queues the push directly and leaves this alone.) One
+  /// every-reader push per story, ever (news-push.service.ts).
+  notifyOnPublish      Boolean    @default(false)
   createdAt            DateTime   @default(now())
   updatedAt            DateTime   @updatedAt
 
@@ -1328,6 +1345,7 @@ model NewsArticle {
   @@index([authorId, status, publishedAt(sort: Desc)])
   @@index([createdById, status])
   @@index([status, scheduledAt])
+  @@index([isBreaking, breakingAt])
   @@index([searchVector], type: Gin)
   @@map("news_articles")
 }
@@ -1527,6 +1545,9 @@ model NewsAlertPreference {
 enum NotificationCampaignKind {
   BREAKING
   FOLLOWED_STOCKS
+  /// An editor chose to notify readers about a story that isn't breaking
+  /// (same readers as BREAKING: breaking alerts on).
+  EDITORS_PICK
 }
 
 enum NotificationCampaignStatus {
@@ -1538,9 +1559,10 @@ enum NotificationCampaignStatus {
   FAILED
 }
 
-/// One push about a story to one audience: breaking news to every reader who
-/// wants it, or a story to the readers who follow its stocks. `dedupeKey`
-/// keeps it to one of each kind per story.
+/// One push about a story to one audience: breaking news (or an editor's
+/// notification, EDITORS_PICK) to every reader who wants it, or a story to
+/// the readers who follow its stocks. `dedupeKey` keeps it to one of each
+/// kind per story, and a story gets BREAKING or EDITORS_PICK, never both.
 model NotificationCampaign {
   id          String                     @id @default(uuid()) @db.Uuid
   kind        NotificationCampaignKind
@@ -1585,6 +1607,187 @@ model SiteConfig {
   updatedAt   DateTime @updatedAt
 
   @@map("site_config")
+}
+
+// ─── Website content (W7: the admin-managed public site) ───────────────────
+
+/// What a site_content row is. DESIGNED and SHARED have typed schemas
+/// (backend/src/site-content/schemas); LEGAL and CUSTOM hold a document.
+enum SiteContentKind {
+  DESIGNED
+  SHARED
+  CHROME
+  LEGAL
+  CUSTOM
+}
+
+/// DRAFT: never published. LIVE: the published revision is served.
+/// HIDDEN: unpublished (custom pages only). ARCHIVED: removed (custom only).
+enum SiteContentStatus {
+  DRAFT
+  LIVE
+  HIDDEN
+  ARCHIVED
+}
+
+/// SEED: imported from today's text. EDIT: a publish of a non-privacy item.
+/// MINOR / MATERIAL: the privacy notice (owner decision 2). MATERIAL on the
+/// terms: a change that matters to users, announced before it was published
+/// (the terms' own clause 12). SETTINGS: written by a Site settings save
+/// that changed a live value the document shows (officer, legal name, address,
+/// response days, services in use); content, notice version and date are
+/// copied from the previous revision.
+enum SiteRevisionChange {
+  SEED
+  EDIT
+  MINOR
+  MATERIAL
+  SETTINGS
+}
+
+/// One editable item of the public site, with one draft and a pointer to
+/// the live revision. Fixed keys: home, features, about, faq, download,
+/// contact, wont-do, chrome, privacy, privacy-hi, terms, disclaimer,
+/// privacy-requests. Custom pages use their own UUID as the key.
+model SiteContent {
+  id                  String            @id @default(uuid()) @db.Uuid
+  key                 String            @unique
+  kind                SiteContentKind
+  status              SiteContentStatus @default(DRAFT)
+  /// Custom pages only: the URL segment (/<slug>); old slugs redirect.
+  slug                String?           @unique
+  previousSlugs       String[]          @default([])
+  /// 'en' or 'hi' (privacy-hi).
+  lang                String            @default("en")
+  /// The name shown in the portal list (custom pages: the page title).
+  title               String            @default("")
+  /// Shape version of `draft` and of every revision's `content`.
+  schemaVersion       Int               @default(1)
+  /// The unpublished edit, or null when the editor starts from the live one.
+  draft               Json?
+  /// Optimistic lock: every draft save sends the version it loaded.
+  draftVersion        Int               @default(0)
+  draftUpdatedAt      DateTime?
+  draftUpdatedById    String?           @db.Uuid
+  /// Set by "Restore rev N into the draft"; kept through later edits of that
+  /// draft, copied to the next revision's restoredFromId, cleared on publish or
+  /// discard. A privacy draft restored from another notice version can only be
+  /// published as MATERIAL.
+  draftRestoredFromId String?           @db.Uuid
+  publishedRevisionId String?           @unique @db.Uuid
+  createdById         String?           @db.Uuid
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+
+  publishedRevision SiteContentRevision?  @relation("LiveRevision", fields: [publishedRevisionId], references: [id], onDelete: Restrict)
+  revisions         SiteContentRevision[] @relation("ItemRevisions")
+
+  @@index([kind, status])
+  @@map("site_content")
+}
+
+/// An immutable published version of an item: what readers saw from
+/// `publishedAt` until the next revision (DPDP Act s.6(10) for the notice).
+/// Never updated, never deleted.
+model SiteContentRevision {
+  id               String             @id @default(uuid()) @db.Uuid
+  contentId        String             @db.Uuid
+  /// 1, 2, 3 … per item.
+  number           Int
+  schemaVersion    Int                @default(1)
+  content          Json
+  /// SHA-256 of the canonical JSON (sorted keys): no-op detection and history.
+  contentHash      String
+  change           SiteRevisionChange
+  /// What changed, in the publisher's words (required for legal items).
+  summary          String             @default("")
+  summaryHi        String             @default("")
+  /// privacy and privacy-hi only: the notice version this text belongs to.
+  noticeVersion    String?
+  /// The "Updated" date the page shows for this revision.
+  dateShown        DateTime
+  /// SEED revisions only: today's literal date text ("June 27, 2026").
+  dateLabel        String?
+  /// Legal items: the resolved value of every token the page renders (site
+  /// name, URL, company and email; contact email; officer, legal name,
+  /// address, response days; services in use), resolved by the API. The web
+  /// renders the live revision FROM these values, and a Settings save that
+  /// changes one appends a SETTINGS revision, so content + liveValues is
+  /// exactly the text readers saw.
+  liveValues       Json?
+  /// The fact texts (F-id → text) the page relied on when published.
+  factsSnapshot    Json?
+  /// Terms changes that matter to users (change MATERIAL on `terms`): when
+  /// and how users were told before publishing ('app' | 'email' | 'app+email').
+  announcedAt      DateTime?
+  announcedVia     String?
+  restoredFromId   String?            @db.Uuid
+  publishedById    String?            @db.Uuid
+  publishedByEmail String             @default("")
+  publishedAt      DateTime           @default(now())
+
+  item       SiteContent           @relation("ItemRevisions", fields: [contentId], references: [id], onDelete: Restrict)
+  liveFor    SiteContent?          @relation("LiveRevision")
+  notice     PrivacyNoticeVersion? @relation(fields: [noticeVersion], references: [id], onDelete: Restrict)
+
+  @@unique([contentId, number])
+  @@index([contentId, publishedAt(sort: Desc)])
+  @@index([noticeVersion])
+  @@map("site_content_revisions")
+}
+
+/// A material version of the privacy notice, shared by the English and the
+/// Hindi text. The newest row (by seq) is the current notice. Consent
+/// records name it by `id` (no foreign key: website cookie records use
+/// "cookies-<n>"), so a row is never deleted.
+model PrivacyNoticeVersion {
+  /// "2026-11", "2027-03", "2027-03-14", "2027-03-14.2" (≤ 20 chars).
+  id               String   @id
+  seq              Int      @unique @default(autoincrement())
+  /// When it became current (the date of the material change).
+  materialAt       DateTime
+  summaryEn        String   @default("")
+  summaryHi        String   @default("")
+  /// Show the dated "We updated our privacy notice" line (false for the seed).
+  announce         Boolean  @default(true)
+  /// The publisher's answer to "Does this change affect app analytics?". When
+  /// no version since the one a person accepted says true, accepting keeps
+  /// their analytics choice (W7 decision 3). False for the seed.
+  affectsAnalytics Boolean  @default(false)
+  /// The answer to "Does this change affect the website's cookies or the
+  /// services in use?". True also started a cookie_consent_versions row in
+  /// the same transaction (W7 decision 4). False for the seed.
+  affectsCookies   Boolean  @default(false)
+  publishedById    String?  @db.Uuid
+  publishedByEmail String   @default("")
+  createdAt        DateTime @default(now())
+
+  revisions SiteContentRevision[]
+
+  @@map("privacy_notice_versions")
+}
+
+/// A version of the website's cookie choice: the banner's purposes and the
+/// services behind them. Website consent records name it as "cookies-<n>".
+/// A new row asks every visitor to choose again (W7 decision 4).
+/// Appended by a material notice publish that affects cookies, by a Settings
+/// save that switches on a service the newest row doesn't list, or (version 1)
+/// by the boot seeder. Never updated, never deleted.
+model CookieConsentVersion {
+  /// 1, 2, 3 … The newest row is the current version.
+  version        Int      @id
+  /// The services in use when it began, as the banner names them:
+  /// { analytics: string[], advertising: string[] }.
+  services       Json
+  /// 'seed' | 'notice' | 'settings'
+  reason         String
+  /// reason 'notice': the material notice version that started it.
+  noticeVersion  String?
+  createdById    String?  @db.Uuid
+  createdByEmail String   @default("")
+  createdAt      DateTime @default(now())
+
+  @@map("cookie_consent_versions")
 }
 
 // ─── Market display: the ticker and article widgets ─────────────────────────

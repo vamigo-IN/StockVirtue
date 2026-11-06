@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import { User } from '@prisma/client';
 import { ConsentService } from '../privacy/consent.service';
+import { NoticeGateExempt } from '../privacy/notice-gate.decorator';
 import { UsersService } from '../users/users.service';
 import { FeatureFlagsService } from '../feature-flags/feature-flags.service';
 import { AuthService } from './auth.service';
@@ -129,8 +130,12 @@ export class AuthController {
     return this.auth.logout(dto.refreshToken);
   }
 
+  // Open while the notice gate is on: every app reads it at start, 1.4.0
+  // signs the person out when it fails, and its privacy.needsNotice opens
+  // the notice screen (W7 addendum §5.11.3).
   @Get('me')
   @UseGuards(JwtAuthGuard)
+  @NoticeGateExempt()
   async me(@CurrentUser() user: User) {
     // Lazy-backfill referralCode for users created before the column
     // existed. The migration's PL/pgSQL backfill should have caught
@@ -139,8 +144,10 @@ export class AuthController {
     return this.serializeUser(ensured);
   }
 
+  // Open while the notice gate is on: correcting one's details (DPDP s.12).
   @Patch('me')
   @UseGuards(JwtAuthGuard)
+  @NoticeGateExempt()
   async updateProfile(
     @CurrentUser() user: User,
     @Body() dto: UpdateProfileDto,

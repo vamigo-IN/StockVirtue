@@ -1,0 +1,1497 @@
+{
+  "format": 1,
+  "key": "privacy-hi",
+  "lang": "hi",
+  "schemaVersion": 1,
+  "revision": {
+    "dateShown": "2026-11-02T18:30:00.000Z",
+    "dateLabel": "3 नवंबर 2026",
+    "noticeVersion": "2026-11"
+  },
+  "content": {
+    "seo": {
+      "title": "गोपनीयता सूचना",
+      "description": [
+        {
+          "type": "token",
+          "attrs": {
+            "name": "site.name"
+          }
+        },
+        {
+          "type": "text",
+          "text": " कौन-सा व्यक्तिगत डेटा लेता है, क्यों, किसके साथ साझा करता है, कितने समय तक रखता है, और डिजिटल व्यक्तिगत डेटा संरक्षण अधिनियम, 2023 के तहत आपके अधिकार।"
+        }
+      ]
+    },
+    "title": "गोपनीयता सूचना",
+    "summary": [
+      {
+        "type": "token",
+        "attrs": {
+          "name": "site.name"
+        }
+      },
+      {
+        "type": "text",
+        "text": " कौन-सा व्यक्तिगत डेटा लेता है, क्यों, कौन देखता है, कितने समय तक रखता है, और डिजिटल व्यक्तिगत डेटा संरक्षण अधिनियम, 2023 के तहत आपके अधिकार।"
+      }
+    ],
+    "body": {
+      "type": "doc",
+      "content": [
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "यह सूचना बताती है कि जब आप "
+            },
+            {
+              "type": "token",
+              "attrs": {
+                "name": "site.name"
+              }
+            },
+            {
+              "type": "text",
+              "text": " ऐप और stockvirtue.com वेबसाइट का उपयोग करते हैं, तो "
+            },
+            {
+              "type": "token",
+              "attrs": {
+                "name": "company.legalName"
+              }
+            },
+            {
+              "type": "text",
+              "text": " (\"हम\") व्यक्तिगत डेटा का उपयोग कैसे करता है। डिजिटल व्यक्तिगत डेटा संरक्षण अधिनियम, 2023 (DPDP अधिनियम) के तहत हम "
+            },
+            {
+              "type": "text",
+              "text": "डेटा फ़िड्युशियरी",
+              "marks": [
+                {
+                  "type": "bold"
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "text": " हैं: हम तय करते हैं कि आपका डेटा कैसे उपयोग हो, और उसके लिए हम ज़िम्मेदार हैं। सूचना संस्करण "
+            },
+            {
+              "type": "token",
+              "attrs": {
+                "name": "notice.version"
+              }
+            },
+            {
+              "type": "text",
+              "text": "। "
+            },
+            {
+              "type": "text",
+              "text": "Read this notice in English",
+              "marks": [
+                {
+                  "type": "link",
+                  "attrs": {
+                    "href": "/privacy",
+                    "lang": "en"
+                  }
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "text": "। संविधान की आठवीं अनुसूची की किसी अन्य भाषा में यह सूचना पाने के लिए नीचे दिए शिकायत अधिकारी को लिखें। किसी अंतर की स्थिति में अंग्रेज़ी संस्करण मान्य होगा।"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "token",
+              "attrs": {
+                "name": "site.name"
+              },
+              "marks": [
+                {
+                  "type": "bold"
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "text": " केवल वयस्कों के लिए है।",
+              "marks": [
+                {
+                  "type": "bold"
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "text": " खाता रखने के लिए आपकी आयु 18 वर्ष या उससे अधिक होनी चाहिए। यह एक सिम्युलेटर है: हर ट्रेड वर्चुअल पैसे से होता है, और हम कभी बैंक, डीमैट, कार्ड, PAN या आधार की जानकारी नहीं माँगते।"
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "attrs": {
+            "level": 2,
+            "anchor": "kya-lete-hain"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "1. हम क्या लेते हैं और क्यों"
+            }
+          ]
+        },
+        {
+          "type": "table",
+          "attrs": {
+            "caption": "हम क्या लेते हैं"
+          },
+          "content": [
+            {
+              "type": "tableRow",
+              "content": [
+                {
+                  "type": "tableHeader",
+                  "content": [
+                    {
+                      "type": "paragraph",
+                      "content": [
+                        {
+                          "type": "text",
+                          "text": "व्यक्तिगत डेटा"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "tableHeader",
+                  "content": [
+                    {
+                      "type": "paragraph",
+                      "content": [
+                        {
+                          "type": "text",
+                          "text": "उपयोग का उद्देश्य"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "tableRow",
+              "content": [
+                {
+                  "type": "tableCell",
+                  "content": [
+                    {
+                      "type": "paragraph",
+                      "content": [
+                        {
+                          "type": "text",
+                          "text": "आपका ईमेल पता, मोबाइल नंबर और आपके द्वारा चुना गया नाम; ईमेल से साइन-अप करने पर पासवर्ड (हम केवल उसका सुरक्षित हैश रखते हैं); Google से साइन-इन करने पर आपका Google नाम और फ़ोटो।"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "tableCell",
+                  "content": [
+                    {
+                      "type": "paragraph",
+                      "content": [
+                        {
+                          "type": "text",
+                          "text": "आपका खाता बनाने, आपको साइन-इन कराने, उसे सुरक्षित रखने और खाते से जुड़ी जानकारी (साइन-इन कोड, पासवर्ड रीसेट) भेजने के लिए।"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "tableRow",
+              "content": [
+                {
+                  "type": "tableCell",
+                  "content": [
+                    {
+                      "type": "paragraph",
+                      "content": [
+                        {
+                          "type": "text",
+                          "text": "आपकी यह पुष्टि कि आप 18 वर्ष या उससे अधिक के हैं, आपने इस सूचना का कौन-सा संस्करण कब स्वीकार किया, और वैकल्पिक उद्देश्यों पर आपकी पसंद।"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "tableCell",
+                  "content": [
+                    {
+                      "type": "paragraph",
+                      "content": [
+                        {
+                          "type": "text",
+                          "text": "यह दिखाने के लिए कि आपने किस बात पर सहमति दी, और सेवा को केवल वयस्कों तक रखने के लिए।"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "tableRow",
+              "content": [
+                {
+                  "type": "tableCell",
+                  "content": [
+                    {
+                      "type": "paragraph",
+                      "content": [
+                        {
+                          "type": "text",
+                          "text": "आपका वर्चुअल वॉलेट, ऑर्डर, पोज़िशन, पोर्टफ़ोलियो इतिहास, वॉचलिस्ट और प्राइस अलर्ट।"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "tableCell",
+                  "content": [
+                    {
+                      "type": "paragraph",
+                      "content": [
+                        {
+                          "type": "text",
+                          "text": "आपके लिए ट्रेडिंग सिम्युलेटर चलाने के लिए। सब कुछ वर्चुअल पैसे से होता है।"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "tableRow",
+              "content": [
+                {
+                  "type": "tableCell",
+                  "content": [
+                    {
+                      "type": "paragraph",
+                      "content": [
+                        {
+                          "type": "text",
+                          "text": "आपका डिस्प्ले नाम, रैंक और रिटर्न; आपके बनाए या जॉइन किए गए रूम।"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "tableCell",
+                  "content": [
+                    {
+                      "type": "paragraph",
+                      "content": [
+                        {
+                          "type": "text",
+                          "text": "लीडरबोर्ड और रूम चलाने के लिए, जहाँ दूसरे उपयोगकर्ता आपका डिस्प्ले नाम और रिटर्न देखते हैं। चाहें तो उपनाम रखें।"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "tableRow",
+              "content": [
+                {
+                  "type": "tableCell",
+                  "content": [
+                    {
+                      "type": "paragraph",
+                      "content": [
+                        {
+                          "type": "text",
+                          "text": "पूरे किए गए पाठ और क्विज़, और मिले बैज।"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "tableCell",
+                  "content": [
+                    {
+                      "type": "paragraph",
+                      "content": [
+                        {
+                          "type": "text",
+                          "text": "आपकी सीखने की प्रगति और उपलब्धियाँ रखने के लिए।"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "tableRow",
+              "content": [
+                {
+                  "type": "tableCell",
+                  "content": [
+                    {
+                      "type": "paragraph",
+                      "content": [
+                        {
+                          "type": "text",
+                          "text": "आपकी सहेजी गई ख़बरें, ख़बर-अलर्ट की पसंद, और खोली गई ख़बरें (आपकी पहचान के बिना गिनी जाती हैं)।"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "tableCell",
+                  "content": [
+                    {
+                      "type": "paragraph",
+                      "content": [
+                        {
+                          "type": "text",
+                          "text": "आपकी सहेजी ख़बरें रखने, आपके चुने अलर्ट भेजने और यह जानने के लिए कि कौन-सी ख़बरें पढ़ी जाती हैं।"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "tableRow",
+              "content": [
+                {
+                  "type": "tableCell",
+                  "content": [
+                    {
+                      "type": "paragraph",
+                      "content": [
+                        {
+                          "type": "text",
+                          "text": "आपका रेफ़रल कोड, आपको किसने आमंत्रित किया और आपने कितने लोगों को आमंत्रित किया।"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "tableCell",
+                  "content": [
+                    {
+                      "type": "paragraph",
+                      "content": [
+                        {
+                          "type": "text",
+                          "text": "आमंत्रण और उनके इनाम चलाने के लिए।"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "tableRow",
+              "content": [
+                {
+                  "type": "tableCell",
+                  "content": [
+                    {
+                      "type": "paragraph",
+                      "content": [
+                        {
+                          "type": "text",
+                          "text": "आपके डिवाइस का पुश टोकन और हमारे भेजे गए नोटिफ़िकेशन।"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "tableCell",
+                  "content": [
+                    {
+                      "type": "paragraph",
+                      "content": [
+                        {
+                          "type": "text",
+                          "text": "ऑर्डर पूरे होने, प्राइस अलर्ट और ख़बरों के नोटिफ़िकेशन भेजने के लिए।"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "tableRow",
+              "content": [
+                {
+                  "type": "tableCell",
+                  "content": [
+                    {
+                      "type": "paragraph",
+                      "content": [
+                        {
+                          "type": "text",
+                          "text": "आपका IP पता, डिवाइस और ब्राउज़र का प्रकार, ऐप संस्करण, हर अनुरोध का समय; साइन-इन के प्रयास।"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "tableCell",
+                  "content": [
+                    {
+                      "type": "paragraph",
+                      "content": [
+                        {
+                          "type": "text",
+                          "text": "सेवा को सुरक्षित रखने, दुरुपयोग रोकने और घटनाओं की जाँच के लिए। क़ानून के अनुसार ये लॉग एक वर्ष तक रखे जाते हैं।"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "tableRow",
+              "content": [
+                {
+                  "type": "tableCell",
+                  "content": [
+                    {
+                      "type": "paragraph",
+                      "content": [
+                        {
+                          "type": "text",
+                          "text": "आपके भेजे संदेश, गोपनीयता अनुरोध और शिकायतें, और आपके द्वारा नामित व्यक्ति।"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "tableCell",
+                  "content": [
+                    {
+                      "type": "paragraph",
+                      "content": [
+                        {
+                          "type": "text",
+                          "text": "आपको उत्तर देने और आपके अधिकारों पर कार्रवाई करने के लिए।"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "tableRow",
+              "content": [
+                {
+                  "type": "tableCell",
+                  "content": [
+                    {
+                      "type": "paragraph",
+                      "content": [
+                        {
+                          "type": "text",
+                          "text": "केवल आपकी सहमति से: ऐप की कौन-सी स्क्रीन और सुविधाएँ आप उपयोग करते हैं (Google Analytics for Firebase)।"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "tableCell",
+                  "content": [
+                    {
+                      "type": "paragraph",
+                      "content": [
+                        {
+                          "type": "text",
+                          "text": "ऐप को बेहतर बनाने के लिए। आपके ट्रेड कभी नहीं, और आपके नाम से जुड़ा नहीं।"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "tableRow",
+              "content": [
+                {
+                  "type": "tableCell",
+                  "content": [
+                    {
+                      "type": "paragraph",
+                      "content": [
+                        {
+                          "type": "text",
+                          "text": "केवल आपकी सहमति से, इस वेबसाइट पर: विश्लेषण और विज्ञापन कुकीज़ (नीचे “कुकीज़” देखें)।"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "tableCell",
+                  "content": [
+                    {
+                      "type": "paragraph",
+                      "content": [
+                        {
+                          "type": "text",
+                          "text": "पाठकों की संख्या मापने और आपकी रुचि के विज्ञापन दिखाने के लिए।"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "हम आपके संपर्क, आपकी सटीक लोकेशन, या कोई असली पैसा या ब्रोकरेज डेटा नहीं लेते, और व्यक्तिगत डेटा कभी नहीं बेचते।"
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "attrs": {
+            "level": 2,
+            "anchor": "sahmati"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "2. आपकी सहमति"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "खाता बनाते समय ऐप इस सूचना का छोटा रूप दिखाता है और आपसे पुष्टि करने को कहता है कि आप 18 वर्ष या उससे अधिक के हैं और सहमत हैं। ऐप विश्लेषण, और इस वेबसाइट पर विश्लेषण या विज्ञापन कुकीज़, अलग हैं: जब तक आप हाँ न कहें, ये बंद रहते हैं, और मना करने से कुछ और नहीं बदलता। क़ानून के अनुसार कुछ काम हम बिना पूछे करते हैं, जैसे सुरक्षा लॉग एक वर्ष तक रखना और अधिकारियों के वैध अनुरोधों का उत्तर देना।"
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "attrs": {
+            "level": 2,
+            "anchor": "sahmati-wapas"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "3. सहमति वापस लेना"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "सहमति वापस लेना उतना ही आसान है जितना देना:"
+            }
+          ]
+        },
+        {
+          "type": "bulletList",
+          "content": [
+            {
+              "type": "listItem",
+              "content": [
+                {
+                  "type": "paragraph",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "ऐप विश्लेषण:",
+                      "marks": [
+                        {
+                          "type": "bold"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "text",
+                      "text": " ऐप → प्रोफ़ाइल → Privacy & your data → “Help improve the app” बंद करें।"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "listItem",
+              "content": [
+                {
+                  "type": "paragraph",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "वेबसाइट कुकीज़:",
+                      "marks": [
+                        {
+                          "type": "bold"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "text",
+                      "text": " हर पेज के नीचे “Cookie settings”।"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "listItem",
+              "content": [
+                {
+                  "type": "paragraph",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "आपका खाता:",
+                      "marks": [
+                        {
+                          "type": "bold"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "text",
+                      "text": " ऐप → प्रोफ़ाइल → Privacy & your data → Delete my account। खाते की सहमति वापस लेने का अर्थ है खाता बंद करना, क्योंकि उस डेटा के बिना खाता नहीं चल सकता।"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "attrs": {
+            "level": 2,
+            "anchor": "sajha"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "4. हम किसके साथ साझा करते हैं"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "केवल उन सेवा प्रदाताओं के साथ जो अनुबंध के तहत ऊपर के उद्देश्यों के लिए हमारी ओर से डेटा प्रोसेस करते हैं: Google Firebase (साइन-इन, पुश नोटिफ़िकेशन, और अनुमति होने पर ऐप विश्लेषण), हमारा ईमेल प्रदाता, हमारे क्लाउड होस्टिंग और स्टोरेज प्रदाता, Financial Modeling Prep और TradingView (ऐप इनसे कंपनी लोगो और चार्ट लोड करता है, इसलिए वे आपका IP पता और दिखाए गए सिंबल देखते हैं), और आपकी सहमति होने पर इस वेबसाइट पर Google, Microsoft और Meta। क़ानून की माँग पर अधिकारियों के साथ। ये प्रदाता भारत और अन्य देशों में डेटा प्रोसेस कर सकते हैं; हम केवल वहीं डेटा भेजते हैं जहाँ DPDP अधिनियम अनुमति देता है।"
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "attrs": {
+            "level": 2,
+            "anchor": "kitne-samay"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "5. हम कितने समय तक रखते हैं"
+            }
+          ]
+        },
+        {
+          "type": "table",
+          "attrs": {
+            "caption": "कितने समय तक"
+          },
+          "content": [
+            {
+              "type": "tableRow",
+              "content": [
+                {
+                  "type": "tableHeader",
+                  "content": [
+                    {
+                      "type": "paragraph",
+                      "content": [
+                        {
+                          "type": "text",
+                          "text": "क्या"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "tableHeader",
+                  "content": [
+                    {
+                      "type": "paragraph",
+                      "content": [
+                        {
+                          "type": "text",
+                          "text": "कितने समय तक"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "tableRow",
+              "content": [
+                {
+                  "type": "tableCell",
+                  "content": [
+                    {
+                      "type": "paragraph",
+                      "content": [
+                        {
+                          "type": "text",
+                          "text": "आपका खाता और उसकी गतिविधि"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "tableCell",
+                  "content": [
+                    {
+                      "type": "paragraph",
+                      "content": [
+                        {
+                          "type": "text",
+                          "text": "जब तक आपका खाता खुला है।"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "tableRow",
+              "content": [
+                {
+                  "type": "tableCell",
+                  "content": [
+                    {
+                      "type": "paragraph",
+                      "content": [
+                        {
+                          "type": "text",
+                          "text": "हटाया गया खाता"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "tableCell",
+                  "content": [
+                    {
+                      "type": "paragraph",
+                      "content": [
+                        {
+                          "type": "text",
+                          "text": "उसका उपयोग तुरंत बंद हो जाता है। DPDP नियम, 2025 के अनुसार एक लॉक की गई प्रति एक वर्ष तक रखी जाती है, फिर स्थायी रूप से मिटा दी जाती है।"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "tableRow",
+              "content": [
+                {
+                  "type": "tableCell",
+                  "content": [
+                    {
+                      "type": "paragraph",
+                      "content": [
+                        {
+                          "type": "text",
+                          "text": "तीन वर्ष से अप्रयुक्त खाता"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "tableCell",
+                  "content": [
+                    {
+                      "type": "paragraph",
+                      "content": [
+                        {
+                          "type": "text",
+                          "text": "कम से कम 48 घंटे पहले ईमेल भेजकर मिटा दिया जाता है। साइन-इन करने पर खाता बना रहता है।"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "tableRow",
+              "content": [
+                {
+                  "type": "tableCell",
+                  "content": [
+                    {
+                      "type": "paragraph",
+                      "content": [
+                        {
+                          "type": "text",
+                          "text": "सुरक्षा लॉग (IP पता, डिवाइस, साइन-इन)"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "tableCell",
+                  "content": [
+                    {
+                      "type": "paragraph",
+                      "content": [
+                        {
+                          "type": "text",
+                          "text": "एक वर्ष, फिर हटा दिए जाते हैं।"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "tableRow",
+              "content": [
+                {
+                  "type": "tableCell",
+                  "content": [
+                    {
+                      "type": "paragraph",
+                      "content": [
+                        {
+                          "type": "text",
+                          "text": "आपके भेजे संदेश"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "tableCell",
+                  "content": [
+                    {
+                      "type": "paragraph",
+                      "content": [
+                        {
+                          "type": "text",
+                          "text": "हमारे अंतिम उत्तर के एक वर्ष बाद तक।"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "tableRow",
+              "content": [
+                {
+                  "type": "tableCell",
+                  "content": [
+                    {
+                      "type": "paragraph",
+                      "content": [
+                        {
+                          "type": "text",
+                          "text": "ऐप के नोटिफ़िकेशन"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "tableCell",
+                  "content": [
+                    {
+                      "type": "paragraph",
+                      "content": [
+                        {
+                          "type": "text",
+                          "text": "एक वर्ष।"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "tableRow",
+              "content": [
+                {
+                  "type": "tableCell",
+                  "content": [
+                    {
+                      "type": "paragraph",
+                      "content": [
+                        {
+                          "type": "text",
+                          "text": "गोपनीयता अनुरोध और शिकायतें"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "tableCell",
+                  "content": [
+                    {
+                      "type": "paragraph",
+                      "content": [
+                        {
+                          "type": "text",
+                          "text": "उत्तर देने के तीन वर्ष बाद तक।"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "tableRow",
+              "content": [
+                {
+                  "type": "tableCell",
+                  "content": [
+                    {
+                      "type": "paragraph",
+                      "content": [
+                        {
+                          "type": "text",
+                          "text": "इस वेबसाइट पर आपकी कुकी पसंद"
+                        }
+                      ]
+                    }
+                  ]
+                },
+                {
+                  "type": "tableCell",
+                  "content": [
+                    {
+                      "type": "paragraph",
+                      "content": [
+                        {
+                          "type": "text",
+                          "text": "आपके ब्राउज़र में 180 दिन; हमारा रिकॉर्ड दो वर्ष।"
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "attrs": {
+            "level": 2,
+            "anchor": "adhikar"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "6. आपके अधिकार"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "DPDP अधिनियम के तहत आप:"
+            }
+          ]
+        },
+        {
+          "type": "bulletList",
+          "content": [
+            {
+              "type": "listItem",
+              "content": [
+                {
+                  "type": "paragraph",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "अपने डेटा का सारांश",
+                      "marks": [
+                        {
+                          "type": "bold"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "text",
+                      "text": " और यह कि हमने उसे किसके साथ साझा किया, पा सकते हैं: ऐप → Privacy & your data → Download my data।"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "listItem",
+              "content": [
+                {
+                  "type": "paragraph",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "उसे सुधार या अपडेट",
+                      "marks": [
+                        {
+                          "type": "bold"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "text",
+                      "text": " करवा सकते हैं: ऐप में प्रोफ़ाइल बदलें, या हमसे कहें।"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "listItem",
+              "content": [
+                {
+                  "type": "paragraph",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "उसे मिटवा",
+                      "marks": [
+                        {
+                          "type": "bold"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "text",
+                      "text": " सकते हैं: ऐप में खाता हटाएँ, या हमसे कहें।"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "listItem",
+              "content": [
+                {
+                  "type": "paragraph",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "किसी व्यक्ति को नामित",
+                      "marks": [
+                        {
+                          "type": "bold"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "text",
+                      "text": " कर सकते हैं, जो आपकी मृत्यु या असमर्थता की स्थिति में आपकी ओर से कार्य करे: ऐप → Privacy & your data → Nominee।"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "listItem",
+              "content": [
+                {
+                  "type": "paragraph",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "सहमति वापस ले",
+                      "marks": [
+                        {
+                          "type": "bold"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "text",
+                      "text": " सकते हैं और "
+                    },
+                    {
+                      "type": "text",
+                      "text": "शिकायत",
+                      "marks": [
+                        {
+                          "type": "bold"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "text",
+                      "text": " कर सकते हैं।"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "अनुरोध ऐप में (Privacy & your data → Make a request), हमारे "
+            },
+            {
+              "type": "text",
+              "text": "गोपनीयता अनुरोध पेज",
+              "marks": [
+                {
+                  "type": "link",
+                  "attrs": {
+                    "href": "/privacy/requests"
+                  }
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "text": " पर, या शिकायत अधिकारी को ईमेल करके करें। आपका खाता खोजने के लिए हमें उससे जुड़ा ईमेल पता या मोबाइल नंबर चाहिए। हम "
+            },
+            {
+              "type": "token",
+              "attrs": {
+                "name": "privacy.responseDays"
+              },
+              "marks": [
+                {
+                  "type": "bold"
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "text": " दिनों",
+              "marks": [
+                {
+                  "type": "bold"
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "text": " के भीतर उत्तर देते हैं। कृपया सही जानकारी दें और झूठी या तुच्छ शिकायतें न करें (DPDP अधिनियम, धारा 15)।"
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "attrs": {
+            "level": 2,
+            "anchor": "suraksha"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "7. सुरक्षा"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "डेटा एन्क्रिप्टेड (HTTPS) रूप में भेजा जाता है। पासवर्ड और साइन-इन कोड केवल हैश के रूप में रखे जाते हैं, पहुँच केवल ज़रूरतमंद लोगों तक सीमित और दर्ज होती है, और हम बैकअप रखते हैं। यदि किसी उल्लंघन से आपका डेटा प्रभावित होता है, तो हम आपको बिना देरी के बताएँगे और क़ानून के अनुसार भारतीय डेटा संरक्षण बोर्ड को सूचित करेंगे।"
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "attrs": {
+            "level": 2,
+            "anchor": "shikayat"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "8. प्रश्न और शिकायतें"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "शिकायत अधिकारी"
+            },
+            {
+              "type": "token",
+              "attrs": {
+                "name": "officer.name",
+                "before": ": "
+              }
+            },
+            {
+              "type": "text",
+              "text": ", "
+            },
+            {
+              "type": "token",
+              "attrs": {
+                "name": "company.legalName"
+              }
+            },
+            {
+              "type": "token",
+              "attrs": {
+                "name": "company.postalAddress",
+                "before": ", "
+              }
+            },
+            {
+              "type": "text",
+              "text": "। ईमेल: "
+            },
+            {
+              "type": "token",
+              "attrs": {
+                "name": "officer.email",
+                "as": "mailto"
+              }
+            },
+            {
+              "type": "token",
+              "attrs": {
+                "name": "officer.phone",
+                "before": ", फ़ोन: "
+              }
+            },
+            {
+              "type": "text",
+              "text": "।"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "यदि आप हमारे उत्तर से संतुष्ट नहीं हैं, तो हमारी शिकायत प्रक्रिया पूरी करने के बाद आप "
+            },
+            {
+              "type": "text",
+              "text": "भारतीय डेटा संरक्षण बोर्ड",
+              "marks": [
+                {
+                  "type": "bold"
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "text": " में शिकायत कर सकते हैं।"
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "attrs": {
+            "level": 2,
+            "anchor": "cookies"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "9. कुकीज़"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "ज़रूरी",
+              "marks": [
+                {
+                  "type": "bold"
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "text": ", हमेशा चालू: आपकी कुकी पसंद याद रखने वाली कुकी ("
+            },
+            {
+              "type": "text",
+              "text": "sv_consent",
+              "marks": [
+                {
+                  "type": "code"
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "text": ", 180 दिन) और, केवल न्यूज़रूम स्टाफ़ के लिए, स्टाफ़ पोर्टल की साइन-इन कुकी। "
+            },
+            {
+              "type": "text",
+              "text": "विश्लेषण",
+              "marks": [
+                {
+                  "type": "bold"
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "text": " (Google Analytics, Google Tag Manager, Microsoft Clarity) और "
+            },
+            {
+              "type": "text",
+              "text": "विज्ञापन",
+              "marks": [
+                {
+                  "type": "bold"
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "text": " (व्यक्तिगत Google AdSense विज्ञापन, Meta Pixel) केवल आपकी सहमति से। मना करने पर, जहाँ विज्ञापन दिखते हैं, वे आपके पढ़े जा रहे पेज के आधार पर चुने जाते हैं, आपके आधार पर नहीं। आप “Cookie settings” से कभी भी अपनी पसंद बदल सकते हैं।"
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "attrs": {
+            "level": 2,
+            "anchor": "bachche"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "10. बच्चे"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "token",
+              "attrs": {
+                "name": "site.name"
+              }
+            },
+            {
+              "type": "text",
+              "text": " 18 वर्ष से कम आयु के किसी व्यक्ति के लिए नहीं है। साइन-अप के समय हम सभी से आयु की पुष्टि करने को कहते हैं। यदि हमें पता चलता है कि किसी बच्चे का डेटा हम तक पहुँचा है, तो हम उसे हटा देते हैं।"
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "attrs": {
+            "level": 2,
+            "anchor": "badlav"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "11. इस सूचना में बदलाव"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "जब हम इस सूचना में कोई महत्वपूर्ण बदलाव करते हैं, तो ऊपर का संस्करण और तारीख़ बदलते हैं और आगे बढ़ने से पहले ऐप में आपसे इसे फिर से पढ़कर स्वीकार करने को कहते हैं।"
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

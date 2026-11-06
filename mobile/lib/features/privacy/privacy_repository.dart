@@ -6,10 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/config.dart';
 import '../../data/api_client.dart';
-
-/// The privacy notice version this build shows. The server's current version
-/// (from [PrivacyInfo]) wins when it is available.
-const String kPrivacyNoticeVersion = '2026-11';
+import '../../data/models/user.dart';
 
 /// The full privacy notice, in English and Hindi, on the website.
 String get privacyNoticeUrl => '$kWebsiteUrl/privacy';
@@ -26,19 +23,35 @@ class PrivacyInfo {
     required this.officerEmail,
     required this.officerPhone,
     required this.responseDays,
+    this.noticeUpdatedAt,
+    this.noticeChangeSummary,
   });
 
-  final String noticeVersion;
+  /// The server's current notice version. Null when the server didn't say
+  /// (then the app sends no consent: it never makes a version up).
+  final String? noticeVersion;
   final String legalName;
   final String? officerName;
   final String officerEmail;
   final String? officerPhone;
   final int responseDays;
 
+  /// When the current notice last changed materially.
+  final DateTime? noticeUpdatedAt;
+
+  /// What changed, in English and Hindi; null while nothing was announced.
+  final NoticeChangeSummary? noticeChangeSummary;
+
   factory PrivacyInfo.fromJson(Map<String, dynamic> j) {
     final officer = (j['grievanceOfficer'] as Map?)?.cast<String, dynamic>();
+    final version = j['noticeVersion'];
+    final updatedAt = j['noticeUpdatedAt'];
     return PrivacyInfo(
-      noticeVersion: j['noticeVersion'] as String? ?? kPrivacyNoticeVersion,
+      noticeVersion:
+          version is String && version.trim().isNotEmpty ? version.trim() : null,
+      noticeUpdatedAt: updatedAt is String ? DateTime.tryParse(updatedAt) : null,
+      noticeChangeSummary:
+          NoticeChangeSummary.fromJson(j['noticeChangeSummary']),
       legalName: j['legalName'] as String? ?? 'Vamigo Media (OPC) Pvt. Ltd.',
       officerName: officer?['name'] as String?,
       officerEmail:
@@ -83,7 +96,8 @@ class Nominee {
       };
 }
 
-/// The account's privacy settings (GET /v1/privacy/me).
+/// The account's privacy settings (GET /v1/privacy/me, and the answer to
+/// accepting the notice or changing the analytics choice).
 class PrivacyStatus {
   const PrivacyStatus({
     required this.needsNotice,
@@ -91,6 +105,7 @@ class PrivacyStatus {
     required this.nominee,
     required this.openRequests,
     required this.info,
+    this.notice = const NoticeState(),
   });
 
   final bool needsNotice;
@@ -99,15 +114,23 @@ class PrivacyStatus {
   final int openRequests;
   final PrivacyInfo info;
 
-  factory PrivacyStatus.fromJson(Map<String, dynamic> j) => PrivacyStatus(
-        needsNotice: j['needsNotice'] as bool? ?? false,
-        analytics: j['analytics'] as bool? ?? false,
-        nominee: Nominee.fromJson(j['nominee']),
-        openRequests: (j['openRequests'] as num?)?.toInt() ?? 0,
-        info: PrivacyInfo.fromJson(
-          (j['contact'] as Map?)?.cast<String, dynamic>() ?? const {},
-        ),
-      );
+  /// The notice fields: accepted and current version, date, summary and
+  /// whether analytics must be asked afresh.
+  final NoticeState notice;
+
+  factory PrivacyStatus.fromJson(Map<String, dynamic> j) {
+    final notice = NoticeState.fromJson(j);
+    return PrivacyStatus(
+      needsNotice: notice.needsNotice,
+      analytics: notice.analytics,
+      nominee: Nominee.fromJson(j['nominee']),
+      openRequests: (j['openRequests'] as num?)?.toInt() ?? 0,
+      info: PrivacyInfo.fromJson(
+        (j['contact'] as Map?)?.cast<String, dynamic>() ?? const {},
+      ),
+      notice: notice,
+    );
+  }
 }
 
 /// What a person can ask for, in the words the app shows.
@@ -174,11 +197,17 @@ class PrivacyRepository {
     return PrivacyStatus.fromJson(res.data!);
   }
 
-  /// Accepts the current notice; [adult] must be true (the API checks too).
+  /// Accepts the notice [noticeVersion] (the one the screen showed); [adult]
+  /// must be true (the API checks too). [analyticsPrefilled] is the value the
+  /// analytics box started at, sent only when the screen set the box to the
+  /// person's current choice: the API then treats a box left as shown as no
+  /// decision. A newer notice, or a prefilled box where the analytics
+  /// question had to be asked afresh, answers 409 `notice_outdated`.
   Future<PrivacyStatus> acceptNotice({
     required String noticeVersion,
     required bool adult,
     bool? analytics,
+    bool? analyticsPrefilled,
   }) async {
     final res = await _dio.post<Map<String, dynamic>>(
       '/v1/privacy/me/consent',
@@ -186,6 +215,7 @@ class PrivacyRepository {
         'noticeVersion': noticeVersion,
         'adult': adult,
         'analytics': ?analytics,
+        'analyticsPrefilled': ?analyticsPrefilled,
       },
     );
     return PrivacyStatus.fromJson(res.data!);
@@ -254,8 +284,10 @@ final privacyRepositoryProvider = Provider<PrivacyRepository>((ref) {
   return PrivacyRepository(ref.watch(apiClientProvider).dio);
 });
 
-/// The public notice details (works signed out, for the sign-up screen).
-final privacyInfoProvider = FutureProvider<PrivacyInfo>((ref) {
+/// The public notice details (works signed out). Auto-disposed, so nothing
+/// keeps an old version: signing up reads the notice afresh anyway
+/// (`AuthController._consent`).
+final privacyInfoProvider = FutureProvider.autoDispose<PrivacyInfo>((ref) {
   return ref.watch(privacyRepositoryProvider).info();
 });
 

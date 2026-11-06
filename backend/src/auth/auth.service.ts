@@ -24,6 +24,7 @@ import { FirebaseAdminService } from '../firebase/firebase-admin.service';
 import type { DecodedIdToken } from 'firebase-admin/auth';
 import { MailService } from '../mail/mail.service';
 import { ConsentService, NoticeAcceptance } from '../privacy/consent.service';
+import { NoticeGateService } from '../privacy/notice-gate.service';
 import { RedisService } from '../redis/redis.service';
 import { UsersService } from '../users/users.service';
 
@@ -62,7 +63,8 @@ export class AuthService {
   private readonly refreshTtl: number;
   /// HMAC key for emailed codes: Redis holds digests, never the codes.
   private readonly otpKey: string;
-  /// New accounts must come with an accepted privacy notice.
+  /// New accounts must come with an accepted privacy notice (the setting;
+  /// see strictSignup()).
   private readonly requireConsent: boolean;
 
   constructor(
@@ -74,6 +76,7 @@ export class AuthService {
     private readonly mail: MailService,
     private readonly flags: FeatureFlagsService,
     private readonly consent: ConsentService,
+    private readonly gate: NoticeGateService,
   ) {
     const jwtCfg = config.get('jwt', { infer: true });
     this.accessSecret = jwtCfg.accessSecret;
@@ -87,6 +90,13 @@ export class AuthService {
     this.requireConsent = config.get('privacy', {
       infer: true,
     }).requireSignupConsent;
+  }
+
+  /// Strict sign-up: the setting, or the app notice gate being on, read on
+  /// each call. With the gate on, an account created without the notice
+  /// would be blocked at birth, so it is never created (W7 addendum §5.11.7).
+  private strictSignup(): boolean {
+    return this.requireConsent || this.gate.on();
   }
 
   /// The privacy notice has to come with a new account once strict mode is on.
@@ -151,7 +161,7 @@ export class AuthService {
     await this.ipLimit(ip, 'register', 10, 15 * 60);
     // The notice is accepted before anything is stored (DPDP Act s.6).
     if (consent) this.consent.check(consent);
-    else if (this.requireConsent) throw this.consentMissing();
+    else if (this.strictSignup()) throw this.consentMissing();
     const email = this.normalizeEmail(rawEmail);
     const existing = await this.users.findByEmail(email);
     if (existing?.emailVerified) {
@@ -428,7 +438,6 @@ export class AuthService {
     consent?: NoticeAcceptance,
   ) {
     await this.ipLimit(ip, 'firebase', 30, 60);
-    if (consent) this.consent.check(consent);
     if (!this.firebase.configured) {
       throw new UnauthorizedException('Firebase not configured on backend');
     }
@@ -472,16 +481,19 @@ export class AuthService {
       typeof decoded.picture === 'string' && decoded.picture.length > 0
         ? decoded.picture
         : null;
-    if (
-      !consent &&
-      this.requireConsent &&
-      !(await this.users.findFirebaseAccount({
-        firebaseUid: decoded.uid,
-        phone,
-        email,
-      }))
-    ) {
-      throw this.consentMissing();
+    // Only a NEW account takes the consent that came with the sign-in (W7
+    // addendum §5.4 row 11), checked before anything is stored (DPDP Act
+    // s.6). An existing account whose notice is outdated signs in and sees
+    // the notice screen (`needsNotice`), where accepting is `app.notice`:
+    // a sign-in box ticked against an older version must not fail sign-in.
+    const exists = await this.users.findFirebaseAccount({
+      firebaseUid: decoded.uid,
+      phone,
+      email,
+    });
+    if (!exists) {
+      if (consent) this.consent.check(consent);
+      else if (this.strictSignup()) throw this.consentMissing();
     }
     let user = await this.users.findOrCreateByFirebase({
       firebaseUid: decoded.uid,
@@ -490,8 +502,7 @@ export class AuthService {
       displayName,
       avatarUrl,
     });
-    // A new account, or the notice changed since they last accepted it.
-    if (consent && this.consent.needsNotice(user)) {
+    if (!exists && consent) {
       user = await this.consent.accept(user.id, consent, 'app.signup');
     }
     await this.users.markLoggedIn(user.id);

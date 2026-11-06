@@ -1,17 +1,25 @@
 /* ============================================================================
    StockVirtue newsroom portal (stockvirtue.com/admin). Tailwind CSS v4 +
-   shadcn/ui tokens. Loaded ONLY by the /admin layout: the marketing pages keep
-   their own globals.css and never see these resets or utilities.
+   shadcn/ui tokens. Loaded ONLY by the /admin layout: the public pages keep
+   their own stylesheet (public.css) and never see these resets or utilities.
    ========================================================================== */
 @import "tailwindcss";
 @import "tw-animate-css";
+/* The --sv-* tokens the shared widget code and widgets.css read (only the
+   names below are mapped to utilities; spec §3.10). */
+@import "../../styles/tokens.css";
 /* Article body typography, shared with the public news pages. */
 @import "../../styles/article-prose.css";
 @import "../../styles/widgets.css";
 @plugin "@tailwindcss/typography";
 
-/* Only scan the portal's own code for class names. */
-@source not "../(site)";
+/* Only scan the portal's own code for class names (one folder per line). */
+@source not "../(public)";
+@source not "../../components/public";
+@source not "../../components/market";
+@source not "../../components/home";
+@source not "../../components/site";
+@source not "../../components/three";
 
 @theme inline {
   --color-background: var(--background);
@@ -40,6 +48,26 @@
   --color-sidebar-primary: var(--sidebar-primary);
   --color-sidebar-accent: var(--sidebar-accent);
   --color-sidebar-border: var(--sidebar-border);
+
+  /* The theme names the shared widget code uses (spec §3.10), on the
+     --sv-* tokens; the dark block below remaps up and down. */
+  --color-up: var(--sv-up);
+  --color-down: var(--sv-down);
+  --color-flat: var(--sv-flat);
+  --color-live-bg: var(--sv-live-bg);
+  --color-live-fg: var(--sv-live-fg);
+  --color-live-dot: var(--sv-live-dot);
+  --color-delayed-bg: var(--sv-delayed-bg);
+  --color-delayed-fg: var(--sv-delayed-fg);
+  --color-eod-bg: var(--sv-eod-bg);
+  --color-eod-fg: var(--sv-eod-fg);
+  --color-heat-n3: var(--sv-heat-n3);
+  --color-heat-n2: var(--sv-heat-n2);
+  --color-heat-n1: var(--sv-heat-n1);
+  --color-heat-0: var(--sv-heat-0);
+  --color-heat-p1: var(--sv-heat-p1);
+  --color-heat-p2: var(--sv-heat-p2);
+  --color-heat-p3: var(--sv-heat-p3);
 
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
@@ -85,6 +113,9 @@
   --sidebar-primary: oklch(0.792 0.18 151.7);
   --sidebar-accent: oklch(0.245 0.02 160);
   --sidebar-border: oklch(0.255 0.015 160);
+  /* Area-level names article-prose.css reads (spec §3.10). */
+  --prose-fg: var(--foreground);
+  --prose-callout-bg: var(--muted);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -112,6 +143,12 @@
     --sidebar: oklch(0.13 0.01 160);
     --sidebar-accent: oklch(0.21 0.018 160);
     --sidebar-border: oklch(0.22 0.014 160);
+    /* Up and down on the dark cards (the stage pair, spec §3.1.2); the
+       pills keep their light pairs. Story text stays light. */
+    --sv-up: #4ade80;
+    --sv-down: #ff8178;
+    --prose-fg: var(--foreground);
+    --prose-callout-bg: var(--muted);
   }
 }
 

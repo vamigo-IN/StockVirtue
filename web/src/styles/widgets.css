@@ -1,21 +1,58 @@
 /* ============================================================================
-   Market widgets and the ticker: motion shared by the news site (news.css)
-   and the portal's editor previews (portal.css). Everything stops under
-   prefers-reduced-motion.
+   Market widgets, the masthead ticker and the market modules: the live dot,
+   the marquee, heat tiles and the multi-theme pieces (the ticker's and the
+   promo banner's themes). Shared by the public site (public.css) and the
+   portal's editor previews (portal.css); both import tokens.css, so the
+   --sv-* tokens resolve in both. Unlayered, so these rules beat Tailwind's
+   layered utilities.
+   Nothing here loops except the admin-configured marquee, which readers can
+   pause (spec R8, §4.4), and everything stops under prefers-reduced-motion
+   (spec §6.9: the portal has no global reduced-motion switch, so each rule
+   carries its own).
    ========================================================================== */
-@keyframes sv-pulse {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.35;
-  }
-}
+
+/* ── The "Live" pill's dot (spec §4.10, §6.3) ────────────────────────────────
+   Still by default. PulseDot remounts it with data-beat on each stream update
+   that moves a value in its list, and the ring pings once: scale 1 → 1.8,
+   opacity .6 → 0, 400 ms. Never on the stream's first picture. */
 .sv-live-dot {
-  animation: sv-pulse 1.6s ease-in-out infinite;
+  position: relative;
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 4px;
+  border-radius: 50%;
+  background: var(--sv-live-dot);
+  vertical-align: 1px;
+}
+.sv-live-dot::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: inherit;
+  opacity: 0;
+  pointer-events: none;
+}
+.sv-live-dot[data-beat]::after {
+  animation: sv-ping 400ms cubic-bezier(0.22, 1, 0.36, 1) 1 both;
+}
+@keyframes sv-ping {
+  from {
+    transform: scale(1);
+    opacity: 0.6;
+  }
+  to {
+    transform: scale(1.8);
+    opacity: 0;
+  }
 }
 
+/* ── The marquee (TickerTrack; spec §4.4) ─────────────────────────────────────
+   The row is drawn twice so the loop is seamless. It pauses while a reader
+   points at or focuses the prices, and while the Pause button holds
+   data-paused on the host. The stamp block and its buttons sit outside the
+   moving track, so pressing Play there resumes it at once. */
 @keyframes sv-marquee {
   from {
     transform: translateX(0);
@@ -29,17 +66,1088 @@
   width: max-content;
   animation: sv-marquee var(--sv-marquee-duration, 60s) linear infinite;
 }
-.sv-marquee[data-direction='right'] {
+.sv-marquee[data-direction="right"] {
   animation-direction: reverse;
 }
-.sv-marquee-host:hover .sv-marquee,
-.sv-marquee-host:focus-within .sv-marquee {
+.sv-marquee-track:hover .sv-marquee,
+.sv-marquee-track:focus-within .sv-marquee,
+.sv-marquee-track:focus .sv-marquee,
+.sv-marquee-host[data-paused] .sv-marquee {
   animation-play-state: paused;
 }
 
+/* ── Ticker themes (spec §3.1.2, §4.4) ────────────────────────────────────────
+   light: bg-card with border-y (utilities in ticker.tsx; the bg-card class is
+   a test hook). dark: the stage tokens (tokens.css remaps --sv-fg, --sv-up …
+   on .sv-ticker[data-theme="dark"]). brand: green-900 with its own up/down
+   pair (#86EFAC 6.49, #FDA4AF 4.82), which replaces the old #fecaca.
+   --sv-tk-2 is the strip's secondary text, --sv-tk-line its hairlines. */
+.sv-ticker {
+  --sv-tk-2: var(--muted-foreground);
+  --sv-tk-line: var(--border);
+}
+.sv-ticker[data-theme="dark"] {
+  background: var(--sv-stage);
+  --sv-tk-2: var(--sv-on-stage-2);
+  --sv-tk-line: var(--sv-stage-line);
+}
+.sv-ticker[data-theme="brand"] {
+  background: var(--sv-green-900);
+  color: #fff;
+  color-scheme: dark;
+  --sv-fg: #fff;
+  --sv-fg-2: rgb(255 255 255 / 0.86);
+  --sv-fg-3: rgb(255 255 255 / 0.8);
+  --sv-up: #86efac;
+  --sv-down: #fda4af;
+  --sv-focus: #fff;
+  --sv-tk-2: rgb(255 255 255 / 0.86);
+  --sv-tk-line: rgb(255 255 255 / 0.16);
+}
+/* Blue and orange on the brand green. The dark-surface pair (#79B0FF 4.11,
+   #FF9F5A 4.49) misses 4.5:1 on #14532D, so it is lightened here
+   (#A8CBFF 5.49, #FFB88A 5.41; WCAG 2.x formula, 4 Nov 2026). */
+[data-palette="bo"] .sv-ticker[data-theme="brand"] {
+  --sv-up: #a8cbff;
+  --sv-down: #ffb88a;
+}
+/* A hairline after every item (so the loop's seam has exactly one), and
+   between the moving prices and the still stamp block and end link. */
+.sv-ticker li {
+  border-inline-end: 1px solid var(--sv-tk-line);
+}
+.sv-ticker .sv-tk-stamp {
+  border-inline-end: 1px solid var(--sv-tk-line);
+}
+.sv-ticker .sv-tk-end {
+  border-inline-start: 1px solid var(--sv-tk-line);
+}
+.sv-ticker .sv-tk-2,
+.sv-ticker [data-dir="flat"] {
+  color: var(--sv-tk-2);
+}
+.sv-ticker:is([data-theme="dark"], [data-theme="brand"]) .sv-quiet {
+  text-decoration-color: var(--sv-green-400);
+}
+/* The stamp block's 32 px buttons keep a 44 px hit area (spec §4.4). */
+.sv-tk-btn {
+  position: relative;
+}
+.sv-tk-btn::after {
+  content: "";
+  position: absolute;
+  inset: -6px;
+}
+
+/* ── Heat tiles (spec §3.1.1): fills are bg-heat-* utilities; the text on a
+   fill is fixed (ink, or white on the two deepest bins), because the fills
+   never change with the surface. The colour eases when the data refreshes. */
+.sv-heat {
+  color: var(--sv-ink);
+  transition: background-color var(--sv-dur-4, 600ms) var(--sv-ease-out, ease-out);
+}
+.sv-heat[data-bin="n3"],
+.sv-heat[data-bin="p3"] {
+  color: #fff;
+}
+/* Emerald Terminal: each bin's text colour now comes from its own
+   --sv-heat-<bin>-fg token, set by stream A's rules at the end of
+   public.css (they beat the two rules above on every ground). */
+
+/* ── The promo banner's themes (content.tsx; spec §3.10) ──────────────────── */
+.sv-promo[data-theme="dark"] {
+  background: var(--sv-stage);
+  color: var(--sv-on-stage);
+  color-scheme: dark;
+  --sv-focus: var(--sv-focus-on-stage);
+}
+.sv-promo[data-theme="dark"] .sv-promo-body {
+  color: var(--sv-on-stage-2);
+}
+.sv-promo[data-theme="dark"] .sv-promo-cta {
+  background: var(--sv-green-400);
+  color: var(--sv-ink);
+}
+.sv-promo[data-theme="brand"] {
+  background: var(--sv-green-700);
+  color: #fff;
+  --sv-focus: #fff;
+}
+.sv-promo[data-theme="brand"] .sv-promo-cta {
+  background: var(--sv-surface);
+  color: var(--sv-green-900);
+}
+@media (hover: hover) and (pointer: fine) {
+  .sv-promo[data-theme="dark"] .sv-promo-cta:hover {
+    background: #6ee7a0;
+  }
+  .sv-promo[data-theme="brand"] .sv-promo-cta:hover {
+    background: var(--sv-green-100);
+  }
+}
+
+/* ══ Market modules (src/components/market/*; spec §4.10; M0.7) ═══════════════
+   Only what Tailwind utilities can't say: table rhythm, tiles, bars, the
+   price wash and the draw-ins. Colours are the semantic tokens, so a module
+   reads right on paper, on white and on the dark stage. Start states for
+   motion apply only under #sv-public[data-motion="ok"] (set before first
+   paint, spec §6.9), so without JS or under reduced motion every mark shows
+   its final frame. ───────────────────────────────────────────────────────── */
+
+/* Stamp: pill · time · attribution, wrapping (never truncated). */
+.sv-stamp {
+  overflow-wrap: break-word;
+}
+.sv-stamp-stale {
+  display: block;
+  margin-top: 4px;
+}
+/* The stamp's ⓘ: a 20 px glyph with a 44 px hit area. */
+.sv-stamp-info {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  margin-left: 2px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--sv-fg-3);
+  vertical-align: -4px;
+  cursor: pointer;
+}
+.sv-stamp-info::after {
+  content: "";
+  position: absolute;
+  inset: -12px;
+}
+/* A module's footer: the stamp, then any link; reserves the stamp's two
+   lines (36 px at 358 px wide, spec §8.1 item 12). */
+.sv-mk-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px 16px;
+  min-height: 36px;
+  margin-top: 12px;
+}
+
+/* PriceCell: the wash (600 ms) behind a value that changed after the first
+   live value; none under reduced motion. Never aria-live. */
+.sv-price {
+  display: inline-block;
+  margin: 0 -2px;
+  padding: 0 2px;
+  border-radius: 2px;
+}
+.sv-price[data-flash="up"] {
+  --sv-wash: var(--sv-up-tint);
+}
+.sv-price[data-flash="down"] {
+  --sv-wash: var(--sv-down-tint);
+}
+.sv-price[data-flash] {
+  animation: sv-wash var(--sv-dur-4, 600ms) var(--sv-ease-out, ease-out) 1 both;
+}
+@keyframes sv-wash {
+  from {
+    background-color: var(--sv-wash);
+  }
+  to {
+    background-color: transparent;
+  }
+}
+
+/* DayRange: an 80 (120) × 4 track, a 1 px tick at the previous close and a
+   6 px ink dot at the last price; the values stretch it when wider. */
+.sv-dayrange {
+  display: inline-grid;
+  gap: 4px;
+  min-width: 80px;
+  vertical-align: middle;
+}
+.sv-dayrange[data-size="lg"] {
+  min-width: 120px;
+}
+.sv-dayrange-track {
+  position: relative;
+  display: block;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--sv-surface-3);
+}
+.sv-dayrange-prev {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 1px;
+  margin-left: -0.5px;
+  background: var(--sv-fg-3);
+}
+.sv-dayrange-dot {
+  position: absolute;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  margin: -3px 0 0 -3px;
+  border-radius: 50%;
+  background: var(--sv-fg);
+}
+.sv-dayrange-values {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+/* PriceChart: the card never grows past its column (a grid or flex parent
+   would otherwise let its toggles' min-content widen it). The five-range
+   group (stocks, commodities: "1 day … 1 year", 337 px at 12 px padding) is
+   scrollable and, below 400 px, set at 6 px padding (277 px, every segment
+   still at least 44 px wide), so it fits a 360 px phone (294 px inside the
+   card) and only scrolls sideways below that. */
+.sv-pricechart {
+  min-width: 0;
+  max-width: 100%;
+}
+@media (max-width: 399.98px) {
+  .sv-pricechart .sv-toggles[data-variant="segmented"] > .sv-toggle {
+    padding-inline: 6px;
+  }
+}
+
+/* Data tables (IndexBoard, CommodityBoard, IPOs, "Show the numbers"):
+   44 px rows with hairlines; names left, values right and tabular. */
+.sv-mk-table {
+  border-collapse: collapse;
+}
+.sv-mk-table :is(th, td) {
+  height: 44px;
+  padding: 6px 0 6px 12px;
+  border-bottom: 1px solid var(--sv-rule);
+  text-align: right;
+  vertical-align: middle;
+}
+.sv-mk-table :is(th, td):first-child {
+  padding-left: 0;
+  text-align: left;
+}
+.sv-mk-table thead th {
+  height: 32px;
+  padding-block: 0 6px;
+  color: var(--sv-fg-3);
+  font-size: 13px;
+  line-height: 18px;
+  font-weight: 500;
+  vertical-align: bottom;
+}
+.sv-mk-table tbody tr:last-child > * {
+  border-bottom: 0;
+}
+.sv-mk-caption {
+  caption-side: bottom;
+  padding-top: 8px;
+  text-align: left;
+}
+/* Stock names in data rows: ink until hovered (a list of 2 px green
+   underlines would drown the numbers); keyboard focus keeps the ring. */
+.sv-mk-link {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* QuoteChip: one 36 px row (44 px hit area), radius 8, a hairline, white. */
+.sv-chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--sv-rule);
+  border-radius: var(--sv-r-sm, 8px);
+  background: var(--sv-surface);
+  color: var(--sv-ink);
+  text-decoration: none;
+  white-space: nowrap;
+}
+a.sv-chip::after {
+  content: "";
+  position: absolute;
+  inset: -4px 0;
+}
+.sv-chip-sym {
+  font-size: 13px;
+  line-height: 16px;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+}
+
+/* MoversBoard: rank · name · last · % over its 48 px bar. */
+.sv-movers-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.sv-movers-list > li {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto minmax(64px, auto);
+  align-items: center;
+  column-gap: 12px;
+  min-height: 44px;
+  padding-block: 6px;
+  border-bottom: 1px solid var(--sv-rule);
+}
+.sv-movers-list > li:last-child {
+  border-bottom: 0;
+}
+.sv-movers-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.sv-movers-last,
+.sv-movers-pct {
+  text-align: right;
+}
+.sv-movers-track {
+  display: flex;
+  justify-content: flex-end;
+  width: 48px;
+  height: 4px;
+  margin: 4px 0 0 auto;
+}
+.sv-movers-bar {
+  display: block;
+  min-width: 2px;
+  height: 4px;
+  border-radius: 1px;
+}
+.sv-movers-colhead {
+  display: none;
+  margin: 12px 0 0;
+}
+/* home: Gainers and Losers are tabs on phones, side by side from 768 px. */
+.sv-movers[data-variant="home"] .sv-movers-panel[data-state="inactive"] {
+  display: none;
+}
+@media (min-width: 768px) {
+  .sv-movers[data-variant="home"] .sv-movers-tabs {
+    display: none;
+  }
+  .sv-movers[data-variant="home"] .sv-movers-cols {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: 24px;
+  }
+  .sv-movers[data-variant="home"] .sv-movers-panel[data-state="inactive"] {
+    display: block;
+  }
+  .sv-movers[data-variant="home"] .sv-movers-colhead {
+    display: block;
+  }
+}
+
+/* SectorBars: name (120 px) and a diverging bar from a centre axis, the
+   value just beyond the bar's end. */
+.sv-sector-rows {
+  display: grid;
+}
+@media (min-width: 1024px) {
+  .sv-sector-rows[data-full] {
+    grid-auto-flow: column;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: repeat(var(--rows, 7), auto);
+    column-gap: 32px;
+  }
+}
+.sv-sector-row {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  align-items: center;
+  column-gap: 12px;
+  min-height: 32px;
+}
+.sv-sector-name {
+  overflow-wrap: anywhere;
+}
+.sv-sector-plot {
+  position: relative;
+  height: 32px;
+}
+.sv-sector-axis {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  left: 50%;
+  width: 1px;
+  background: var(--sv-control);
+}
+.sv-sector-bar {
+  position: absolute;
+  top: 50%;
+  width: calc((50% - 52px) * var(--w, 0));
+  min-width: 1px;
+  height: 10px;
+  margin-top: -5px;
+  border-radius: 1px;
+}
+.sv-sector-bar[data-dir="up"] {
+  left: 50%;
+  transform-origin: left center;
+}
+.sv-sector-bar[data-dir="down"] {
+  right: 50%;
+  transform-origin: right center;
+}
+.sv-sector-val {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  white-space: nowrap;
+}
+.sv-sector-val[data-dir="up"] {
+  left: calc(50% + (50% - 52px) * var(--w, 0) + 4px);
+}
+.sv-sector-val[data-dir="down"] {
+  right: calc(50% + (50% - 52px) * var(--w, 0) + 4px);
+}
+/* BreadthBar: 8 px, rising | unchanged | falling, then the counts. */
+.sv-breadth {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 12px;
+}
+.sv-breadth-bar {
+  display: flex;
+  flex: 0 0 160px;
+  height: 8px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--sv-surface-3);
+  transform-origin: left center;
+}
+/* Bars grow from their axis once, at 40% visible (600 ms). */
+#sv-public[data-motion="ok"] .sv-sector-rows[data-grow="wait"] .sv-sector-bar,
+#sv-public[data-motion="ok"] .sv-breadth[data-grow="wait"] .sv-breadth-bar {
+  transform: scaleX(0);
+}
+#sv-public[data-motion="ok"] .sv-sector-rows[data-grow="go"] .sv-sector-bar,
+#sv-public[data-motion="ok"] .sv-breadth[data-grow="go"] .sv-breadth-bar {
+  transition: transform var(--sv-dur-4, 600ms) var(--sv-ease-out, ease-out);
+}
+
+/* HeatGrid: equal tiles on a 2 px grid, at least 48 px tall.
+   - Phones (an opt-in overview; the sorted list is the default): up to 5
+     columns, never narrower than the spec's 64 px (4 columns in a padded
+     card at 390 px); the longest symbols may end in an ellipsis there.
+   - From 768 px: up to 8 columns, and 10 from 1024 px, never narrower than
+     80 px, so every symbol shows whole (the widest tracked one, HEROMOTOCO,
+     is 74.7 px at 12/16 weight 650 in Archivo's narrowest 82% cut, measured
+     in Edge): the Markets hub's c1-7 card gets 8 columns. */
+.sv-heat-tiles {
+  display: grid;
+  grid-template-columns: repeat(
+    auto-fill,
+    minmax(max(64px, calc((100% - 8px) / 5 - 0.1px)), 1fr)
+  );
+  gap: 2px;
+  margin-inline: 0;
+  padding: 0;
+  list-style: none;
+}
+@media (min-width: 768px) {
+  .sv-heat-tiles {
+    grid-template-columns: repeat(
+      auto-fill,
+      minmax(max(80px, calc((100% - 14px) / 8 - 0.1px)), 1fr)
+    );
+  }
+}
+@media (min-width: 1024px) {
+  .sv-heat-tiles {
+    grid-template-columns: repeat(
+      auto-fill,
+      minmax(max(80px, calc((100% - 18px) / 10 - 0.1px)), 1fr)
+    );
+  }
+}
+.sv-heat-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  padding: 4px 2px;
+  border-radius: 2px;
+  text-align: center;
+  text-decoration: none;
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 650;
+  font-stretch: 82%;
+  letter-spacing: -0.01em;
+  font-variant-numeric: tabular-nums;
+}
+/* A symbol wider than its tile (phones, or a future symbol wider than the
+   80 px floor) ends in an ellipsis; the tile's name and tooltip carry the
+   company in full. */
+.sv-heat-sym {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sv-heat-skeleton {
+  height: 252px;
+  margin-top: 12px;
+  border-radius: 4px;
+  background: var(--sv-surface-2);
+}
+.sv-heat-legend {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+.sv-heat-swatches {
+  display: flex;
+  gap: 2px;
+}
+.sv-heat-swatches > span {
+  width: 24px;
+  height: 12px;
+  border-radius: 2px;
+}
+.sv-heat-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 24px;
+  margin-top: 4px;
+}
+.sv-heat-toggles > button {
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+.sv-heat-list ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.sv-heat-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 24px;
+  align-items: center;
+  column-gap: 12px;
+  min-height: 44px;
+  border-bottom: 1px solid var(--sv-rule);
+}
+.sv-heat-swatch {
+  width: 24px;
+  height: 16px;
+  border-radius: 2px;
+}
+@media (max-width: 767.98px) {
+  /* Phones: the sorted list by default; "Show as tiles" swaps them. */
+  .sv-heatgrid:not([data-phone-view="tiles"]) .sv-heat-tiles,
+  .sv-heatgrid:not([data-phone-view="tiles"]) .sv-heat-caption,
+  .sv-heatgrid[data-phone-view="tiles"] .sv-heat-list,
+  .sv-heat-listtoggle {
+    display: none;
+  }
+}
+@media (min-width: 768px) {
+  /* From 768 px: the tiles, and "View as list" under them. */
+  .sv-heat-phonetoggle,
+  .sv-heatgrid:not([data-list-open]) .sv-heat-list {
+    display: none;
+  }
+}
+
+/* IpoBoard: stacked tables from 768 px, Radix Tabs below. */
+.sv-ipo-h3 {
+  margin: 0 0 4px;
+}
+.sv-ipo-panel + .sv-ipo-panel {
+  margin-top: 28px;
+}
+@media (max-width: 767.98px) {
+  .sv-ipo-panel[data-state="inactive"],
+  .sv-ipo-h3 {
+    display: none;
+  }
+  .sv-ipo-panel + .sv-ipo-panel {
+    margin-top: 0;
+  }
+}
+@media (min-width: 768px) {
+  .sv-ipo-tablist {
+    display: none;
+  }
+}
+.sv-ipo-table :is(th, td) {
+  text-align: left;
+}
+.sv-ipo-tag {
+  display: inline-block;
+  padding: 0 5px;
+  border: 1px solid var(--sv-rule);
+  border-radius: 4px;
+  color: var(--sv-fg-2);
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 650;
+  white-space: nowrap;
+  vertical-align: 1px;
+}
+.sv-ipo-sub {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+.sv-ipo-subbar {
+  display: inline-block;
+  width: 48px;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 1px;
+  background: var(--sv-surface-3);
+}
+.sv-ipo-subbar > span {
+  display: block;
+  height: 100%;
+  background: var(--sv-fg);
+}
+.sv-ipo-more > summary,
+.sv-chart-numbers > summary {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  color: var(--sv-fg);
+  cursor: pointer;
+}
+/* Phones: each IPO row is a two-line block (company + tag, then the rest). */
+@media (max-width: 767.98px) {
+  .sv-ipo-table thead {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .sv-ipo-table,
+  .sv-ipo-table tbody,
+  .sv-ipo-table tr {
+    display: block;
+  }
+  .sv-ipo-table tr {
+    padding: 10px 0;
+    border-bottom: 1px solid var(--sv-rule);
+  }
+  .sv-ipo-table tbody tr:last-child {
+    border-bottom: 0;
+  }
+  .sv-ipo-table tbody :is(th, td) {
+    display: inline;
+    height: auto;
+    padding: 0;
+    border: 0;
+  }
+  .sv-ipo-table tbody th {
+    display: block;
+    margin-bottom: 2px;
+  }
+  .sv-ipo-table tbody td {
+    /* Each cell is one unit ("Subscribed 3.4×"): the line breaks between
+       cells, never inside one (adjacent inline-blocks may wrap). */
+    display: inline-block;
+    white-space: nowrap;
+    color: var(--sv-fg-2);
+    font-size: 13px;
+    line-height: 18px;
+  }
+  .sv-ipo-table tbody td[data-label]::before {
+    content: attr(data-label) " ";
+  }
+  /* "₹292 – ₹307 · Closes 5 Nov 2026 · Subscribed 0.18×"; non-breaking
+     spaces, which the end of an inline-block keeps. */
+  .sv-ipo-table tbody td:not(:last-child)::after {
+    content: "\00a0·\00a0";
+  }
+  /* The two-line block of spec §5.10.3: the figure alone (bold from 1×),
+     without the 48 px bar, so "band · closes · subscribed" fits one line. */
+  .sv-ipo-table .sv-ipo-subbar {
+    display: none;
+  }
+}
+.sv-ipowatch-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.sv-ipowatch-row {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--sv-rule);
+}
+.sv-ipowatch-row:last-child {
+  border-bottom: 0;
+}
+
+/* MiniChart: a 1.5 px ink line over a 6% ink area and a hairline base. It
+   draws in once over 900 ms: on mount ("load") or on a view() timeline as
+   it scrolls in ("view"; drawn at once where unsupported). */
+.sv-mini {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  justify-items: start;
+}
+.sv-mini-svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  overflow: visible;
+}
+.sv-mini-area {
+  fill: var(--sv-fg);
+  fill-opacity: 0.06;
+}
+.sv-mini-base {
+  stroke: var(--sv-rule);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+.sv-mini-line {
+  fill: none;
+  stroke: var(--sv-fg);
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 1;
+  stroke-dashoffset: 0;
+}
+@keyframes sv-mini-draw {
+  from {
+    stroke-dashoffset: 1;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+#sv-public[data-motion="ok"] .sv-mini[data-draw="load"] .sv-mini-line {
+  animation: sv-mini-draw var(--sv-dur-5, 900ms) var(--sv-ease-out, ease-out) both;
+}
+@supports (animation-timeline: view()) {
+  /* Drawn by the time the chart has fully entered the viewport: a chart
+     the reader can see whole always shows its whole line. */
+  #sv-public[data-motion="ok"] .sv-mini[data-draw="view"] .sv-mini-line {
+    animation: sv-mini-draw linear both;
+    animation-timeline: view();
+    animation-range: entry 0% entry 100%;
+  }
+}
+/* Paper shows the final frame. */
+@media print {
+  .sv-mini-line {
+    animation: none !important;
+  }
+}
+
+/* PriceChart */
+.sv-chart-skeleton {
+  background: var(--sv-surface-2);
+}
+.sv-compare-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.sv-compare-legend > li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.sv-compare-key {
+  width: 14px;
+  height: 3px;
+  border-radius: 2px;
+  background: currentColor; /* series 1 is the text colour (ink, or light on a dark card) */
+}
+.sv-compare-key[data-slot="2"] {
+  background: var(--sv-series-2);
+}
+.sv-compare-key[data-slot="3"] {
+  background: var(--sv-series-3);
+}
+.sv-compare-key[data-slot="4"] {
+  background: var(--sv-series-4);
+}
+
+/* LiveChip: in a RuleHead aside from 768 px only. */
+.sv-livechip-host {
+  display: none;
+}
+@media (min-width: 768px) {
+  .sv-livechip-host {
+    display: inline;
+  }
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .sv-mk-link:hover {
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 3px;
+  }
+  a.sv-chip:hover {
+    border-color: var(--sv-control);
+  }
+  a.sv-heat-tile:hover {
+    box-shadow: inset 0 0 0 2px var(--sv-ink);
+  }
+  .sv-stamp-info:hover {
+    color: var(--sv-fg);
+  }
+}
+
+/* ── Reduced motion (spec §4.4, §6.9) ─────────────────────────────────────────
+   No pulse and no colour easing. The ticker becomes a still row that scrolls
+   sideways (the duplicate row goes), so every price stays reachable, and the
+   Pause controls go, since nothing moves. Pure CSS: no JS branch. */
 @media (prefers-reduced-motion: reduce) {
-  .sv-live-dot,
+  .sv-live-dot[data-beat]::after {
+    animation: none;
+  }
   .sv-marquee {
     animation: none;
+  }
+  .sv-marquee > [aria-hidden="true"] {
+    display: none;
+  }
+  .sv-marquee-track {
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scroll-snap-type: x proximity;
+    scrollbar-width: thin;
+  }
+  .sv-marquee li {
+    scroll-snap-align: start;
+  }
+  .sv-tk-pause {
+    display: none !important;
+  }
+  .sv-heat {
+    transition: none;
+  }
+  .sv-price[data-flash] {
+    animation: none;
+  }
+  .sv-mini-line {
+    animation: none !important;
+  }
+  .sv-sector-bar,
+  .sv-breadth-bar {
+    transition: none !important;
+    transform: none !important;
+  }
+}
+
+/* ══ Emerald Terminal (6 Nov 2026) ════════════════════════════════════════════
+   The fills above that name a light surface (tracks, skeletons, chips) take
+   the dark ground's own values inside the emerald and terminal scopes, so a
+   module reads right on the home desk, the heatmap band and the news
+   terminal panels. Figures and small labels are IBM Plex Mono. */
+:is(.sv-terminal, .sv-emerald) :is(.sv-dayrange-track, .sv-breadth-bar, .sv-ipo-subbar) {
+  background: var(--sv-rule);
+}
+:is(.sv-terminal, .sv-emerald) :is(.sv-heat-skeleton, .sv-chart-skeleton) {
+  background: rgb(255 255 255 / 0.06);
+}
+:is(.sv-terminal, .sv-emerald) .sv-chip {
+  background: rgb(255 255 255 / 0.04);
+  color: var(--sv-fg);
+}
+:is(.sv-terminal, .sv-emerald) .sv-dayrange-dot {
+  background: var(--sv-fg);
+}
+.sv-mk-table {
+  font-variant-numeric: tabular-nums lining-nums;
+}
+.sv-mk-table thead th {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.sv-heat-tile {
+  font-family: var(--font-mono);
+  font-stretch: 100%;
+  letter-spacing: 0;
+  border-radius: var(--sv-r-sm, 8px);
+}
+@media (hover: hover) and (pointer: fine) {
+  :is(.sv-terminal, .sv-emerald) a.sv-heat-tile:hover {
+    box-shadow: inset 0 0 0 2px var(--sv-fg);
+  }
+}
+/* Article and hub widget cards (frame.tsx): the soft emerald card shadow on
+   the public site only (the portal's previews stay flat). */
+#sv-public .sv-wcard {
+  box-shadow: var(--sv-shadow-card, 0 16px 40px rgb(3 68 45 / 0.12));
+}
+
+/* ── Stock list and Index table (quotes.tsx PriceTable; round 2) ────────────
+   One compact table in the article card: the Emerald Terminal data table
+   (mono figures right-aligned, 1 px rules, 11 px mono capitals in the head,
+   names in the text face) drawn only with the area-level names, so it reads
+   right on a light page (white card), inside .sv-terminal / .sv-emerald (the
+   terminal panel) and in the portal's light and dark previews.
+   It runs edge to edge in the card body, whose padding is 16 px, 20 px from
+   640 px (frame.tsx BODY), and scrolls inside its own box when it is wider
+   than the card (phones). The name column stays put while the figures
+   scroll (sticky, on the card's own colour), with a hairline on its edge
+   only while the box overflows (data-overflow, set by PriceTable). */
+.sv-wtable-scroll {
+  margin: -16px;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: thin;
+}
+@media (min-width: 640px) {
+  .sv-wtable-scroll {
+    margin: -16px -20px;
+  }
+}
+/* Focusable only while it scrolls; the card clips outside rings. */
+.sv-wtable-scroll:focus-visible {
+  outline: 2px solid var(--sv-focus);
+  outline-offset: -2px;
+}
+.sv-wtable {
+  width: 100%;
+  /* Separate borders: a sticky cell keeps its rule while the row scrolls. */
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 13px;
+  line-height: 18px;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+.sv-wtable :is(th, td) {
+  padding: 9px 8px;
+  border-bottom: 1px solid var(--border);
+  text-align: right;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.sv-wtable td {
+  font-family: var(--font-mono);
+}
+.sv-wtable thead th {
+  padding-block: 10px 6px;
+  color: var(--muted-foreground);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 16px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  vertical-align: bottom;
+}
+.sv-wtable tbody tr:last-child > * {
+  border-bottom: 0;
+}
+.sv-wtable :is(th, td):first-child {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  padding-left: 16px;
+  background: var(--card);
+  text-align: left;
+}
+.sv-wtable :is(th, td):last-child {
+  padding-right: 16px;
+}
+@media (min-width: 640px) {
+  .sv-wtable :is(th, td):first-child {
+    padding-left: 20px;
+  }
+  .sv-wtable :is(th, td):last-child {
+    padding-right: 20px;
+  }
+}
+.sv-wtable-scroll[data-overflow] .sv-wtable :is(th, td):first-child {
+  box-shadow: inset -1px 0 0 var(--border);
+}
+/* The row header: the name (wraps; at most about 14 em), then the symbol or
+   "volatility index", then any own pill and time, on 44 px rows. */
+.sv-wtable tbody th {
+  min-width: 8.5em;
+  max-width: 14em;
+  height: 44px;
+  font-weight: 600;
+  white-space: normal;
+}
+.sv-wtable-name {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+  overflow-wrap: anywhere;
+}
+/* A linked name takes the whole name cell as its hit area (44 px tall at
+   least); the sticky cell is its containing block. */
+.sv-wtable a.sv-wtable-name::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+.sv-wtable-sub {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted-foreground);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 400;
+  overflow-wrap: anywhere;
+}
+/* A word note ("volatility index") is text, not a code: the text face. */
+.sv-wtable-sub[data-note] {
+  font-family: inherit;
+  overflow-wrap: normal;
+}
+/* The day's range (the shared .sv-dayrange track) on the area names. */
+.sv-wtable .sv-dayrange-track {
+  background: var(--border);
+}
+.sv-wtable .sv-dayrange-prev {
+  background: var(--muted-foreground);
+}
+.sv-wtable .sv-dayrange-dot {
+  background: var(--foreground);
+}
+.sv-wtable .sv-dayrange-values {
+  gap: 12px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 16px;
+}
+@media (hover: hover) and (pointer: fine) {
+  .sv-wtable a.sv-wtable-name:hover {
+    text-decoration: underline;
+    text-decoration-thickness: 1px;
+    text-underline-offset: 3px;
   }
 }

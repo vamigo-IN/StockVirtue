@@ -1,8 +1,9 @@
 'use client';
 
-import { X } from 'lucide-react';
+import { ArrowDown, ArrowUp, X } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -152,23 +153,112 @@ export function RefChips({
   );
 }
 
+/**
+ * A list of picked refs in order (the stock list, the index table): each row
+ * moves up or down, or comes out. The order is the table's order on the
+ * story. A move keeps focus on the button pressed, so the arrows can be
+ * pressed again and again from the keyboard.
+ */
+export function OrderedRefs({
+  refs,
+  names,
+  label,
+  onChange,
+}: {
+  refs: string[];
+  /** Readers' names by ref, where known. */
+  names?: Record<string, string>;
+  /** What the list holds, for screen readers ("Stocks in the list"). */
+  label: string;
+  onChange: (refs: string[]) => void;
+}) {
+  if (!refs.length) return null;
+  const move = (from: number, to: number) => {
+    if (to < 0 || to >= refs.length) return;
+    const next = [...refs];
+    const [r] = next.splice(from, 1);
+    next.splice(to, 0, r);
+    onChange(next);
+  };
+  return (
+    <ol aria-label={label} className="divide-y rounded-md border">
+      {refs.map((r, i) => {
+        const sym = r.slice(r.indexOf(':') + 1);
+        const name = names?.[r] ?? sym;
+        const first = i === 0;
+        const last = i === refs.length - 1;
+        return (
+          <li key={r} className="flex items-center gap-2 py-1 pr-1 pl-3 text-sm">
+            <span className="w-5 shrink-0 font-mono text-xs text-muted-foreground tabular-nums">
+              {i + 1}
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block truncate font-medium">{name}</span>
+              <span className="block truncate font-mono text-xs text-muted-foreground">
+                {r}
+              </span>
+            </span>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              aria-label={`Move ${name} up`}
+              aria-disabled={first}
+              className="aria-disabled:opacity-40"
+              onClick={() => move(i, i - 1)}
+            >
+              <ArrowUp />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              aria-label={`Move ${name} down`}
+              aria-disabled={last}
+              className="aria-disabled:opacity-40"
+              onClick={() => move(i, i + 1)}
+            >
+              <ArrowDown />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              aria-label={`Remove ${name}`}
+              onClick={() => onChange(refs.filter((x) => x !== r))}
+            >
+              <X />
+            </Button>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
 /** One instrument from the curated market list (optionally of some kinds). */
 export function CuratedSelect({
   value,
   onChange,
   kinds,
+  exclude = [],
   label,
   id,
 }: {
   value: string;
   onChange: (ref: string) => void;
   kinds?: InstrumentKind[];
+  /** Refs not to offer (already picked). */
+  exclude?: string[];
   label: string;
   id: string;
 }) {
   const list = useMarketInstruments();
   const items = (list.data ?? []).filter(
-    (i) => i.isEnabled && (!kinds || kinds.includes(i.kind)),
+    (i) =>
+      i.isEnabled &&
+      (!kinds || kinds.includes(i.kind)) &&
+      !exclude.includes(refOf(i)),
   );
   const groups = (Object.keys(KIND_LABEL) as InstrumentKind[]).filter((k) =>
     items.some((i) => i.kind === k),

@@ -257,16 +257,6 @@ class _ReaderBody extends StatelessWidget {
   List<Widget> _after(BuildContext context, NewsArticle a) {
     final t = Theme.of(context).textTheme;
     return [
-      if (a.correctionNote != null)
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-          child: InfoBanner(
-            tone: BannerTone.warning,
-            icon: Icons.edit_note_rounded,
-            title: 'Correction',
-            message: a.correctionNote!,
-          ),
-        ),
       if (a.sources.isNotEmpty)
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 20, 16, 0),

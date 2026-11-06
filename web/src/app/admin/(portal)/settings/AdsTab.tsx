@@ -1,7 +1,7 @@
 'use client';
 
-import { Info } from 'lucide-react';
-import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Info, TriangleAlert } from 'lucide-react';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import {
   Card,
   CardContent,
@@ -43,7 +43,8 @@ export function AdsTab({
         <CardHeader>
           <CardTitle>Google AdSense</CardTitle>
           <CardDescription>
-            Ads on the public website (never in this portal or the app).
+            Ads on the website&apos;s news pages only (never on its other
+            pages, in this portal or in the app).
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -66,11 +67,17 @@ export function AdsTab({
           <SwitchRow
             id="autoAds"
             label="Show ads (Auto ads)"
-            hint="Loads AdSense on every public page and lets it place ads where it fits. Turn on after AdSense approves the site; choose ad formats in your AdSense account."
+            hint="Loads AdSense only on the news pages (stockvirtue.com/news and the pages under it) and lets it place ads where it fits there. Never on the home page, the policies, About or Contact. Turn on after AdSense approves the site."
             checked={g.form.autoAds}
             onChange={(v) => g.set('autoAds', v)}
             disabled={off}
           />
+          <p className="text-xs text-muted-foreground">
+            In your AdSense account (Ads → By site, then edit the site) you can
+            still choose the ad formats, turn off vignette and anchor ads, or
+            exclude more pages with page exclusions.
+          </p>
+          <p className="text-xs text-muted-foreground">Switching a service on, including one that was on before, makes every website visitor choose their cookies again.</p>
           <fieldset className="space-y-2">
             <legend className="text-sm font-medium">
               Visitors who haven&apos;t allowed advertising cookies
@@ -114,6 +121,19 @@ export function AdsTab({
               </label>
             ))}
           </fieldset>
+          <Alert>
+            <TriangleAlert />
+            {/* Wraps on phones: the default one-line clamp cut off "Code injection". */}
+            <AlertTitle className="line-clamp-none">
+              Don&apos;t paste AdSense code into Code injection
+            </AlertTitle>
+            <AlertDescription>
+              Code injection runs on every public page, so an AdSense snippet
+              there would show ads on the home page, the policies, About and
+              Contact too. The Publisher ID and the switch above are all
+              AdSense needs, and they keep ads on the news pages only.
+            </AlertDescription>
+          </Alert>
           <Alert>
             <Info />
             <AlertDescription>

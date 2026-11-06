@@ -8,13 +8,45 @@ import {
 } from '@nestjs/common';
 import { Response } from 'express';
 
+/**
+ * The body parser's own client errors (body-parser's `http-errors`, which
+ * carry `type` and a 4xx `status`), with the sentence each one answers.
+ * They are thrown before Nest's pipes run and aren't HttpExceptions, so
+ * without this they became 500s. The one that matters most is
+ * `entity.too.large`: a JSON body over the parser's limit (Nest's default
+ * 100 KB) now answers a bare 413 (no `code`), which the portal maps to
+ * "This page is too large to save. Shorten it, or split it into two pages."
+ * (W7 addendum §7.6).
+ */
+const BODY_PARSER_ERRORS: Record<string, string> = {
+  'entity.too.large': 'Request body is too large.',
+  'parameters.too.many': 'Request has too many parameters.',
+  'entity.parse.failed': 'Request body could not be read.',
+  'request.aborted': 'Request was aborted.',
+  'request.size.invalid': 'Request body did not match its declared size.',
+  'encoding.unsupported': 'Request body encoding is not supported.',
+  'charset.unsupported': 'Request body charset is not supported.',
+};
+
+/** The body parser's 4xx error as an HttpException with its own status, else null. */
+function bodyParserError(exception: unknown): HttpException | null {
+  if (!exception || typeof exception !== 'object') return null;
+  const { type, status } = exception as { type?: unknown; status?: unknown };
+  const text = typeof type === 'string' ? BODY_PARSER_ERRORS[type] : undefined;
+  if (!text || typeof status !== 'number' || status < 400 || status > 499) {
+    return null;
+  }
+  return new HttpException({ statusCode: status, message: text }, status);
+}
+
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
   private readonly logger = new Logger(AllExceptionsFilter.name);
 
-  catch(exception: unknown, host: ArgumentsHost) {
+  catch(caught: unknown, host: ArgumentsHost) {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
+    const exception = bodyParserError(caught) ?? caught;
     const isHttp = exception instanceof HttpException;
     const status = isHttp
       ? exception.getStatus()

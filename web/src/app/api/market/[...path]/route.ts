@@ -16,7 +16,9 @@ type Ctx = { params: Promise<{ path: string[] }> };
 const TTL: Record<string, number> = {
   snapshot: 5,
   ticker: 5,
-  quotes: 5,
+  // Curated values come from the stream, so a quote set can wait 30 s
+  // (spec §7.12): at most 2 broker calls a minute per set.
+  quotes: 30,
   movers: 15,
   sectors: 15,
   heatmap: 15,

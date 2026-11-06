@@ -1,16 +1,20 @@
 'use client';
 
 import { useQueries } from '@tanstack/react-query';
-import { Plus, Trash2 } from 'lucide-react';
-import { useState } from 'react';
+import { Plus, Sparkles, Trash2 } from 'lucide-react';
+import { useState, type ReactNode } from 'react';
 import { RelatedDialog } from '@/components/editor/EditorDialogs';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { api } from '@/portal/api';
+import { useMarketInstruments } from '@/portal/queries';
 import {
   DISCLAIMERS,
+  MAJOR_INDICES,
+  TABLE_ROWS,
   type WidgetConfig,
   type WidgetType,
 } from '@/components/widgets/meta';
@@ -19,6 +23,7 @@ import {
   CuratedChecklist,
   CuratedSelect,
   InstrumentPick,
+  OrderedRefs,
   RefChips,
   RefreshSelect,
   StockSearch,
@@ -32,6 +37,22 @@ const range = (from: number, to: number) =>
     value: from + i,
     label: String(from + i),
   }));
+
+/** A stock list's or an index table's rows: the API's checks, in plain words. */
+function tableProblem(refs: string[], what: 'stocks' | 'indices') {
+  if (refs.length < TABLE_ROWS.min) {
+    return refs.length === 1
+      ? `Add one more: a table needs at least two ${what}.`
+      : `Choose at least two ${what}.`;
+  }
+  if (refs.length > TABLE_ROWS.max) {
+    return `Choose up to ${TABLE_ROWS.max} ${what}.`;
+  }
+  const twice = refs.find((r, i) => refs.indexOf(r) !== i);
+  return twice
+    ? `${twice.slice(twice.indexOf(':') + 1)} is in the list twice. Remove one.`
+    : null;
+}
 
 /** Why a config can't be saved yet (null = ready). Mirrors the API's checks. */
 export function widgetProblem(
@@ -50,6 +71,10 @@ export function widgetProblem(
       return strs(c.symbols).length >= 2
         ? null
         : 'Choose at least two instruments.';
+    case 'stock_list':
+      return tableProblem(strs(c.symbols), 'stocks');
+    case 'index_table':
+      return tableProblem(strs(c.symbols), 'indices');
     case 'ipo':
       return c.view === 'issue' && !str(c.symbol).trim()
         ? 'Enter the IPO’s symbol.'
@@ -308,6 +333,10 @@ export function WidgetForm({
         </div>
       );
     }
+    case 'stock_list':
+      return <StockListForm config={config} set={set} refresh={refresh} />;
+    case 'index_table':
+      return <IndexTableForm config={config} set={set} refresh={refresh} />;
     case 'ipo':
       return (
         <div className="grid gap-4 sm:grid-cols-2">
@@ -632,6 +661,204 @@ function RelatedNewsForm({
           />
         </div>
       )}
+    </div>
+  );
+}
+
+// ── The two tables ─────────────────────────────────────────────────────────
+
+type TableFormProps = {
+  config: WidgetConfig;
+  set: (p: WidgetConfig) => void;
+  refresh: ReactNode;
+};
+
+/** The optional title and the day's-range switch both tables share. */
+function TableTitle({
+  id,
+  value,
+  placeholder,
+  set,
+}: {
+  id: string;
+  value: string;
+  placeholder: string;
+  set: (p: WidgetConfig) => void;
+}) {
+  return (
+    <div className="space-y-1.5">
+      <Label htmlFor={id}>Title (optional)</Label>
+      <Input
+        id={id}
+        value={value}
+        maxLength={60}
+        onChange={(e) => set({ title: e.target.value })}
+        placeholder={placeholder}
+      />
+      <p className="text-xs text-muted-foreground">
+        Left empty, the table is headed “{placeholder}”.
+      </p>
+    </div>
+  );
+}
+
+function DayRangeSwitch({
+  config,
+  set,
+}: {
+  config: WidgetConfig;
+  set: (p: WidgetConfig) => void;
+}) {
+  return (
+    <label className="flex items-start gap-2 text-sm">
+      <Checkbox
+        className="mt-0.5"
+        checked={config.dayRange !== false}
+        onCheckedChange={(v) => set({ dayRange: v === true })}
+      />
+      <span>
+        Show the day’s range
+        <span className="block text-xs text-muted-foreground">
+          The low and the high so far today, where the data has them.
+        </span>
+      </span>
+    </label>
+  );
+}
+
+function StockListForm({ config, set, refresh }: TableFormProps) {
+  const refs = strs(config.symbols);
+  // Names from the search, for the list here only (dropped before saving).
+  const names = (config._names ?? {}) as Record<string, string>;
+  const full = refs.length >= TABLE_ROWS.max;
+  return (
+    <div className="space-y-4">
+      <TableTitle
+        id="w-sl-title"
+        value={str(config.title)}
+        placeholder="Stock prices"
+        set={set}
+      />
+      <div className="space-y-1.5">
+        <Label htmlFor="w-sl-add">
+          Stocks ({TABLE_ROWS.min} to {TABLE_ROWS.max})
+        </Label>
+        <p className="text-xs text-muted-foreground">
+          The table lists them in this order. Use the arrows to change it.
+        </p>
+        <OrderedRefs
+          refs={refs}
+          names={names}
+          label="Stocks in the list"
+          onChange={(next) => set({ symbols: next })}
+        />
+        {full ? (
+          <p className="text-xs text-muted-foreground">
+            That’s the most a list can hold. Remove a stock to add another.
+          </p>
+        ) : (
+          <StockSearch
+            id="w-sl-add"
+            exclude={refs}
+            placeholder={
+              refs.length
+                ? 'Add another stock'
+                : 'Search NSE companies, e.g. Infosys'
+            }
+            onPick={(ref, name) =>
+              !refs.includes(ref) &&
+              set({
+                symbols: [...refs, ref],
+                _names: name ? { ...names, [ref]: name } : names,
+              })
+            }
+          />
+        )}
+      </div>
+      <DayRangeSwitch config={config} set={set} />
+      {refresh}
+    </div>
+  );
+}
+
+function IndexTableForm({ config, set, refresh }: TableFormProps) {
+  const refs = strs(config.symbols);
+  const list = useMarketInstruments();
+  const indices = (list.data ?? []).filter(
+    (i) => i.isEnabled && i.kind === 'INDEX',
+  );
+  const names: Record<string, string> = Object.fromEntries(
+    indices.map((i) => [`${i.exchange}:${i.symbol}`, i.name]),
+  );
+  // The preset keeps the major indices that are on the market list.
+  const majors = MAJOR_INDICES.filter((r) => names[r]);
+  const onMajors =
+    refs.length === majors.length && majors.every((r, i) => refs[i] === r);
+  const room = refs.length < TABLE_ROWS.max;
+  const more = indices.some((i) => !refs.includes(`${i.exchange}:${i.symbol}`));
+  return (
+    <div className="space-y-4">
+      <TableTitle
+        id="w-it-title"
+        value={str(config.title)}
+        placeholder="Indices"
+        set={set}
+      />
+      <fieldset className="space-y-2">
+        <legend className="text-sm font-medium">
+          Indices ({TABLE_ROWS.min} to {TABLE_ROWS.max})
+        </legend>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={majors.length < TABLE_ROWS.min || onMajors}
+            onClick={() => set({ symbols: [...majors] })}
+          >
+            <Sparkles /> Major indices
+          </Button>
+          <span className="text-xs text-muted-foreground">
+            {list.isPending
+              ? 'Loading the market list…'
+              : majors.length >= TABLE_ROWS.min
+                ? `${majors.map((r) => names[r]).join(', ')}${refs.length && !onMajors ? '. Replaces the list below.' : '.'}`
+                : 'Too few of the major indices are on the market list.'}
+          </span>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Indices come from the market list. The table lists them in this
+          order; use the arrows to change it.
+        </p>
+        <OrderedRefs
+          refs={refs}
+          names={names}
+          label="Indices in the table"
+          onChange={(next) => set({ symbols: next })}
+        />
+        {room && more ? (
+          <CuratedSelect
+            // A fresh select after each change: it always reads "Choose…".
+            key={refs.join('|')}
+            id="w-it-add"
+            label="Add an index"
+            kinds={['INDEX']}
+            exclude={refs}
+            value=""
+            onChange={(v) => !refs.includes(v) && set({ symbols: [...refs, v] })}
+          />
+        ) : !room ? (
+          <p className="text-xs text-muted-foreground">
+            That’s the most a table can hold. Remove an index to add another.
+          </p>
+        ) : indices.length ? (
+          <p className="text-xs text-muted-foreground">
+            Every index on the market list is in the table.
+          </p>
+        ) : null}
+      </fieldset>
+      <DayRangeSwitch config={config} set={set} />
+      {refresh}
     </div>
   );
 }

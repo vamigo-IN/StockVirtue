@@ -1,0 +1,537 @@
+/* ============================================================================
+   The story page (spec §5.12, §4.9). W4's styles: the story grid with its
+   named rows, the hero, the head furniture, the StocksStrip scroller, the
+   single ShareBar in its three forms, and the rail's sticky zone.
+   Colours only through the semantic --sv-* names, so the page follows the
+   palette switch. Breakpoints: 640 / 768 / 1024 / 1280 (spec §3.4).
+   ========================================================================== */
+
+/* ── The grid: 12 / 8 / 4 columns (the container's own --sv-cols), named
+   rows head · hero · body · share · end, plus rail and panel, which hold
+   the rail modules and the app panel on phones (their DOM order: AuthorBox,
+   rail modules, TryItPanel; the rail row is empty from 768 px), and a last
+   flexible fill row. The share row is reserved at the bar's height below
+   1280 so the resting bar never covers the text; 0 px from 1280, where the
+   bar is a column.
+   The fill row: from 768 px the rail spans body → fill. When the rail is
+   taller than the story beside it (a short story), the grid gives the
+   extra height to the one flexible row it crosses, so the space opens
+   under the app panel instead of as a hole between the AuthorBox and the
+   panel. Nothing else crosses it, so it is 0 px tall otherwise. ──────── */
+.grid {
+  --sv-share-row: calc(60px + env(safe-area-inset-bottom));
+  display: grid;
+  grid-template-columns: repeat(var(--sv-cols), minmax(0, 1fr));
+  column-gap: var(--sv-gutter);
+  grid-template-rows:
+    [head] auto [hero] auto [body] auto [share] var(--sv-share-row)
+    [end] auto [rail] auto [panel] auto [fill] 1fr;
+}
+.grid > * {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+.head {
+  grid-row: head;
+  padding-top: 24px;
+}
+.hero {
+  grid-row: hero;
+  margin-top: 24px;
+}
+.body {
+  grid-row: body;
+}
+.end {
+  grid-row: end;
+  padding-top: 32px;
+}
+.rail {
+  grid-row: rail;
+  margin-top: 48px;
+}
+.panel {
+  grid-row: panel;
+  margin-top: 40px;
+}
+
+@media (min-width: 768px) {
+  .head {
+    padding-top: 40px;
+  }
+  .hero {
+    margin-top: 32px;
+  }
+  .grid > .body,
+  .grid > .end,
+  .grid > .panel,
+  .grid > .shareTrack {
+    grid-column: 1 / 6;
+  }
+  .grid > .rail {
+    grid-column: 6 / -1;
+    grid-row: body / -1;
+    margin-top: 32px;
+    display: flex;
+    flex-direction: column;
+  }
+}
+@media (min-width: 1024px) {
+  .grid > .head,
+  .grid > .hero {
+    grid-column: 1 / 10;
+  }
+  .grid > .body,
+  .grid > .end,
+  .grid > .panel,
+  .grid > .shareTrack {
+    grid-column: 1 / 9;
+  }
+  .grid > .rail {
+    grid-column: 9 / -1;
+  }
+}
+@media (min-width: 1280px) {
+  .grid {
+    --sv-share-row: 0px;
+  }
+  .end {
+    padding-top: 48px;
+  }
+  .grid > .head,
+  .grid > .hero {
+    grid-column: 2 / 11;
+  }
+  .grid > .body,
+  .grid > .end,
+  .grid > .panel {
+    grid-column: 2 / 9;
+  }
+}
+
+/* ── Head ───────────────────────────────────────────────────────────────── */
+.standfirst {
+  max-width: 36em;
+}
+@media (min-width: 1024px) {
+  /* c2–9 inside the head's c2–10 (8 of its 9 columns). */
+  .standfirst {
+    max-width: calc((100% + var(--sv-gutter)) * 8 / 9 - var(--sv-gutter));
+  }
+}
+
+/* The byline's avatar: a photo, or initials on green-100 in green-900. */
+.avatar {
+  background: var(--sv-green-100);
+  color: var(--sv-green-900);
+}
+
+/* The retraction notice: white, a 1 px line, a 3 px left rule. */
+.note {
+  background: var(--sv-surface);
+  border: 1px solid var(--sv-rule);
+  border-left-width: 3px;
+  padding: 12px 16px;
+}
+.retraction {
+  border-left-color: var(--sv-danger);
+}
+
+/* ── Hero: 3:2, or the picture's own ratio when it is wider (from 768 px);
+   phones run it full bleed at 16:9. The caption spans c2–8 (7 of the
+   hero's 9 columns) from 1024 px. ───────────────────────────────────── */
+.heroMedia {
+  aspect-ratio: 16 / 9;
+  margin-inline: calc(-1 * var(--sv-margin));
+  overflow: hidden;
+  background: var(--sv-surface-2);
+}
+.heroMedia > img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.heroCaption {
+  margin-top: 8px;
+}
+@media (min-width: 768px) {
+  .heroMedia {
+    aspect-ratio: var(--sv-hero-ratio, 3 / 2);
+    margin-inline: 0;
+    border-radius: var(--sv-r-xs);
+  }
+}
+@media (min-width: 1024px) {
+  .heroCaption {
+    max-width: calc((100% + var(--sv-gutter)) * 7 / 9 - var(--sv-gutter));
+  }
+}
+
+/* ── StocksStrip: one row of chips and the Stamp after them; below 768 the
+   chips scroll sideways with snap and an edge fade (the fade sits in the
+   page margins, so a chip at rest is never faded). ──────────────────── */
+.stripRow {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 8px;
+  margin: 8px calc(-1 * var(--sv-margin)) 0;
+  padding: 0 var(--sv-margin);
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+  scroll-padding-inline: var(--sv-margin);
+  scrollbar-width: none;
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    #000 var(--sv-margin),
+    #000 calc(100% - var(--sv-margin)),
+    transparent 100%
+  );
+  mask-image: linear-gradient(
+    to right,
+    transparent 0,
+    #000 var(--sv-margin),
+    #000 calc(100% - var(--sv-margin)),
+    transparent 100%
+  );
+}
+.stripRow::-webkit-scrollbar {
+  display: none;
+}
+.stripRow > li {
+  flex: none;
+  scroll-snap-align: start;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+@media (min-width: 768px) {
+  .stripRow {
+    flex-wrap: wrap;
+    margin-inline: 0;
+    padding: 0;
+    overflow: visible;
+    -webkit-mask-image: none;
+    mask-image: none;
+  }
+}
+
+/* ── The single ShareBar (spec §5.12). One instance, placed by this grid
+   through its track: the track fills the bar's grid area and the bar is
+   sticky inside it. A sticky item may only move inside the box that
+   contains it, and browsers take a grid item's box to be the whole grid,
+   not its grid area (measured in Edge, 5 Nov 2026: a bar placed straight
+   in the grid stuck over the headline and past the body's end). The track
+   gives the bar the spec's bounds in every browser:
+   - below 1280 the area spans the body and share rows; the bar rests at
+     its end (the reserved share row) and holds the screen's bottom edge
+     only while the body is on screen;
+   - from 1280 the area is c1 beside the body (body / share, 0 px share
+     row); the bar is the sticky icon column, released when the body ends.
+   The track lets pointer events through to the body it overlaps; the bar
+   takes them back.
+   The bar's three forms:
+   - compact (below 640, and wherever the bar is narrower than the six
+     pills, as in the 472 px tablet body): [Share] WhatsApp [Copy link] More;
+   - row (from 640 when the six pills fit): icon + text pills;
+   - column (>= 1280): six 44 × 44 icon buttons with sr-only names.
+   The bar is a size container, so the form follows its own width. ───── */
+.shareTrack {
+  grid-row: body / end;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  pointer-events: none;
+}
+.shareBar {
+  position: sticky;
+  bottom: 0;
+  z-index: var(--sv-z-sharebar);
+  container-type: inline-size;
+  pointer-events: auto;
+  background: var(--sv-surface);
+  border-top: 1px solid var(--sv-rule);
+  /* 1 + 7 + 44 + 8 = 60 px: exactly the reserved share row. */
+  padding: 7px 0 calc(8px + env(safe-area-inset-bottom));
+}
+@media (max-width: 639.98px) {
+  .grid > .shareTrack {
+    margin-inline: calc(-1 * var(--sv-margin));
+  }
+  .shareBar {
+    padding-inline: var(--sv-margin);
+  }
+}
+.shareList {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.shareList > li {
+  display: flex;
+}
+.shareBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+  min-width: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--sv-fg);
+  font: inherit;
+  text-decoration: none;
+  cursor: pointer;
+}
+/* The visible pill inside the 44 px hit area: 36 px, padding-inline 10,
+   a 16 px icon, a 6 px gap, Archivo 14 / 560. */
+.sharePill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 36px;
+  min-width: 36px;
+  padding-inline: 10px;
+  border: 1px solid var(--sv-rule);
+  border-radius: 999px;
+  background: var(--sv-surface);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 560;
+  line-height: 20px;
+  white-space: nowrap;
+  transition: border-color var(--sv-dur-1) ease-out;
+}
+.shareBtn:hover .sharePill,
+.shareBtn[aria-expanded="true"] .sharePill {
+  border-color: var(--sv-control);
+}
+.shareIcon {
+  flex: none;
+  width: 16px;
+  height: 16px;
+}
+/* X's letter stands in for its glyph in the icon column only (no
+   official X file yet, lead decision 4). */
+.letter {
+  display: none;
+}
+
+/* Visually hidden, still the accessible name. */
+.iconOnly .shareText,
+.hiddenText {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+/* Compact (the default): WhatsApp and More are icon-only circles, and X,
+   LinkedIn and Facebook wait behind More. */
+.iconOnly .sharePill {
+  width: 36px;
+  padding-inline: 0;
+}
+.shareList > .extra {
+  display: none;
+}
+
+/* Row: all six as icon + text pills, once they fit (585 px measured with
+   the Share pill, inside the 592 px content width at 640). */
+@container (min-width: 585px) {
+  .shareList > .extra {
+    display: flex;
+  }
+  .shareList > .more {
+    display: none;
+  }
+  .iconOnly .sharePill {
+    width: auto;
+    padding-inline: 10px;
+  }
+  .iconOnly .shareText {
+    position: static;
+    width: auto;
+    height: auto;
+    margin: 0;
+    overflow: visible;
+    clip: auto;
+  }
+}
+
+/* Column (>= 1280): the sticky icon column in c1, six 44 x 44 buttons with
+   sr-only names. No size containment here: the column's width is c1's. */
+@media (min-width: 1280px) {
+  .grid > .shareTrack {
+    grid-column: 1;
+    grid-row: body / share;
+    justify-content: flex-start;
+  }
+  .shareBar {
+    top: calc(var(--sv-chrome-h) + 24px);
+    bottom: auto;
+    container-type: normal;
+    background: none;
+    border-top: 0;
+    padding: 0;
+  }
+  /* Flush with c1's start, the page margin the logo sits on. */
+  .shareList {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .shareList > .extra {
+    display: flex;
+  }
+  .shareList > .more {
+    display: none;
+  }
+  .sharePill,
+  .iconOnly .sharePill {
+    width: 44px;
+    height: 44px;
+    padding-inline: 0;
+  }
+  .shareText,
+  .iconOnly .shareText {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+  .letter {
+    display: inline;
+  }
+}
+
+/* The More popover's list. */
+.moreList {
+  margin: 0;
+  padding: 4px 0;
+  list-style: none;
+  min-width: 200px;
+}
+.moreLink {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding-inline: 12px;
+  color: var(--sv-fg);
+  text-decoration: none;
+  border-radius: var(--sv-r-sm);
+}
+.moreLink:hover {
+  background: var(--sv-surface-2);
+}
+
+/* ── The rail (from 768 px a flex column spanning body → panel): the sticky
+   zone (flex: 1) is the sticky module's containing block, so the module
+   sticks while the body scrolls and is released before the foot, which
+   sits beside the story's end and never sticks. ──────────────────────── */
+.stickyZone {
+  flex: 1 0 auto;
+}
+.foot > * + * {
+  margin-top: 40px;
+}
+.stickyZone:not(:empty) + .foot {
+  margin-top: 40px;
+}
+@media (min-width: 768px) {
+  .sticky {
+    position: sticky;
+    top: var(--sv-sticky-top);
+  }
+}
+@media (min-width: 1024px) {
+  .sticky {
+    top: calc(var(--sv-chrome-h) + 24px);
+  }
+}
+
+/* The lead card's price block keeps its final height while it loads or
+   when the quote is missing (spec §5.12). */
+.leadPrice {
+  min-height: 124px;
+}
+
+/* ── Tags: 32 px chips padded to a 44 px hit area. ─────────────────────── */
+.tag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  text-decoration: none;
+  color: var(--sv-fg);
+}
+.tagChip {
+  display: inline-flex;
+  align-items: center;
+  height: 32px;
+  padding-inline: 10px;
+  border: 1px solid var(--sv-rule);
+  border-radius: var(--sv-r-xs);
+  transition: border-color var(--sv-dur-1) ease-out;
+}
+.tag:hover .tagChip {
+  border-color: var(--sv-control);
+}
+
+/* AuthorBox bio: Source Serif 17/27. */
+.bio {
+  font-family: var(--font-serif);
+  font-size: 17px;
+  line-height: 27px;
+}
+
+/* ── Emerald Terminal (6 Nov 2026) ─────────────────────────────────────────
+   The story reads on a white band laid over the mint ground of the news
+   pages, its foot rounded with the 40 px band corners; the related stories
+   follow on the mint in their own white sheets. The hero takes the card
+   corners, the notes the inset accent, the bio the sans face. */
+.reading {
+  background: var(--sv-surface);
+  border-radius: 0 0 var(--sv-r-band, 40px) var(--sv-r-band, 40px);
+  padding-bottom: 40px;
+}
+@media (min-width: 768px) {
+  .heroMedia {
+    border-radius: var(--sv-r-lg, 16px);
+  }
+}
+.note {
+  border-left-width: 1px;
+  border-radius: 12px;
+  padding: 12px 16px 12px 19px;
+}
+.retraction {
+  box-shadow: inset 3px 0 0 var(--sv-danger);
+}
+.bio {
+  font-family: var(--font-sans);
+}
+.tagChip {
+  border-radius: var(--sv-r-sm, 8px);
+}
+@media (min-width: 1280px) {
+  /* The icon column's pills keep their white fill on the white band. */
+  .sharePill {
+    background: var(--sv-surface);
+  }
+}

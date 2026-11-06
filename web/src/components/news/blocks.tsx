@@ -1,219 +1,148 @@
-import { ArrowRight, ChevronLeft, ChevronRight, Newspaper } from 'lucide-react';
 import Link from 'next/link';
+import { Fragment, type ReactNode } from 'react';
+import { Container } from '@/components/public/Container';
 import { cn } from '@/lib/utils';
-import { cardTime } from '@/news/format';
 import { newsPath } from '@/news/routes';
 import type { NewsCard } from '@/news/types';
+import { BreakingChip, StoryRankItem } from './StoryCard';
+import s from './StoryCard.module.css';
 
-/** Width and gutters shared by every news page (16 px on phones). */
-export function Container({
+/**
+ * News furniture (spec §4.9). Server components: the rank items read
+ * cardTime(), so a client component never imports this file (it imports
+ * '@/components/public/Container' and the other primitives directly).
+ */
+
+/**
+ * The breaking strip (spec §5.9.4): `<section aria-label="Breaking news">`
+ * in the page container, a white box with a 3 px --sv-breaking left rule
+ * and padding 12/16. The "Breaking" chip, then up to three headline links
+ * (head-3 serif, hairline-separated): in one row from 768 px, stacked
+ * below. No pulse.
+ */
+export function BreakingBar({
+  items,
   className,
-  children,
 }: {
+  items: NewsCard[];
   className?: string;
-  children: React.ReactNode;
 }) {
-  return (
-    <div
-      className={cn('mx-auto w-full max-w-[1160px] px-4 sm:px-6', className)}
-    >
-      {children}
-    </div>
-  );
-}
-
-export function SectionHeader({
-  title,
-  href,
-  linkLabel = 'View all',
-  id,
-}: {
-  title: string;
-  href?: string;
-  linkLabel?: string;
-  id?: string;
-}) {
-  return (
-    <div className="mb-5 flex items-end justify-between gap-4 border-b-2 border-foreground pb-2">
-      <h2 id={id} className="text-xl font-bold sm:text-2xl">
-        {title}
-      </h2>
-      {href && (
-        <Link
-          href={href}
-          className="group inline-flex shrink-0 items-center gap-1 text-sm font-medium text-primary hover:underline"
-        >
-          {linkLabel}
-          <ArrowRight className="size-4 transition-transform group-hover:translate-x-0.5" />
-          <span className="sr-only"> of {title}</span>
-        </Link>
-      )}
-    </div>
-  );
-}
-
-/** The amber strip at the top of the homepage. */
-export function BreakingBar({ items }: { items: NewsCard[] }) {
   if (!items.length) return null;
   return (
-    <section aria-label="Breaking news" className="bg-ink text-ink-foreground">
-      <Container className="flex items-start gap-3 py-3 sm:items-center">
-        <span className="mt-0.5 inline-flex shrink-0 items-center gap-1.5 rounded-sm bg-alert px-2 py-0.5 font-mono text-[11px] font-bold tracking-[0.1em] text-ink uppercase sm:mt-0">
-          <span className="sv-live-dot size-1.5 rounded-full bg-ink" />
-          Breaking
-        </span>
-        <ul className="flex min-w-0 flex-col gap-1 sm:flex-row sm:gap-6">
-          {items.map((c) => (
-            <li key={c.id} className="min-w-0">
-              <Link
-                href={newsPath.article(c.slug)}
-                className="line-clamp-2 text-sm font-medium hover:text-glow hover:underline sm:line-clamp-1"
-              >
+    <Container as="section" aria-label="Breaking news" className={className}>
+      <div className={cn('bg-surface px-4 py-3 md:flex md:items-baseline md:gap-4', s.breakingBar)}>
+        <BreakingChip className="shrink-0" />
+        <ul className="mt-2 min-w-0 md:mt-0 md:flex md:flex-1">
+          {items.slice(0, 3).map((c) => (
+            <li
+              key={c.id}
+              className={cn(
+                't-head-3 border-t border-rule py-2 text-fg first:border-t-0 first:pt-0 last:pb-0 md:min-w-0 md:flex-1 md:border-t-0 md:border-l md:px-4 md:py-0 md:first:border-l-0 md:first:pl-0 md:last:pr-0',
+                s.hl,
+              )}
+            >
+              <Link href={newsPath.article(c.slug)} className={s.inlineLink}>
                 {c.title}
               </Link>
             </li>
           ))}
         </ul>
-      </Container>
-    </section>
+      </div>
+    </Container>
   );
 }
 
-/** Most-read list: big mono numerals, as on a market board. */
+/**
+ * The most-read list (spec §4.8, §5.9.2): an `<ol>` of StoryRankItem with
+ * h3 headlines (story headlines are h3 on /news). One column on phones,
+ * two CSS columns on tablets and, with `columns`, one row of five from
+ * 1024 px (6 to 10 stories: two rows of five; 11 or 12: rows of six).
+ * Every item has a top hairline, so both tablet columns start alike. Rows
+ * pad 12 px above and below on phones and 16 px from 768 px (lead
+ * decision, 5 Nov 2026: the phone /news length).
+ */
 export function TrendingList({
   items,
   columns = false,
+  className,
 }: {
   items: NewsCard[];
+  /** The /news band: tablet columns and a row of five from 1024 px. */
   columns?: boolean;
+  className?: string;
 }) {
   return (
     <ol
       className={cn(
-        'grid gap-x-8',
-        columns ? 'sm:grid-cols-2 lg:grid-cols-5' : 'grid-cols-1',
+        columns &&
+          cn(
+            'md:columns-2 md:gap-x-6 lg:grid lg:columns-auto lg:gap-x-8',
+            items.length > 10 ? 'lg:grid-cols-6' : 'lg:grid-cols-5',
+          ),
+        className,
       )}
     >
       {items.map((c, i) => (
-        <li
-          key={c.id}
-          className="relative flex gap-3 border-b border-border py-4 lg:border-b-0"
-        >
-          <span
-            aria-hidden="true"
-            className="font-mono text-3xl leading-none font-bold text-primary/80 tabular-nums"
-          >
-            {i + 1}
-          </span>
-          <div className="min-w-0">
-            <h3 className="text-[15px] leading-snug font-semibold">
-              <Link
-                href={newsPath.article(c.slug)}
-                className="headline-link after:absolute after:inset-0 after:content-['']"
-              >
-                {c.title}
-              </Link>
-            </h3>
-            <p className="mt-1.5 text-xs text-muted-foreground">
-              <time dateTime={c.publishedAt}>{cardTime(c.publishedAt)}</time>
-            </p>
-          </div>
+        <li key={c.id} className="break-inside-avoid border-t border-rule py-3 md:py-4">
+          <StoryRankItem card={c} rank={i + 1} />
         </li>
       ))}
     </ol>
   );
 }
 
-export function AppPromo({
-  playUrl,
-  title = 'Read it here. Practise it in the app.',
-  compact = false,
-}: {
-  playUrl: string;
-  title?: string;
-  compact?: boolean;
-}) {
-  return (
-    <aside
-      aria-label="The StockVirtue app"
-      className={cn(
-        'relative overflow-hidden rounded-xl bg-ink text-ink-foreground',
-        compact ? 'p-6' : 'p-6 sm:p-10',
-      )}
-    >
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute inset-0 bg-[linear-gradient(rgba(34,197,94,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(34,197,94,0.08)_1px,transparent_1px)] bg-[size:32px_32px]"
-      />
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute -right-24 -bottom-24 size-72 rounded-full bg-glow/20 blur-3xl"
-      />
-      <div
-        className={cn(
-          'relative flex flex-col gap-5',
-          !compact && 'sm:flex-row sm:items-center sm:justify-between',
-        )}
-      >
-        <div className="max-w-xl">
-          <p className="font-mono text-[11px] tracking-[0.12em] text-glow uppercase">
-            StockVirtue app · virtual money
-          </p>
-          <h2
-            className={cn(
-              'mt-2 font-bold',
-              compact ? 'text-xl' : 'text-2xl sm:text-3xl',
-            )}
-          >
-            {title}
-          </h2>
-          <p className="mt-2 text-sm leading-relaxed text-ink-muted">
-            Trade the stories you read with ₹10 lakh of virtual money, at live
-            NSE and BSE prices. Real order types, zero real risk.
-          </p>
-        </div>
-        <a
-          href={playUrl}
-          target="_blank"
-          rel="noopener"
-          className="inline-flex shrink-0 items-center justify-center gap-2 self-start rounded-lg bg-glow px-5 py-3 text-sm font-bold text-ink transition-colors hover:bg-white focus-visible:outline-white"
-        >
-          Get it on Google Play
-        </a>
-      </div>
-    </aside>
-  );
-}
-
+/**
+ * An empty or error state (spec §4.9): the existing copy in a 1 px dashed
+ * --sv-line-strong box on paper, radius 12, padding 32, with a `title`
+ * heading and a `small` body. Left-aligned, no illustration.
+ * `headingLevel` (additive): h2 by default; h3 inside a section with its
+ * own h2 (Learn's "All explainers").
+ */
 export function EmptyState({
   title,
   children,
+  headingLevel = 'h2',
+  className,
 }: {
   title: string;
-  children?: React.ReactNode;
+  children?: ReactNode;
+  headingLevel?: 'h2' | 'h3';
+  className?: string;
 }) {
+  const H = headingLevel;
   return (
-    <div className="flex flex-col items-center rounded-xl border border-dashed border-border bg-paper px-6 py-14 text-center">
-      <Newspaper className="size-8 text-muted-foreground" aria-hidden="true" />
-      <h2 className="mt-3 text-lg font-semibold">{title}</h2>
-      {children && (
-        <div className="mt-1 max-w-md text-sm text-muted-foreground">
-          {children}
-        </div>
+    <div
+      className={cn(
+        'rounded-[16px] border border-dashed border-line-strong bg-surface p-8',
+        className,
       )}
+    >
+      <H className={cn('t-title text-fg', s.hl)}>{title}</H>
+      {children ? <div className="t-small mt-2 max-w-[34em] text-fg-2">{children}</div> : null}
     </div>
   );
 }
 
-/** Numbered pages with Newer / Older, as links crawlers can follow. */
+/**
+ * Numbered pages with Newer / Older (spec §4.9), as links crawlers can
+ * follow: `nav aria-label="Pages"`. Newer and Older are quiet links
+ * (rel prev / next). From 640 px: number cells 44 × 44, radius 8, each
+ * named "Page {n}"; the current one is ink with white text and
+ * aria-current="page". They show the first and last pages and the current
+ * page ±1, with "…" between. Below 640 px (lead decision, 5 Nov 2026):
+ * one line, Newer · "Page {n} of {N}" · Older, because seven cells plus
+ * Newer and Older need about 408 px and a phone has 358.
+ */
 export function Pagination({
   page,
   totalPages,
   hrefFor,
+  className,
 }: {
   page: number;
   totalPages: number;
   hrefFor: (page: number) => string;
+  className?: string;
 }) {
   if (totalPages <= 1) return null;
   const nums = new Set<number>([1, totalPages]);
@@ -222,79 +151,86 @@ export function Pagination({
   }
   const sorted = [...nums].sort((a, b) => a - b);
   const cell =
-    'inline-flex h-10 min-w-10 items-center justify-center rounded-md px-3 text-sm font-medium';
+    't-num font-mono inline-flex size-11 items-center justify-center rounded-[8px] text-fg';
+  const quiet = 'sv-quiet t-small inline-flex min-h-11 items-center px-2';
   return (
-    <nav
-      aria-label="Pages"
-      className="mt-10 flex flex-wrap items-center justify-center gap-1"
-    >
-      {page > 1 ? (
-        <Link
-          href={hrefFor(page - 1)}
-          rel="prev"
-          className={cn(cell, 'gap-1 hover:bg-muted')}
-        >
-          <ChevronLeft className="size-4" /> Newer
-        </Link>
-      ) : null}
-      {sorted.map((p, i) => (
-        <span key={p} className="contents">
-          {i > 0 && p - sorted[i - 1] > 1 && (
-            <span className="px-1 text-muted-foreground" aria-hidden="true">
-              …
-            </span>
-          )}
-          {p === page ? (
-            <span
-              aria-current="page"
-              className={cn(cell, 'bg-foreground text-background')}
-            >
-              {p}
-            </span>
-          ) : (
-            <Link
-              href={hrefFor(p)}
-              className={cn(cell, 'hover:bg-muted')}
-              aria-label={`Page ${p}`}
-            >
-              {p}
+    <nav aria-label="Pages" className={cn('mt-10', className)}>
+      <ul className="flex items-center gap-1 max-sm:justify-between sm:flex-wrap">
+        {page > 1 ? (
+          <li className="sm:mr-2">
+            <Link href={hrefFor(page - 1)} rel="prev" className={quiet}>
+              Newer
             </Link>
-          )}
-        </span>
-      ))}
-      {page < totalPages ? (
-        <Link
-          href={hrefFor(page + 1)}
-          rel="next"
-          className={cn(cell, 'gap-1 hover:bg-muted')}
-        >
-          Older <ChevronRight className="size-4" />
-        </Link>
-      ) : null}
+          </li>
+        ) : null}
+        <li className="t-small inline-flex min-h-11 items-center px-2 text-fg-2 sm:hidden">
+          Page {page} of {totalPages}
+        </li>
+        {sorted.map((p, i) => (
+          <Fragment key={p}>
+            {i > 0 && p - sorted[i - 1] > 1 ? (
+              <li aria-hidden="true" className="t-num px-1 text-fg-3 max-sm:hidden">
+                …
+              </li>
+            ) : null}
+            <li className="max-sm:hidden">
+              <Link
+                href={hrefFor(p)}
+                aria-label={`Page ${p}`}
+                aria-current={p === page ? 'page' : undefined}
+                className={cn(cell, p === page ? 'bg-green-700 text-white' : s.hoverCell)}
+              >
+                {p}
+              </Link>
+            </li>
+          </Fragment>
+        ))}
+        {page < totalPages ? (
+          <li className="sm:ml-2">
+            <Link href={hrefFor(page + 1)} rel="next" className={quiet}>
+              Older
+            </Link>
+          </li>
+        ) : null}
+      </ul>
     </nav>
   );
 }
 
+/**
+ * The breadcrumb trail (spec §4.9): `nav aria-label="Breadcrumb"` in the
+ * `meta` style, "/" separators in --sv-fg-3 (aria-hidden), and the item
+ * without a link as the current page (ink, 600, aria-current="page").
+ * Links are 44 px tall on touch screens.
+ */
 export function Breadcrumbs({
   items,
+  className,
 }: {
-  items: { name: string; href?: string }[];
+  /** `lang` marks an item in another language (the Hindi notice's crumb). */
+  items: { name: string; href?: string; lang?: string }[];
+  className?: string;
 }) {
   return (
-    <nav aria-label="Breadcrumb" className="text-sm text-muted-foreground">
-      <ol className="flex flex-wrap items-center gap-1.5">
+    <nav aria-label="Breadcrumb" className={cn('t-meta text-fg-2', className)}>
+      <ol className="flex flex-wrap items-center gap-x-2">
         {items.map((item, i) => (
-          <li key={`${item.name}-${i}`} className="flex items-center gap-1.5">
-            {i > 0 && <span aria-hidden="true">/</span>}
+          <li key={`${item.name}-${i}`} className="flex items-center gap-x-2">
+            {i > 0 ? (
+              <span aria-hidden="true" className="text-fg-3">
+                /
+              </span>
+            ) : null}
             {item.href ? (
               <Link
                 href={item.href}
-                className="hover:text-primary hover:underline"
+                lang={item.lang}
+                className={cn('inline-flex items-center pointer-coarse:min-h-11', s.inlineLink)}
               >
                 {item.name}
               </Link>
             ) : (
-              <span aria-current="page" className="text-foreground">
+              <span aria-current="page" lang={item.lang} className="font-semibold text-fg">
                 {item.name}
               </span>
             )}

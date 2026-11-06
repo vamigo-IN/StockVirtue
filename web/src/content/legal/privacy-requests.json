@@ -1,0 +1,282 @@
+{
+  "format": 1,
+  "key": "privacy-requests",
+  "lang": "en",
+  "schemaVersion": 1,
+  "revision": {
+    "dateShown": "2026-11-02T18:30:00.000Z",
+    "dateLabel": null,
+    "noticeVersion": null
+  },
+  "content": {
+    "seo": {
+      "title": "Privacy requests and grievances",
+      "description": [
+        {
+          "type": "text",
+          "text": "Ask "
+        },
+        {
+          "type": "token",
+          "attrs": {
+            "name": "site.name"
+          }
+        },
+        {
+          "type": "text",
+          "text": " for a summary of your data, a correction, deletion, a nominee, or make a complaint, under the Digital Personal Data Protection Act, 2023."
+        }
+      ]
+    },
+    "title": "Privacy requests and grievances",
+    "summary": [
+      {
+        "type": "text",
+        "text": "Ask for a summary of your data, a correction or deletion, name a nominee, withdraw consent, or make a complaint."
+      }
+    ],
+    "body": {
+      "type": "doc",
+      "content": [
+        {
+          "type": "heading",
+          "attrs": {
+            "level": 2,
+            "anchor": "the-quickest-way-in-the-app"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "The quickest way: in the app"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "Open the "
+            },
+            {
+              "type": "token",
+              "attrs": {
+                "name": "site.name"
+              }
+            },
+            {
+              "type": "text",
+              "text": " app → Profile → "
+            },
+            {
+              "type": "text",
+              "text": "Privacy & your data",
+              "marks": [
+                {
+                  "type": "bold"
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "text": ". You can download your data, name a nominee, turn analytics off, make a request, or delete your account there, straight away."
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "attrs": {
+            "level": 2,
+            "anchor": "without-the-app"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "Without the app"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "Use this form. To make sure nobody can act on someone else's data, we first email a code to the address registered with your account. If your account only has a mobile number, use the app or write to the grievance officer from any email address, with your number, and we'll confirm it's you."
+            }
+          ]
+        },
+        {
+          "type": "requestForm"
+        },
+        {
+          "type": "heading",
+          "attrs": {
+            "level": 2,
+            "anchor": "what-happens-next"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "What happens next"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "You get an email with a reference straight away. A person on our team answers within "
+            },
+            {
+              "type": "token",
+              "attrs": {
+                "name": "privacy.responseDays"
+              },
+              "marks": [
+                {
+                  "type": "bold"
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "text": " days",
+              "marks": [
+                {
+                  "type": "bold"
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "text": " (the law allows at most 90). Deleted accounts stop being used at once; a locked copy is kept for one year, as the DPDP Rules 2025 require, then erased for good."
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "attrs": {
+            "level": 2,
+            "anchor": "grievance-officer"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "Grievance officer"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "token",
+              "attrs": {
+                "name": "officer.name",
+                "after": ", "
+              }
+            },
+            {
+              "type": "text",
+              "text": "Grievance Officer, "
+            },
+            {
+              "type": "token",
+              "attrs": {
+                "name": "company.legalName"
+              }
+            },
+            {
+              "type": "token",
+              "attrs": {
+                "name": "company.postalAddress",
+                "before": ", "
+              }
+            },
+            {
+              "type": "stop"
+            },
+            {
+              "type": "text",
+              "text": " "
+            },
+            {
+              "type": "token",
+              "attrs": {
+                "name": "officer.email",
+                "as": "mailto"
+              }
+            },
+            {
+              "type": "token",
+              "attrs": {
+                "name": "officer.phone",
+                "before": ", "
+              }
+            },
+            {
+              "type": "text",
+              "text": "."
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "If you are not satisfied with our answer, you can complain to the "
+            },
+            {
+              "type": "text",
+              "text": "Data Protection Board of India",
+              "marks": [
+                {
+                  "type": "bold"
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "text": ". See our "
+            },
+            {
+              "type": "text",
+              "text": "privacy notice",
+              "marks": [
+                {
+                  "type": "link",
+                  "attrs": {
+                    "href": "/privacy"
+                  }
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "text": " ("
+            },
+            {
+              "type": "text",
+              "text": "हिंदी",
+              "marks": [
+                {
+                  "type": "link",
+                  "attrs": {
+                    "href": "/privacy/hi",
+                    "lang": "hi"
+                  }
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "text": ") for everything we do with personal data."
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

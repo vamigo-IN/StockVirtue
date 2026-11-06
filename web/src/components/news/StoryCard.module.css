@@ -1,0 +1,246 @@
+/* ============================================================================
+   Story units (StoryCard.tsx, blocks.tsx, MostRead.tsx; spec §4.8, §4.9).
+   Only what Tailwind utilities can't say: the stretched headline link and
+   its focus ring, the hover underline (fine pointers only, R20), search
+   highlights, the horizontal splash's column grid and the large row's
+   headline step. Layout, spacing, colour and type are utilities and .t-*
+   classes in the components, so a caller's className still wins there.
+   ========================================================================== */
+
+/* The headline link. Its ::after stretches over the whole unit (the
+   <article>, or StoryRankItem's wrapper, is `position: relative`), so a
+   card is one link and one tab stop. The focus ring draws on that
+   stretched area, 4 px outside the card. */
+.link {
+  color: inherit;
+  text-decoration: none;
+  background-image: linear-gradient(currentColor, currentColor);
+  background-position: 0 100%;
+  background-repeat: no-repeat;
+  background-size: 0% max(1px, 0.05em);
+  transition: background-size 250ms var(--sv-ease-out);
+}
+.link::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: var(--sv-r-xs);
+}
+.link:focus-visible {
+  outline: none;
+}
+.link:focus-visible::after {
+  outline: 2px solid var(--sv-focus);
+  outline-offset: 4px;
+}
+
+/* A headline link that is not stretched (the BreakingBar's items): the
+   same underline, the browser's own focus ring in --sv-focus. */
+.inlineLink {
+  color: inherit;
+  text-decoration: none;
+  background-image: linear-gradient(currentColor, currentColor);
+  background-position: 0 100%;
+  background-repeat: no-repeat;
+  background-size: 0% max(1px, 0.05em);
+  transition: background-size 250ms var(--sv-ease-out);
+}
+.inlineLink:focus-visible {
+  outline: 2px solid var(--sv-focus);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* Hover grows the underline, on a fine pointer only (R20). */
+@media (hover: hover) and (pointer: fine) {
+  .link:hover,
+  .inlineLink:hover {
+    background-size: 100% max(1px, 0.05em);
+  }
+}
+
+/* A pagination cell's hover fill (blocks.tsx), fine pointers only. */
+@media (hover: hover) and (pointer: fine) {
+  .hoverCell:hover {
+    background: var(--sv-surface-2);
+  }
+}
+
+/* Search highlights (the `highlight` prop; spec §5.11): green-100 with ink
+   text, server-rendered. */
+.mark {
+  background: var(--sv-green-100);
+  color: var(--sv-ink);
+  border-radius: 2px;
+  padding-inline: 1px;
+}
+
+/* Horizontal splash (orientation="horizontal", >= 768): the image takes
+   --sv-splash-image of --sv-splash-cols columns and the text the rest,
+   vertically centred. The defaults match the front's main column at
+   >= 1280 (image cols 1–5 of 9, spec §5.9.2); a caller whose column is
+   narrower sets both variables on the card, for example
+   `lg:max-xl:[--sv-splash-cols:8]` with `[--sv-splash-text:3]`. */
+@media (min-width: 768px) {
+  .splashH {
+    display: grid;
+    grid-template-columns: repeat(var(--sv-splash-cols, 9), minmax(0, 1fr));
+    column-gap: var(--sv-gutter);
+    align-items: center;
+  }
+  .splashH > .splashMedia {
+    grid-column: 1 / span var(--sv-splash-image, 5);
+    grid-row: 1;
+  }
+  .splashH > .splashBody {
+    grid-column: span var(--sv-splash-text, 4) / -1;
+    grid-row: 1;
+  }
+}
+
+/* The large row (size="lg") sets its headline in head-2 from 768 px; below
+   that it is a normal row in head-3. */
+@media (min-width: 768px) {
+  .rowLgHead {
+    font-weight: 620;
+    font-size: clamp(1.25rem, 1.14rem + 0.449vw, 1.5rem);
+    line-height: calc(1em + 6px);
+    letter-spacing: -0.005em;
+  }
+}
+
+/* ── Emerald Terminal (6 Nov 2026, brief "I · Emerald Terminal") ─────────────
+   Where this block and the older notes above disagree on looks, this block
+   wins. Unlayered (a CSS Module), so these beat the .t-* type classes and
+   Tailwind utilities on the same element.
+   - Kickers: IBM Plex Mono 12/16, weight 600, tracked, upper case (the DOM
+     text stays sentence case for screen readers and search), emerald.
+   - Headlines: Hanken Grotesk, 700 (800 for the lead), tight tracking.
+   - Meta, times and rank numbers: IBM Plex Mono, tabular. */
+.kicker {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--sv-green-700);
+}
+.breaking {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 16px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border-radius: 6px;
+}
+.meta {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 18px;
+  font-weight: 400;
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+.time {
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  line-height: 18px;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums lining-nums;
+}
+.hl {
+  font-family: var(--font-sans);
+  font-weight: 700;
+  font-stretch: 100%;
+  letter-spacing: -0.01em;
+}
+.hlLead {
+  font-family: var(--font-sans);
+  font-weight: 800;
+  font-stretch: 100%;
+  letter-spacing: -0.025em;
+  line-height: 1.12;
+}
+.hlBig {
+  font-family: var(--font-sans);
+  font-weight: 800;
+  font-stretch: 100%;
+  letter-spacing: -0.03em;
+  line-height: 1.06;
+}
+.standfirst {
+  font-family: var(--font-sans);
+  font-weight: 400;
+}
+.rank {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 26px;
+  line-height: 1;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums lining-nums;
+  color: var(--sv-green-700);
+}
+@media (min-width: 768px) {
+  .rank {
+    font-size: 30px;
+  }
+}
+/* Pictures sit inside the white sheets: 12 px corners. */
+.media {
+  border-radius: 12px;
+}
+
+/* BreakingBar (blocks.tsx): a white card with the Breaking accent drawn
+   inside its left edge (a border would bend round the 16 px corner). */
+.breakingBar {
+  border: 1px solid var(--sv-rule);
+  border-radius: var(--sv-r-lg, 16px);
+  box-shadow:
+    inset 3px 0 0 var(--sv-breaking),
+    var(--sv-shadow-card, 0 16px 40px rgb(3 68 45 / 0.12));
+}
+
+/* A rail module's white card (MostRead, Markets now, the story rail's
+   modules, the listing asides): 16 px corners, a hairline, the soft
+   emerald shadow. Replaces the old 2 px ink rule over the module. */
+.railCard {
+  min-width: 0;
+  padding: 16px 18px 8px;
+  border: 1px solid var(--sv-rule);
+  border-radius: var(--sv-r-lg, 16px);
+  background: var(--sv-surface);
+  box-shadow: var(--sv-shadow-card, 0 16px 40px rgb(3 68 45 / 0.12));
+}
+.railHead {
+  font-family: var(--font-sans);
+  font-weight: 800;
+  letter-spacing: -0.01em;
+}
+
+/* A terminal panel (Emerald Terminal: dense figures on #0E131A). Used with
+   A's .sv-terminal scope, which remaps the text, rule, up/down, live/stamp,
+   heat and focus tokens (and the bo palette). The light-surface names the
+   market parts and the chart read (--sv-surface*, --sv-ink, and the area
+   names lw-chart takes its axis and grid from) are remapped here too, so a
+   module drawn inside reads right. */
+.termCard {
+  --sv-surface: var(--sv-term-2, #0E131A);
+  --sv-surface-2: var(--sv-term-3, #10151D);
+  --sv-surface-3: var(--sv-term-line, #1E2733);
+  --sv-ink: var(--sv-on-term, #E6EDF5);
+  --card: var(--sv-term-2, #0E131A);
+  --card-foreground: var(--sv-on-term, #E6EDF5);
+  --foreground: var(--sv-on-term, #E6EDF5);
+  --muted: var(--sv-term-3, #10151D);
+  --muted-foreground: var(--sv-on-term-3, #8A97A6);
+  --border: var(--sv-term-line, #1E2733);
+  min-width: 0;
+  padding: 16px 18px;
+  border: 1px solid var(--sv-term-line, #1E2733);
+  border-radius: var(--sv-r-lg, 16px);
+  background: var(--sv-term-2, #0E131A);
+  box-shadow: var(--sv-shadow-card, 0 16px 40px rgb(3 68 45 / 0.12));
+}

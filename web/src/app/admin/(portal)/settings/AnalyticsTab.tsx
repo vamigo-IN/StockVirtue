@@ -74,6 +74,7 @@ export function AnalyticsTab({
               <p className="text-xs text-muted-foreground">{field.hint}</p>
             </div>
           ))}
+          <p className="text-xs text-muted-foreground md:col-span-2">Switching a service on, including one that was on before, makes every website visitor choose their cookies again.</p>
         </CardContent>
       </Card>
       <SaveRow

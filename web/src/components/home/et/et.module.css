@@ -1,0 +1,1524 @@
+/* The home page, "I · Emerald Terminal" (6 Nov 2026; design/emerald-terminal-brief.md).
+   Values come from src/styles/tokens.css (stream A): the three grounds are the
+   light page (default), .sv-emerald (the hero, the download band, the sample
+   leaderboard) and .sv-terminal (the desk, the heatmap band), which remap the
+   semantic tokens (--sv-fg, --sv-fg-2, --sv-fg-3, --sv-rule, --sv-up …) used here. */
+
+/* ── Shared ─────────────────────────────────────────────────────────────── */
+
+.section {
+  padding-block: clamp(56px, 8vw, 104px);
+}
+.white {
+  background: var(--sv-surface);
+}
+.mint {
+  background: var(--sv-paper);
+}
+.mono {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+.up {
+  color: var(--sv-up);
+}
+.down {
+  color: var(--sv-down);
+}
+.flat {
+  color: var(--sv-flat);
+}
+
+.head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px 32px;
+  margin-bottom: clamp(28px, 4vw, 40px);
+}
+.headText {
+  flex: 1 1 480px;
+  min-width: 0;
+}
+.kicker {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--sv-green-700);
+}
+.kicker::before {
+  content: '';
+  flex: none;
+  width: 20px;
+  height: 2px;
+  background: currentColor;
+}
+.h2 {
+  margin: 14px 0 0;
+  font-weight: 800;
+  font-size: clamp(30px, 3.4vw, 46px);
+  line-height: 1.05;
+  letter-spacing: -0.035em;
+  text-wrap: balance;
+  color: var(--sv-fg);
+}
+.headLead {
+  margin: 14px 0 0;
+  max-width: 58ch;
+  color: var(--sv-fg-2);
+  font-size: 17px;
+  line-height: 1.55;
+}
+.headAside {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+.moreLink {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  font-weight: 700;
+  color: var(--sv-green-700);
+  text-decoration: none;
+}
+.moreLink:hover {
+  color: var(--sv-green-800);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.dark .kicker,
+.dark .moreLink {
+  color: var(--sv-neon);
+}
+
+/* "Sample screen", "Example order", "Sample figures": a dashed mono tag. */
+.tag {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 9px;
+  border-radius: var(--sv-r-sm);
+  border: 1px dashed var(--sv-control);
+  color: var(--sv-fg-2);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.h3 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: -0.015em;
+  line-height: 1.25;
+  color: var(--sv-fg);
+}
+.body {
+  margin: 6px 0 0;
+  color: var(--sv-fg-2);
+  font-size: 15.5px;
+  line-height: 1.55;
+}
+.icon {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: var(--sv-r-sm);
+  background: var(--sv-green-050);
+  color: var(--sv-green-700);
+}
+
+/* ── Hero ───────────────────────────────────────────────────────────────── */
+
+.hero {
+  position: relative;
+  overflow: hidden;
+  border-radius: 0 0 var(--sv-r-band) var(--sv-r-band);
+  /* The top 140 px fade from the header's solid #01261A, so the band meets it seamlessly. */
+  background:
+    linear-gradient(180deg, var(--sv-emerald) 0, rgb(1 38 26 / 0) 140px),
+    var(--sv-emerald-band);
+}
+.heroLines {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(rgb(214 243 227 / 0.07) 1px, transparent 1px),
+    linear-gradient(90deg, rgb(214 243 227 / 0.07) 1px, transparent 1px);
+  background-size: 56px 56px;
+  -webkit-mask-image: radial-gradient(55% 65% at 72% 52%, #000 0%, transparent 78%);
+  mask-image: radial-gradient(55% 65% at 72% 52%, #000 0%, transparent 78%);
+}
+.heroInner {
+  position: relative;
+  display: grid;
+  gap: 36px;
+  padding-top: clamp(28px, 6vw, 72px);
+  padding-bottom: 116px;
+}
+@media (min-width: 1024px) {
+  .heroInner {
+    grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+    align-items: center;
+    gap: 48px;
+    padding-bottom: 148px;
+  }
+}
+.heroText {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 22px;
+  min-width: 0;
+}
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 32px;
+  margin: 0;
+  padding: 0 12px;
+  border-radius: var(--sv-r-sm);
+  background: var(--sv-emerald-chip);
+  border: 1px solid rgb(214 243 227 / 0.2);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--sv-fg-2);
+}
+.eyebrow::before {
+  content: '';
+  flex: none;
+  width: 6px;
+  height: 6px;
+  background: var(--sv-neon);
+  box-shadow: 0 0 10px var(--sv-neon);
+}
+.h1 {
+  margin: 0;
+  font-weight: 800;
+  font-size: clamp(40px, 4.6vw, 64px);
+  line-height: 1.02;
+  letter-spacing: -0.035em;
+  text-wrap: balance;
+  color: var(--sv-fg);
+}
+.h1Mark {
+  text-decoration: underline;
+  text-decoration-color: var(--sv-neon);
+  text-decoration-thickness: 0.07em;
+  text-underline-offset: 0.14em;
+}
+.lead {
+  margin: 0;
+  max-width: 46ch;
+  font-size: clamp(17px, 1.4vw, 19px);
+  line-height: 1.55;
+  color: var(--sv-fg-2);
+}
+.ctas {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+.ghost {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  padding: 0 22px;
+  border-radius: var(--sv-r-pill);
+  border: 1px solid rgb(214 243 227 / 0.45);
+  color: var(--sv-fg);
+  font-weight: 700;
+  font-size: 16px;
+  text-decoration: none;
+  transition: background-color var(--sv-dur-1) var(--sv-ease-out);
+}
+.ghost:hover {
+  background: rgb(214 243 227 / 0.08);
+}
+.small {
+  margin: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--sv-fg-2);
+}
+.small svg {
+  flex: none;
+  margin-top: 1px;
+  color: var(--sv-neon);
+}
+.deskWrap {
+  position: relative;
+  min-width: 0;
+}
+.screenWrap {
+  display: flex;
+  justify-content: center;
+}
+
+/* ── The desk (terminal ground) ─────────────────────────────────────────── */
+
+.desk {
+  padding: 12px;
+  border-radius: var(--sv-r-md);
+  background: var(--sv-term);
+  border: 1px solid var(--sv-term-line);
+  box-shadow: var(--sv-shadow-desk, 0 40px 80px rgb(0 0 0 / 0.45));
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--sv-fg);
+}
+.deskBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding-bottom: 12px;
+}
+.search {
+  flex: 1 1 180px;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  padding: 0 12px;
+  border-radius: var(--sv-r-sm);
+  background: var(--sv-term-2);
+  border: 1px solid var(--sv-term-line);
+  color: var(--sv-fg-3);
+  white-space: nowrap;
+  overflow: hidden;
+}
+.deskGrid {
+  display: grid;
+  gap: 10px;
+}
+@media (min-width: 640px) {
+  .deskGrid {
+    grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+  }
+}
+.panel {
+  min-width: 0;
+  border-radius: var(--sv-r-sm);
+  background: var(--sv-term-2);
+  border: 1px solid var(--sv-term-line);
+  padding: 12px;
+}
+.panelHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  margin-bottom: 6px;
+}
+.panelTitle {
+  margin: 0;
+  font-weight: 700;
+  font-size: 13px;
+  color: var(--sv-fg);
+}
+.panelMeta {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--sv-fg-3);
+}
+.amber {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--sv-amber);
+}
+.quote {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin: 2px 0 6px;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 20px;
+  font-weight: 500;
+  color: var(--sv-fg);
+}
+.quote small {
+  font-size: 13px;
+}
+.chart {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+.chart text {
+  font-family: var(--font-mono);
+}
+.stamp {
+  display: block;
+  margin-top: 6px;
+}
+.rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  column-gap: 8px;
+  min-height: 32px;
+  padding: 5px 0;
+  border-top: 1px solid var(--sv-term-line);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+}
+.row > :not(:first-child) {
+  text-align: right;
+}
+.rowName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ticket {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.side {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3px;
+  padding: 3px;
+  border-radius: var(--sv-r-sm);
+  background: var(--sv-term);
+  border: 1px solid var(--sv-term-line);
+  font-weight: 800;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-align: center;
+}
+.side > span {
+  padding: 6px 0;
+  border-radius: 6px;
+}
+.buy {
+  background: var(--sv-neon);
+  color: var(--sv-neon-ink);
+}
+.fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 0;
+}
+.fields div {
+  min-width: 0;
+}
+.fields dt {
+  margin-bottom: 4px;
+  font-size: 11px;
+  color: var(--sv-fg-3);
+}
+.fields dd {
+  display: flex;
+  align-items: center;
+  height: 32px;
+  margin: 0;
+  padding: 0 10px;
+  border-radius: var(--sv-r-sm);
+  background: var(--sv-term);
+  border: 1px solid var(--sv-term-line);
+  font-size: 12.5px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.fields .focus {
+  border-color: var(--sv-neon);
+  box-shadow: 0 0 0 3px rgb(52 224 137 / 0.14);
+}
+.sums {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  margin: 0;
+  padding-top: 8px;
+  border-top: 1px dashed var(--sv-term-line);
+  font-size: 12px;
+}
+.sums div {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+.sums dt {
+  color: var(--sv-fg-2);
+}
+.sums dd {
+  margin: 0;
+  font-family: var(--font-mono);
+  text-align: right;
+}
+.place {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 38px;
+  border-radius: var(--sv-r-sm);
+  background: var(--sv-neon);
+  color: var(--sv-neon-ink);
+  font-weight: 800;
+  font-size: 13.5px;
+}
+.note {
+  margin: 0;
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--sv-fg-3);
+}
+/* The ticket and the positions: from 640 px only (phones get the chart and the watchlist). */
+.lower {
+  display: none;
+}
+@media (min-width: 640px) {
+  .lower {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 10px;
+    margin-top: 10px;
+  }
+}
+.total {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 6px;
+  padding-top: 8px;
+  border-top: 1px solid var(--sv-term-line);
+}
+.total span:first-child {
+  font-size: 12px;
+  color: var(--sv-fg-2);
+}
+.total span:last-child {
+  font-family: var(--font-mono);
+  font-size: 17px;
+  font-weight: 600;
+}
+/* The decorative "order placed" float: from 1024 px only. */
+.float {
+  display: none;
+}
+@media (min-width: 1024px) {
+  .float {
+    position: absolute;
+    left: -28px;
+    bottom: -40px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 18px 12px 12px;
+    border-radius: var(--sv-r-md);
+    background: var(--sv-surface);
+    color: var(--sv-ink);
+    box-shadow: 0 24px 48px -12px rgb(0 10 6 / 0.5);
+    font-size: 13px;
+    line-height: 1.35;
+  }
+  .float b {
+    display: block;
+    font-size: 13.5px;
+  }
+  .float span span {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--sv-text-2);
+  }
+  .floatTick {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    border-radius: var(--sv-r-sm);
+    background: var(--sv-green-050);
+    color: var(--sv-green-700);
+  }
+}
+
+/* ── Fact cards ─────────────────────────────────────────────────────────── */
+
+.factsWrap {
+  position: relative;
+  z-index: 1;
+  margin-top: -76px;
+}
+.facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+@media (min-width: 1024px) {
+  .facts {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 16px;
+  }
+}
+.fact {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  padding: 16px;
+  border-radius: var(--sv-r-md);
+  background: var(--sv-surface);
+  border: 1px solid var(--sv-rule);
+  box-shadow: var(--sv-shadow-2);
+}
+@media (min-width: 640px) {
+  .fact {
+    padding: 22px;
+  }
+}
+.factFigure {
+  font-size: clamp(22px, 2.3vw, 30px);
+  font-weight: 800;
+  letter-spacing: -0.035em;
+  line-height: 1.1;
+  color: var(--sv-fg);
+  overflow-wrap: anywhere;
+}
+.factTitle {
+  margin-top: 6px;
+  font-weight: 700;
+  font-size: 15px;
+}
+.factBody {
+  margin: 4px 0 0;
+  color: var(--sv-fg-2);
+  font-size: 14px;
+  line-height: 1.5;
+}
+.factExtra {
+  display: none;
+}
+@media (min-width: 640px) {
+  .factExtra {
+    display: block;
+    margin-top: auto;
+    padding-top: 16px;
+  }
+}
+.factLine {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--sv-rule);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--sv-fg);
+}
+.factLine .muted {
+  color: var(--sv-fg-3);
+}
+.factShield {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--sv-rule);
+  font-size: 13px;
+  color: var(--sv-fg-2);
+}
+.factShield svg {
+  flex: none;
+  color: var(--sv-green-700);
+}
+.modBar {
+  display: flex;
+  gap: 3px;
+  height: 8px;
+  margin-top: 12px;
+}
+.modBar span:nth-child(odd) {
+  background: var(--sv-green-900);
+}
+.modBar span:nth-child(even) {
+  background: var(--sv-green-700);
+}
+.modBar span:last-child {
+  background: var(--sv-green-500);
+}
+
+/* ── Market overview ────────────────────────────────────────────────────── */
+
+.status {
+  margin: -16px 0 24px;
+}
+.marketGrid {
+  display: grid;
+  gap: 16px;
+}
+.marketGrid > * {
+  min-width: 0;
+}
+/* Phones: the four modules are tabs (force-mounted; the inactive ones hidden). */
+.mkTabsList {
+  margin-bottom: 16px;
+}
+.mkPanel[data-state="inactive"] {
+  display: none;
+}
+.mkPanel:focus-visible {
+  outline: 2px solid var(--sv-focus);
+  outline-offset: 4px;
+}
+@media (min-width: 768px) {
+  .mkTabsList {
+    display: none;
+  }
+  .mkPanel[data-state="inactive"] {
+    display: block;
+  }
+}
+@media (min-width: 1024px) {
+  .marketGrid {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    align-items: start;
+  }
+  .mkIndices {
+    grid-column: span 7;
+  }
+  .mkCommodities {
+    grid-column: span 5;
+  }
+  .mkMovers {
+    grid-column: span 8;
+  }
+  .mkSectors {
+    grid-column: span 4;
+  }
+}
+
+/* ── Heatmap band (terminal) ────────────────────────────────────────────── */
+
+.heatSection {
+  background: var(--sv-paper);
+  padding: 0 clamp(8px, 1.4vw, 20px) clamp(56px, 8vw, 104px);
+}
+.heatBand {
+  max-width: 1400px;
+  margin: 0 auto;
+  border-radius: var(--sv-r-band);
+  overflow: hidden;
+  background: var(--sv-terminal-band);
+}
+.heatInner {
+  padding-block: clamp(40px, 6vw, 72px);
+}
+
+/* ── What you can trade ─────────────────────────────────────────────────── */
+
+.cards3 {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr));
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.tradeCard {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+  padding: 22px;
+  border-radius: var(--sv-r-md);
+  background: var(--sv-paper);
+  border: 1px solid var(--sv-rule);
+}
+.cardTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.index {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  color: var(--sv-fg-3);
+}
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.chips li {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border-radius: var(--sv-r-sm);
+  background: var(--sv-surface);
+  border: 1px solid var(--sv-rule);
+  font-size: 13px;
+  color: var(--sv-fg);
+}
+.cardFoot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px 12px;
+  margin-top: auto;
+  padding-top: 14px;
+  border-top: 1px solid var(--sv-rule);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--sv-fg-3);
+}
+.chainBox {
+  border-radius: var(--sv-r-sm);
+  background: var(--sv-surface);
+  border: 1px solid var(--sv-rule);
+  overflow-x: auto;
+}
+.chainHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--sv-rule);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+}
+.chain {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 12.5px;
+}
+.chain th,
+.chain td {
+  padding: 6px 12px;
+  text-align: right;
+}
+.chain thead th {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  color: var(--sv-fg-3);
+}
+.chain tbody tr {
+  border-top: 1px solid var(--sv-rule);
+}
+.chain .strike {
+  text-align: center;
+  font-weight: 600;
+}
+.chain td:first-child,
+.chain th:first-child {
+  text-align: left;
+}
+.itm {
+  background: var(--sv-green-050);
+}
+.spot td {
+  padding-block: 3px;
+  text-align: center;
+  font-size: 11px;
+  color: var(--sv-green-700);
+  letter-spacing: 0.05em;
+}
+.chainNote {
+  margin: 0;
+  padding: 8px 12px;
+  border-top: 1px solid var(--sv-rule);
+  font-size: 12px;
+  color: var(--sv-fg-2);
+}
+
+/* ── Features ───────────────────────────────────────────────────────────── */
+
+.features {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr));
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.feature {
+  min-width: 0;
+  padding: 22px;
+  border-radius: var(--sv-r-md);
+  background: var(--sv-surface);
+  border: 1px solid var(--sv-rule);
+}
+.feature .h3 {
+  margin-top: 14px;
+  font-size: 19px;
+  font-weight: 700;
+}
+
+/* ── How a trade works ──────────────────────────────────────────────────── */
+
+.how {
+  display: grid;
+  gap: 32px;
+}
+@media (min-width: 1024px) {
+  .how {
+    grid-template-columns: minmax(0, 6fr) minmax(0, 5fr);
+    align-items: start;
+    gap: 48px;
+  }
+}
+.steps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.step {
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  gap: 16px;
+  padding: 20px 0;
+  border-top: 1px solid var(--sv-rule);
+}
+.step:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+.stepNum {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: var(--sv-emerald-2);
+  color: var(--sv-neon);
+  font-family: var(--font-mono);
+  font-size: 14px;
+  font-weight: 600;
+}
+.stepScreen {
+  margin-top: 14px;
+}
+.noteCard {
+  min-width: 0;
+  border-radius: var(--sv-r-md);
+  background: var(--sv-surface);
+  border: 1px solid var(--sv-rule);
+  box-shadow: var(--sv-shadow-2);
+  overflow: hidden;
+}
+.noteHead {
+  padding: 18px 20px 14px;
+  border-bottom: 1px solid var(--sv-rule);
+}
+.noteTitleRow {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px 12px;
+}
+.noteMeta {
+  margin: 6px 0 0;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--sv-fg-3);
+}
+.noteTableBox {
+  overflow-x: auto;
+}
+.noteTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+.noteTable th,
+.noteTable td {
+  padding: 9px 20px;
+  text-align: left;
+  border-top: 1px solid var(--sv-rule);
+}
+.noteTable thead th {
+  border-top: 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  color: var(--sv-fg-3);
+}
+.noteTable td:last-child,
+.noteTable th:last-child {
+  text-align: right;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+.noteTable tfoot th,
+.noteTable tfoot td {
+  border-top: 2px solid var(--sv-fg);
+  font-weight: 700;
+}
+.noteFoot {
+  margin: 0;
+  padding: 12px 20px 16px;
+  font-size: 13px;
+  color: var(--sv-fg-2);
+}
+
+/* ── IPO watch ──────────────────────────────────────────────────────────── */
+
+.ipos {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(min(250px, 100%), 1fr));
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.ipo {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  padding: 20px;
+  border-radius: var(--sv-r-md);
+  background: var(--sv-surface);
+  border: 1px solid var(--sv-rule);
+}
+.ipoTop {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 24px;
+  padding: 0 9px;
+  border-radius: var(--sv-r-sm);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.pillOpen {
+  background: var(--sv-live-bg);
+  color: var(--sv-live-fg);
+}
+.pillOpen::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--sv-live-dot);
+}
+.pillNext {
+  background: var(--sv-eod-bg);
+  color: var(--sv-eod-fg);
+}
+.seg {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  color: var(--sv-fg-3);
+  text-transform: uppercase;
+}
+.ipoName {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--sv-fg);
+}
+.dl {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 6px 12px;
+  margin: auto 0 0;
+  padding-top: 12px;
+  border-top: 1px solid var(--sv-rule);
+  font-size: 13.5px;
+}
+.dl dt {
+  color: var(--sv-fg-3);
+}
+.dl dd {
+  margin: 0;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+.foot {
+  margin: 16px 0 0;
+  font-size: 13px;
+  color: var(--sv-fg-3);
+}
+
+/* ── News ───────────────────────────────────────────────────────────────── */
+
+.news {
+  display: grid;
+  gap: 32px;
+}
+@media (min-width: 1024px) {
+  .news {
+    grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+    gap: 48px;
+  }
+}
+.newsList {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* ── Trading Academy and rooms ──────────────────────────────────────────── */
+
+.split {
+  display: grid;
+  gap: 32px;
+}
+@media (min-width: 1024px) {
+  .split {
+    grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+    align-items: start;
+    gap: 48px;
+  }
+}
+.prose p {
+  margin: 0 0 14px;
+  color: var(--sv-fg-2);
+  font-size: 17px;
+  line-height: 1.6;
+}
+.box {
+  min-width: 0;
+  border-radius: var(--sv-r-md);
+  background: var(--sv-surface);
+  border: 1px solid var(--sv-rule);
+  overflow: hidden;
+}
+.boxHead {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px 12px;
+  min-height: 56px;
+  padding: 10px 22px;
+  border-bottom: 1px solid var(--sv-rule);
+}
+.boxTitle {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+}
+.modules {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.module {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 48px;
+  padding: 8px 22px;
+  border-top: 1px solid var(--sv-rule);
+}
+.module:first-child {
+  border-top: 0;
+}
+.moduleNo {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--sv-fg-3);
+}
+.moduleName {
+  font-weight: 600;
+  font-size: 15px;
+}
+.moduleCount {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: var(--font-mono);
+  font-size: 12.5px;
+  color: var(--sv-fg-2);
+  white-space: nowrap;
+}
+.moduleBar {
+  display: none;
+}
+@media (min-width: 640px) {
+  .moduleBar {
+    display: block;
+    width: 64px;
+    height: 6px;
+    background: var(--sv-surface-2);
+  }
+  .moduleBar span {
+    display: block;
+    height: 6px;
+    background: var(--sv-green-700);
+  }
+}
+.boxFoot {
+  margin: 0;
+  padding: 14px 22px;
+  border-top: 1px solid var(--sv-rule);
+  font-size: 13.5px;
+  color: var(--sv-fg-2);
+}
+.phoneOnly {
+  display: block;
+}
+.tabletUp {
+  display: none;
+}
+@media (min-width: 768px) {
+  .phoneOnly {
+    display: none;
+  }
+  .tabletUp {
+    display: block;
+  }
+}
+.board {
+  min-width: 0;
+  padding: 22px;
+  border-radius: var(--sv-r-md);
+  /* The dark end of the emerald only: its neon, up/down and -3 text need it (A, 04:33). */
+  background:
+    radial-gradient(70% 90% at 100% 0%, rgb(52 224 137 / 0.1), transparent 60%),
+    linear-gradient(160deg, var(--sv-emerald) 0%, var(--sv-emerald-2) 100%);
+  box-shadow: var(--sv-shadow-2);
+}
+.boardTop {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px 12px;
+  margin-bottom: 12px;
+}
+.boardTop .h3 {
+  font-size: 19px;
+}
+.boardSub {
+  margin: 2px 0 0;
+  font-size: 13.5px;
+  color: var(--sv-fg-2);
+}
+.board .tag {
+  border-color: rgb(214 243 227 / 0.45);
+  color: var(--sv-fg-2);
+}
+.boardRows {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.boardRow {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-height: 44px;
+  border-top: 1px solid var(--sv-rule);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+}
+.boardRow:first-child {
+  background: rgb(52 224 137 / 0.1);
+  box-shadow: inset 2px 0 0 var(--sv-neon);
+}
+.boardRank {
+  padding-left: 8px;
+  color: var(--sv-fg-2);
+}
+.boardNote {
+  margin: 12px 0 0;
+  font-size: 13px;
+  color: var(--sv-fg-2);
+}
+
+/* ── FAQ ────────────────────────────────────────────────────────────────── */
+
+.faq {
+  display: grid;
+  gap: 40px;
+}
+@media (min-width: 1024px) {
+  .faq {
+    grid-template-columns: minmax(0, 7fr) minmax(0, 5fr);
+    align-items: start;
+    gap: 48px;
+  }
+}
+.questions {
+  display: grid;
+  gap: 10px;
+}
+.qa {
+  border-radius: var(--sv-r-md);
+  background: var(--sv-surface);
+  border: 1px solid var(--sv-rule);
+}
+.qa summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+  min-height: 56px;
+  padding: 12px 20px;
+  border-radius: var(--sv-r-md);
+  cursor: pointer;
+  font-weight: 700;
+  font-size: 17px;
+  line-height: 1.35;
+  color: var(--sv-fg);
+  list-style: none;
+}
+.qa summary::-webkit-details-marker {
+  display: none;
+}
+.qa summary::after {
+  content: '+';
+  flex: none;
+  font-family: var(--font-mono);
+  font-size: 20px;
+  font-weight: 500;
+  color: var(--sv-green-700);
+}
+.qa[open] summary::after {
+  content: '−';
+}
+.answer {
+  margin: 0;
+  padding: 0 20px 18px;
+  color: var(--sv-fg-2);
+  font-size: 16px;
+  line-height: 1.6;
+}
+.faqAside {
+  display: grid;
+  gap: 32px;
+  align-content: start;
+  min-width: 0;
+}
+
+/* ── Download band (emerald) ────────────────────────────────────────────── */
+
+.getSection {
+  /* Its lower half is the footer's colour, so the band's corners sit on it. */
+  background: linear-gradient(var(--sv-paper) 0 50%, var(--sv-emerald) 50% 100%);
+  padding: 24px clamp(8px, 1.4vw, 20px) 0;
+}
+.getBand {
+  position: relative;
+  max-width: 1400px;
+  margin: 0 auto;
+  overflow: hidden;
+  border-radius: var(--sv-r-band);
+  background: var(--sv-emerald-band);
+}
+.getInner {
+  position: relative;
+  display: grid;
+  gap: 32px;
+  align-items: center;
+  padding-block: clamp(40px, 6vw, 72px);
+}
+@media (min-width: 768px) {
+  .getInner {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 48px;
+  }
+}
+.getTitle {
+  margin: 0;
+  font-weight: 800;
+  font-size: clamp(32px, 4.4vw, 58px);
+  line-height: 1.02;
+  letter-spacing: -0.04em;
+  text-wrap: balance;
+  max-width: 18ch;
+  color: var(--sv-fg);
+}
+.getLine {
+  margin: 16px 0 0;
+  max-width: 48ch;
+  font-size: 18px;
+  line-height: 1.55;
+  color: var(--sv-fg-2);
+}
+.getBadge {
+  margin-top: 28px;
+}
+.trademark {
+  margin-top: 14px;
+  /* The trademark line is t-meta text-fg-3: on the band it reads in fg-2 (contrast). */
+  --sv-fg-3: var(--sv-on-emerald-2);
+}
+.qr {
+  display: none;
+}
+@media (min-width: 768px) {
+  .qr {
+    display: block;
+    padding: 16px;
+    border-radius: var(--sv-r-md);
+    background: var(--sv-surface);
+    /* Light tokens inside the white QR card (its caption). */
+    --sv-fg: var(--sv-ink);
+    --sv-fg-2: var(--sv-text-2);
+    --sv-fg-3: var(--sv-text-3);
+    --sv-rule: var(--sv-line);
+    color: var(--sv-fg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ghost {
+    transition: none;
+  }
+}
+
+/* ── How to read a price on this site (OurPrices, #prices) ──────────────────
+   The four rules OurPrices uses, moved here from the old home's
+   sections.module.css so the home no longer ships that whole stylesheet
+   (and its class map in the page's JS) for them. Unchanged. */
+.prices {
+  scroll-margin-top: 80px;
+}
+.pricesTitle {
+  margin: 0;
+  color: var(--sv-fg);
+}
+.priceRows {
+  display: grid;
+  gap: 12px;
+  margin: 16px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.priceRows > li {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  column-gap: 12px;
+  row-gap: 4px;
+  font-size: 16px;
+  line-height: 26px;
+  color: var(--sv-fg);
+}
+.licence {
+  margin: 16px 0 0;
+  max-width: 40em;
+}
+@media (min-width: 768px) {
+  /* Tablets: three columns of pills. */
+  .priceRows {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    column-gap: var(--sv-gutter);
+    margin-top: 24px;
+  }
+  .priceRows > li {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+@media (min-width: 1024px) {
+  .priceRows {
+    grid-template-columns: none;
+  }
+  .priceRows > li {
+    flex-direction: row;
+    align-items: baseline;
+  }
+}
+
+/* ── Phones: shorter lists (the page's phone length) ─────────────────────── */
+@media (max-width: 639.98px) {
+  /* IPO watch: the first two cards; the IPO calendar link has the rest. */
+  .ipo:nth-child(n + 3) {
+    display: none;
+  }
+  /* Features: the icon beside the heading, tighter cards. */
+  .feature {
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr);
+    column-gap: 14px;
+    padding: 16px;
+  }
+  .feature .h3 {
+    margin-top: 0;
+    align-self: center;
+    font-size: 17px;
+  }
+  .feature .body {
+    grid-column: 1 / -1;
+    margin-top: 10px;
+    font-size: 15px;
+  }
+  .tradeCard {
+    padding: 18px;
+  }
+}

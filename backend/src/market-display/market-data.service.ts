@@ -6,6 +6,11 @@ import { CompanyDirectoryService } from '../market/company-directory.service';
 import { HolidaysService } from '../market/holidays.service';
 import { constituentsFor } from '../market/index-constituents';
 import { MarketService } from '../market/market.service';
+import {
+  type BrokerLane,
+  inBrokerLane,
+  type LaneResult,
+} from '../smartapi/smartapi.rate-limiter';
 import { CandleInterval } from '../smartapi/smartapi.types';
 import { PrismaService } from '../prisma/prisma.service';
 import {
@@ -22,7 +27,10 @@ import { MarketCache } from './market-cache';
 import { MarketClock } from './market-clock';
 import { MarketConfigService, TickerConfig } from './market-config.service';
 import { MarketSnapshotService } from './market-snapshot.service';
-import { QuoteAllowlistService } from './quote-allowlist.service';
+import {
+  QuoteAllowlistService,
+  TRACKED_STOCK_REFS,
+} from './quote-allowlist.service';
 
 /** A price as readers get it: the value, its label and its time. */
 export interface DisplayQuote extends Omit<Shown, 'asOf'> {
@@ -98,6 +106,28 @@ export const SECTORS: readonly { symbol: string; name: string }[] = [
   { symbol: 'NIFTY INFRA', name: 'Infrastructure' },
   { symbol: 'NIFTY COMMODITIES', name: 'Commodities' },
 ];
+
+/**
+ * The stocks the public may always quote besides the curated ones, sorted:
+ * the snapshot's `quotableStocks`, so the website knows which stock pages
+ * will have a price without keeping its own copy of the lists.
+ */
+const QUOTABLE_STOCKS: readonly string[] = Object.freeze(
+  [...TRACKED_STOCK_REFS].sort(),
+);
+
+/** B3: a failed or empty broker answer is kept at most this long (s). */
+const BAD_ANSWER_TTL = 60;
+
+/**
+ * B3: thrown out of a MarketCache loader on purpose, so a refused, failed or
+ * empty broker answer isn't stored for the key's whole TTL.
+ */
+class Uncached extends Error {
+  constructor(readonly answer: LaneResult<unknown>) {
+    super('not cached');
+  }
+}
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
 const iso = (ms: number) => new Date(ms).toISOString();
@@ -178,6 +208,7 @@ export class MarketDataService {
       },
       generatedAt: iso(now),
       instruments,
+      quotableStocks: QUOTABLE_STOCKS,
     };
   }
 
@@ -218,7 +249,7 @@ export class MarketDataService {
     for (const ref of stocks) if (!allowed.has(ref)) missing.push(ref);
     const wanted = stocks.filter((r) => allowed.has(r));
     if (wanted.length && snap.right !== 'OFF') {
-      found.push(...(await this.stockQuotes(snap.right, wanted)));
+      found.push(...(await this.stockQuotes(channel, snap.right, wanted)));
     }
     const got = new Set(found.map((q) => q.ref));
     for (const ref of wanted) if (!got.has(ref)) missing.push(ref);
@@ -331,7 +362,8 @@ export class MarketDataService {
       return empty('rights');
 
     const lookup = curated?.contract ?? symbol;
-    const raw = await this.cache.get(
+    const { value: raw, refused } = await this.brokerAnswer(
+      channel,
       `chart:${ref}:${range}`,
       CHART_TTL[range],
       async () => {
@@ -350,8 +382,9 @@ export class MarketDataService {
           return null;
         }
       },
+      (v) => !!v && v.candles.length > 0,
     );
-    if (!raw || raw.candles.length === 0) return empty('upstream');
+    if (refused || !raw || raw.candles.length === 0) return empty('upstream');
     let candles = raw.candles;
     if (spec.sessions) {
       // Keep the last N sessions (IST dates) of the intraday series.
@@ -386,7 +419,16 @@ export class MarketDataService {
    */
   async ipos(channel: Channel) {
     const { right } = await this.rights(channel);
-    const board = await this.cache.get('ipos', 600, () => this.ipo.getBoard());
+    // A board whose listing prices didn't all come back is kept 60 s, not 600.
+    const { value: board } = await this.brokerAnswer(
+      channel,
+      'ipos',
+      600,
+      () => this.ipo.getBoard(),
+      (b) =>
+        b.available &&
+        b.recentlyListed.every((l) => !l.tradeable || l.ltp !== null),
+    );
     if (right === 'LIVE') return { ...board, attribution: 'IPO data: NSE' };
     return {
       ...board,
@@ -418,7 +460,45 @@ export class MarketDataService {
 
   // ── Internals ──────────────────────────────────────────────────────
 
+  /**
+   * A broker-backed answer, cached under `key` (B3): a good one for `ttl`
+   * seconds, a failed or empty one for at most 60 s, and a refused one not
+   * at all, so the app never inherits a refusal and the website asks again
+   * as soon as its share has room. The website's channels ('web', 'public')
+   * make their broker calls in the website's share of the account
+   * (smartapi.rate-limiter.ts); the app's never wait for it. The broker is
+   * only called inside MarketCache.get's loader, so each call still fills
+   * the key it is cached under (the local harness counts calls by that key).
+   */
+  private async brokerAnswer<T>(
+    channel: Channel,
+    key: string,
+    ttl: number,
+    load: () => Promise<T>,
+    good: (value: T) => boolean,
+  ): Promise<LaneResult<T>> {
+    const lane: BrokerLane = channel === 'app' ? 'app' : 'website';
+    try {
+      const value = await this.cache.get(key, ttl, async () => {
+        const answer = await inBrokerLane(lane, load);
+        if (answer.refused || !good(answer.value)) throw new Uncached(answer);
+        return answer.value;
+      });
+      return { value, refused: false };
+    } catch (err) {
+      if (!(err instanceof Uncached)) throw err;
+      const answer = err.answer as LaneResult<T>;
+      if (!answer.refused) {
+        await this.cache.get(key, Math.min(ttl, BAD_ANSWER_TTL), () =>
+          Promise.resolve(answer.value),
+        );
+      }
+      return answer;
+    }
+  }
+
   private async stockQuotes(
+    channel: Channel,
     right: MarketDataRight,
     refs: string[],
   ): Promise<DisplayQuote[]> {
@@ -431,7 +511,8 @@ export class MarketDataService {
     }
     const out: DisplayQuote[] = [];
     for (const [exchange, symbols] of byExchange) {
-      const res = await this.cache.get(
+      const { value: res, refused } = await this.brokerAnswer(
+        channel,
         `stock:${exchange}:${[...symbols].sort().join(',')}`,
         15,
         async () => {
@@ -441,8 +522,10 @@ export class MarketDataService {
             return null;
           }
         },
+        (r) => !!r && r.quotes.length > 0,
       );
-      if (!res) continue;
+      // Refused: these refs end in `missing`, like any unquoted stock.
+      if (refused || !res) continue;
       const fetchedAt = Date.parse(res.fetchedAt);
       for (const q of res.quotes) {
         const point: PricePoint = {
@@ -502,14 +585,20 @@ export class MarketDataService {
     }
     const now = this.clock.now();
     const holidays = this.holidaySet();
-    const cached = await this.cache.get(key, ttl, async () => {
-      try {
-        return { at: this.clock.now(), rows: await load() };
-      } catch {
-        return null;
-      }
-    });
-    if (!cached || cached.rows.length === 0) {
+    const { value: cached, refused } = await this.brokerAnswer(
+      channel,
+      key,
+      ttl,
+      async () => {
+        try {
+          return { at: this.clock.now(), rows: await load() };
+        } catch {
+          return null;
+        }
+      },
+      (v) => !!v && v.rows.length > 0,
+    );
+    if (refused || !cached || cached.rows.length === 0) {
       return {
         available: false,
         reason: 'upstream',

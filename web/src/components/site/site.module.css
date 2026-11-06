@@ -1,0 +1,1256 @@
+/* The site pages (spec §5.2–§5.6): /features, /about, /faq, /download and
+   /contact, in the Emerald Terminal system (brief, 6 Nov 2026): the
+   emerald BandHead (band.module.css), then light mint content with white
+   cards (--sv-r-md, --sv-shadow-card), Hanken headings at 800 and mono
+   numbers and labels. Colour comes from the semantic tokens; emerald cards
+   carry A's .sv-emerald scope (set in the markup). Grid columns follow
+   --sv-cols (4 / 8 / 12). */
+
+/* ── Shared ──────────────────────────────────────────────────────────── */
+
+.section {
+  padding-block: var(--sv-section-site);
+}
+
+.white {
+  background: var(--sv-surface);
+}
+
+/* A white card: 1 px rule, 16 px radius, the soft emerald card shadow
+   (the values of A's .sv-card.sv-card-raised, without its overflow clip). */
+.card {
+  min-width: 0;
+  padding: 20px;
+  border: 1px solid var(--sv-rule);
+  border-radius: var(--sv-r-md);
+  background: var(--sv-surface);
+  box-shadow: var(--sv-shadow-card);
+  color: var(--sv-fg);
+}
+
+@media (min-width: 768px) {
+  .card {
+    padding: 28px;
+  }
+}
+
+/* A card on emerald (About's "What we're not"): give it the .sv-emerald
+   scope in the markup too, so the tokens read light inside it. */
+.emerald {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgb(52 224 137 / 0.28);
+  border-radius: var(--sv-r-md);
+  background: var(--sv-emerald-band);
+}
+
+/* The light tokens again inside a white card that sits on the band (the
+   /features fact file, the /download QR card: no controls inside). */
+.onLight {
+  --sv-fg: var(--sv-ink);
+  --sv-fg-2: var(--sv-text-2);
+  --sv-fg-3: var(--sv-text-3);
+  --sv-rule: var(--sv-line);
+  --sv-control: var(--sv-line-strong);
+  color: var(--sv-fg);
+}
+
+/* A section H2: Hanken 800, tight (26 px at 390, 40 px at 1440). */
+.h2 {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-weight: 800;
+  font-size: clamp(1.625rem, 1.3rem + 1.35vw, 2.5rem);
+  line-height: 1.08;
+  letter-spacing: -0.035em;
+  text-wrap: balance;
+  color: var(--sv-fg);
+}
+
+/* The smaller H2 of a block (FAQ groups, About's sections, /download):
+   22 px at 390, 30 px at 1440. */
+.h2Fixed {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-weight: 800;
+  font-size: clamp(1.375rem, 1.2rem + 0.75vw, 1.875rem);
+  line-height: 1.15;
+  letter-spacing: -0.025em;
+  text-wrap: balance;
+  color: var(--sv-fg);
+}
+
+/* A card's own heading (Hanken 700, 18/24). */
+.h3 {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-weight: 700;
+  font-size: 18px;
+  line-height: 24px;
+  letter-spacing: -0.01em;
+  color: var(--sv-fg);
+}
+
+.measure {
+  max-width: 36em;
+}
+
+/* Index links as light chips in a wrapping row, 44 px tall (the About and
+   FAQ index on tablets). */
+.anchorRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.anchorRow a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid var(--sv-rule);
+  border-radius: var(--sv-r-pill);
+  background: var(--sv-surface);
+  color: var(--sv-fg);
+  font-size: 15px;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .anchorRow a:hover {
+    border-color: var(--sv-green-700);
+    color: var(--sv-green-700);
+  }
+}
+
+/* A stacked list of index links, 44 px each, on a white card (About and
+   FAQ index, desktop). */
+.indexCard {
+  padding: 20px 16px 16px 20px;
+  border: 1px solid var(--sv-rule);
+  border-radius: var(--sv-r-md);
+  background: var(--sv-surface);
+}
+
+.indexLabel {
+  margin: 0 0 8px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--sv-green-700);
+}
+
+.anchorList {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.anchorList a {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  padding-left: 14px;
+  border-left: 2px solid var(--sv-rule);
+  color: var(--sv-fg-2);
+  font-size: 15px;
+  line-height: 20px;
+  text-decoration: none;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .anchorList a:hover {
+    border-left-color: var(--sv-green-700);
+    color: var(--sv-fg);
+  }
+}
+
+/* Native <details> rows as white cards (FAQ and /download's "Before you
+   install"): a 64 px summary with the chevron in a mint 32 px tile. */
+.qaList {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.qa {
+  border: 1px solid var(--sv-rule);
+  border-radius: var(--sv-r-md);
+  background: var(--sv-surface);
+  box-shadow: var(--sv-shadow-1);
+}
+
+.qa[open] {
+  box-shadow: var(--sv-shadow-card);
+}
+
+.qa > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 56px;
+  padding: 8px 12px 8px 16px;
+  border-radius: var(--sv-r-md);
+  cursor: pointer;
+  list-style: none;
+  font-family: var(--font-sans);
+  font-size: 17px;
+  line-height: 24px;
+  font-weight: 700;
+  letter-spacing: -0.005em;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.qa > summary::-webkit-details-marker {
+  display: none;
+}
+
+.qaChev {
+  flex: none;
+  box-sizing: border-box;
+  width: 32px;
+  height: 32px;
+  padding: 8px;
+  border-radius: var(--sv-r-sm);
+  background: var(--sv-green-050);
+  color: var(--sv-green-700);
+  transition: transform var(--sv-dur-2) var(--sv-ease-out);
+}
+
+.qa[open] > summary .qaChev {
+  transform: rotate(180deg);
+}
+
+.qaBody {
+  display: grid;
+  gap: 12px;
+  max-width: 62ch;
+  padding: 0 16px 16px;
+  color: var(--sv-fg-2);
+}
+
+/* From 768 px the rows are design I's 64 px. */
+@media (min-width: 768px) {
+  .qaList {
+    gap: 10px;
+  }
+  .qa > summary {
+    min-height: 64px;
+    padding: 10px 16px 10px 20px;
+  }
+  .qaBody {
+    padding: 0 20px 20px;
+  }
+}
+
+.qaBody p {
+  margin: 0;
+}
+
+/* In-content links (RichInline's linkClassName): the primary on light. */
+.link {
+  color: var(--sv-green-700);
+  font-weight: 600;
+  text-decoration-line: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+.link:hover {
+  color: var(--sv-green-800);
+  text-decoration-thickness: 2px;
+}
+
+.emerald .link {
+  color: var(--sv-fg);
+  text-decoration-color: var(--sv-neon);
+}
+
+/* ── /features ───────────────────────────────────────────────────────── */
+
+.jump {
+  margin-top: 24px;
+}
+
+/* The numbered jump chips on the band. */
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 0 16px 0 14px;
+  border: 1px solid rgb(214 243 227 / 0.3);
+  border-radius: var(--sv-r-pill);
+  background: var(--sv-emerald-chip);
+  color: var(--sv-fg);
+  font-size: 15px;
+  line-height: 20px;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .chip:hover {
+    border-color: var(--sv-neon);
+    background: rgb(52 224 137 / 0.14);
+  }
+}
+
+.chipIndex {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--sv-neon);
+}
+
+/* Below 768 px the chips are one row that scrolls sideways (44 px), not
+   three wrapped rows. */
+@media (max-width: 767.98px) {
+  .jump .chips {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    margin-inline: calc(-1 * var(--sv-margin));
+    padding-inline: var(--sv-margin);
+    scrollbar-width: none;
+  }
+  .jump .chips::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+.headFacts {
+  min-width: 0;
+}
+
+/* The fact file after the band, below 1024 px only (FeaturesView). */
+.factBelow {
+  padding-top: 24px;
+}
+
+@media (min-width: 768px) {
+  .factBelow {
+    padding-top: 40px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .factBelow {
+    display: none;
+  }
+}
+
+.factCard {
+  padding: 4px 20px 8px;
+}
+
+@media (min-width: 768px) {
+  .factCard {
+    padding: 8px 24px 12px;
+  }
+}
+
+.chapterGrid {
+  display: grid;
+  grid-template-columns: repeat(var(--sv-cols), minmax(0, 1fr));
+  column-gap: var(--sv-gutter);
+  row-gap: 0;
+}
+
+.chapterBody,
+.chapterExtras,
+.frame {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+
+.frame {
+  display: none;
+}
+
+.chapterTitle {
+  max-width: 22ch;
+}
+
+.chapterIntro {
+  margin: 16px 0 0;
+  max-width: 40em;
+}
+
+/* From 1024 px a text-only chapter puts its intro beside the H2, bottoms
+   aligned (design I's section head). */
+@media (min-width: 1024px) {
+  .chapterGrid:not([data-screen]) .chapterHead {
+    display: grid;
+    grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+    column-gap: var(--sv-gutter);
+    align-items: end;
+  }
+  .chapterGrid:not([data-screen]) .chapterIntro {
+    margin-top: 0;
+  }
+}
+
+/* The items: white cards (mint on a white ground), two columns from 768. */
+.items {
+  display: grid;
+  gap: 10px;
+  margin: 20px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.itemCard {
+  min-width: 0;
+  padding: 14px 16px 16px;
+  border: 1px solid var(--sv-rule);
+  border-radius: var(--sv-r-md);
+  background: var(--sv-surface);
+}
+
+.white .itemCard {
+  background: var(--sv-paper);
+}
+
+.itemTitle {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-weight: 700;
+  font-size: 18px;
+  line-height: 24px;
+  letter-spacing: -0.01em;
+  color: var(--sv-fg);
+}
+
+.itemCard > p {
+  margin: 6px 0 0;
+}
+
+.tail {
+  margin-top: 12px;
+}
+
+.tail .items {
+  margin-top: 0;
+}
+
+.extras {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(420px, 100%), 1fr));
+  gap: 16px;
+  margin-top: 24px;
+}
+
+.extraCard {
+  padding: 16px;
+}
+
+@media (min-width: 768px) {
+  .items {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 16px;
+    margin-top: 24px;
+  }
+  .itemCard {
+    padding: 18px 20px 20px;
+  }
+  .extras {
+    margin-top: 28px;
+  }
+  .tail {
+    margin-top: 16px;
+  }
+  .extraCard {
+    padding: 24px;
+  }
+  .frame {
+    display: block;
+    position: sticky;
+    top: calc(var(--sv-sticky-top) + 20px);
+    align-self: start;
+  }
+  .chapterGrid[data-screen] .frame {
+    grid-column: 1 / span 3;
+    grid-row: 1;
+  }
+  .chapterGrid[data-screen] .chapterBody {
+    grid-column: 4 / -1;
+    grid-row: 1;
+  }
+  .chapterGrid[data-screen] .chapterExtras {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+  .chapterGrid[data-screen] .items {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (min-width: 1024px) {
+  .frame {
+    top: calc(var(--sv-chrome-h) + 32px);
+  }
+  .chapterGrid[data-screen] .frame {
+    grid-column: 1 / span 4;
+    grid-row: 1 / span 2;
+  }
+  .chapterGrid[data-screen] .chapterBody {
+    grid-column: 6 / span 7;
+  }
+  .chapterGrid[data-screen] .chapterExtras {
+    grid-column: 6 / span 7;
+    grid-row: 2;
+  }
+  .chapterGrid[data-screen] .items {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.wontDoWrap {
+  max-width: 56rem;
+}
+
+/* The close: an emerald card (.sv-emerald in the markup) with 40 px corners
+   that straddles the footer (white above, the footer's #01261A below). */
+.closeSection {
+  padding-top: 8px;
+  background: linear-gradient(var(--sv-surface) 0%, var(--sv-surface) 50%, var(--sv-emerald) 50%, var(--sv-emerald) 100%);
+}
+
+.close {
+  position: relative;
+  overflow: hidden;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  column-gap: 32px;
+  row-gap: 20px;
+  padding: 28px 24px;
+  border: 1px solid rgb(52 224 137 / 0.28);
+  border-radius: var(--sv-r-band);
+  background:
+    radial-gradient(45% 90% at 88% 0%, rgb(52 224 137 / 0.35), transparent 70%),
+    linear-gradient(120deg, var(--sv-emerald) 0%, var(--sv-emerald-2) 55%, var(--sv-emerald-3) 100%);
+  box-shadow: 0 40px 80px -40px rgb(1 38 26 / 0.6);
+}
+
+@media (min-width: 768px) {
+  .close {
+    padding: 40px 48px;
+  }
+}
+
+.closeBadge {
+  display: grid;
+  gap: 8px;
+  justify-items: start;
+}
+
+.closeLink {
+  color: var(--sv-fg);
+}
+
+.chart {
+  min-width: 0;
+}
+
+/* The phone carousel (spec §4.11): phones only. */
+.carousel {
+  padding-top: 24px;
+}
+
+.carouselTrack {
+  display: flex;
+  gap: 16px;
+  margin: 0;
+  padding: 0 var(--sv-margin);
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scroll-padding-inline: var(--sv-margin);
+  overscroll-behavior-x: contain;
+  list-style: none;
+  scrollbar-width: none;
+}
+
+.carouselTrack::-webkit-scrollbar {
+  display: none;
+}
+
+/* One slide per screen, the frame at its start; the next slide's frame
+   peeks 24 px in from the right edge. */
+.carouselTrack > li {
+  flex: none;
+  width: calc(100% - 24px);
+  scroll-snap-align: start;
+}
+
+/* The carousel's frames are 180 px wide (spec §4.11); captions wrap under them. */
+.carouselFrame {
+  --sv-device-w: 180px;
+  width: 180px;
+}
+
+.carouselDots {
+  display: flex;
+  justify-content: center;
+  margin-top: 4px;
+}
+
+.carouselDot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+
+.carouselDot::before {
+  content: '';
+  width: 8px;
+  height: 8px;
+  border-radius: var(--sv-r-pill);
+  background: var(--sv-line-strong);
+}
+
+.carouselDot[aria-current='true']::before {
+  background: var(--sv-green-700);
+}
+
+@media (min-width: 768px) {
+  .carousel {
+    display: none;
+  }
+}
+
+/* ── /about ──────────────────────────────────────────────────────────── */
+
+.aboutGrid {
+  display: grid;
+  grid-template-columns: repeat(var(--sv-cols), minmax(0, 1fr));
+  column-gap: var(--sv-gutter);
+  row-gap: 32px;
+}
+
+@media (min-width: 768px) {
+  .aboutGrid {
+    row-gap: 40px;
+  }
+}
+
+.aboutGrid > * {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+
+.aboutIndex {
+  display: none;
+}
+
+/* Tablets: the index chips stay under the header while the page scrolls
+   (sticky, as before), on a mint strip with a hairline. */
+.aboutIndexRow,
+.faqIndexRow {
+  position: sticky;
+  top: calc(var(--sv-sticky-top) - 12px);
+  z-index: 1;
+  margin-top: 14px;
+  padding-block: 10px;
+  border-bottom: 1px solid var(--sv-rule);
+  background: var(--sv-paper);
+}
+
+.prose p {
+  margin: 0;
+}
+
+.prose p + p {
+  margin-top: 16px;
+}
+
+.founder {
+  margin-top: 32px;
+  padding: 24px;
+  border: 1px solid var(--sv-rule);
+  border-radius: var(--sv-r-md);
+  background: var(--sv-surface);
+}
+
+.founder p {
+  margin: 0;
+}
+
+.founder p + p {
+  margin-top: 16px;
+}
+
+.founderSign {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-top: 24px;
+}
+
+.founderSign img {
+  width: 72px;
+  height: 72px;
+  border-radius: var(--sv-r-pill);
+  object-fit: cover;
+}
+
+.principles {
+  display: grid;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.principle {
+  padding: 14px 16px 16px;
+  border: 1px solid var(--sv-rule);
+  border-radius: var(--sv-r-md);
+  background: var(--sv-surface);
+}
+
+.principle h3,
+.principle p {
+  margin: 0;
+}
+
+.principle p {
+  margin-top: 6px;
+}
+
+@media (min-width: 768px) {
+  .principles {
+    gap: 12px;
+    margin-top: 24px;
+  }
+  .principle {
+    padding: 18px 20px 20px;
+  }
+}
+
+.notUs {
+  padding: 24px;
+}
+
+@media (min-width: 768px) {
+  .notUs {
+    padding: 32px;
+  }
+}
+
+/* The company's fact file on its card; long unbroken values (an officer's
+   email) wrap inside the narrow column. */
+.companyCard {
+  padding: 8px 20px 12px;
+}
+
+.companyFile td {
+  overflow-wrap: anywhere;
+}
+
+.timeline {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.timeline strong {
+  font-family: var(--font-mono);
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.writeCard {
+  padding: 20px 24px 22px;
+}
+
+@media (max-width: 767.98px) {
+  .aboutIndexRow {
+    display: none;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1023.98px) {
+  .aboutGrid > .aboutBody {
+    grid-column: 1 / span 6;
+  }
+  .aboutGrid > .aboutWide {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (min-width: 1024px) {
+  .aboutIndexRow {
+    display: none;
+  }
+  .aboutGrid {
+    grid-template-rows: repeat(4, auto);
+  }
+  .aboutGrid[data-timeline] {
+    grid-template-rows: repeat(5, auto);
+  }
+  .aboutIndex {
+    display: block;
+    grid-column: 1 / span 3;
+    grid-row: 1 / -1;
+  }
+  .aboutIndex > .indexCard {
+    position: sticky;
+    top: calc(var(--sv-chrome-h) + 32px);
+  }
+  .aboutGrid > .aboutWhy {
+    grid-column: 4 / span 6;
+    grid-row: 1;
+  }
+  .aboutGrid > .aboutCompany {
+    grid-column: 10 / span 3;
+    grid-row: 1 / span 2;
+    align-self: start;
+    position: sticky;
+    top: calc(var(--sv-chrome-h) + 32px);
+  }
+  .aboutGrid > .aboutHow {
+    grid-column: 4 / span 6;
+    grid-row: 2;
+  }
+  .aboutGrid > .aboutNotUs {
+    grid-column: 4 / span 7;
+    grid-row: 3;
+  }
+  .aboutGrid > .aboutTimeline {
+    grid-column: 4 / span 6;
+    grid-row: 4;
+  }
+  .aboutGrid > .aboutWrite {
+    grid-column: 4 / span 6;
+    grid-row: 4;
+  }
+  .aboutGrid[data-timeline] > .aboutWrite {
+    grid-row: 5;
+  }
+}
+
+/* From 1280 px the index takes two columns and the company card four, so
+   the card's values (an email address) fit without breaking. */
+@media (min-width: 1280px) {
+  .aboutIndex {
+    grid-column: 1 / span 2;
+  }
+  .aboutGrid > .aboutWhy,
+  .aboutGrid > .aboutHow,
+  .aboutGrid > .aboutTimeline,
+  .aboutGrid > .aboutWrite {
+    grid-column: 3 / span 6;
+  }
+  .aboutGrid > .aboutNotUs {
+    grid-column: 3 / span 7;
+  }
+  .aboutGrid > .aboutCompany {
+    grid-column: 9 / span 4;
+  }
+}
+
+/* ── /faq ────────────────────────────────────────────────────────────── */
+
+.faqGrid {
+  display: grid;
+  grid-template-columns: repeat(var(--sv-cols), minmax(0, 1fr));
+  column-gap: var(--sv-gutter);
+}
+
+.faqGrid > * {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+
+.faqIndex {
+  display: none;
+}
+
+.faqIndexRow {
+  display: none;
+}
+
+.faqGroups {
+  display: grid;
+  gap: 32px;
+}
+
+@media (min-width: 768px) {
+  .faqGroups {
+    gap: 40px;
+  }
+}
+
+.faqGroup h2 {
+  margin-bottom: 16px;
+}
+
+.faqItem {
+  position: relative;
+}
+
+.faqCard {
+  margin-top: 40px;
+}
+
+.notFound {
+  margin: 20px 0 0;
+  padding-top: 16px;
+  border-top: 1px solid var(--sv-rule);
+}
+
+/* Room between the question and its chevron tile for the "#" button, where
+   a pointer can hover (touch screens never show the button unless focused). */
+@media (min-width: 768px) and (hover: hover) and (pointer: fine) {
+  .faqItem > .qa > summary > span:first-child {
+    margin-right: 48px;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1023.98px) {
+  .faqIndexRow {
+    display: block;
+  }
+}
+
+@media (min-width: 1024px) {
+  .faqIndex {
+    display: block;
+    grid-column: 1 / span 3;
+  }
+  .faqIndex > div {
+    position: sticky;
+    top: calc(var(--sv-chrome-h) + 32px);
+  }
+  .faqGrid > .faqMain {
+    grid-column: 4 / span 8;
+  }
+  .faqCard {
+    display: none;
+  }
+}
+
+/* The "#" link button: shown on hover of its row and on focus, left of the
+   chevron tile (centred on the 56 px summary; 64 px from 768). */
+.faqLink {
+  position: absolute;
+  top: 6px;
+  right: 52px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--sv-r-sm);
+  background: var(--sv-surface);
+  color: var(--sv-fg-2);
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.faqLink:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+@media (min-width: 768px) {
+  .faqLink {
+    top: 10px;
+    right: 56px;
+  }
+}
+
+@media (min-width: 768px) and (hover: hover) and (pointer: fine) {
+  .faqItem:hover .faqLink {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .faqLink:hover {
+    color: var(--sv-green-700);
+  }
+}
+
+.faqLink svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* ── /download ───────────────────────────────────────────────────────── */
+
+.dlBadge {
+  display: grid;
+  justify-items: start;
+  gap: 8px;
+  margin-top: 24px;
+}
+
+.dlIphone {
+  margin: 4px 0 0;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--sv-fg-2);
+}
+
+/* The QR card on the band (white, 16 px). Phones have no QR, so a panel
+   with only the QR is left out below 768. */
+.dlPanel {
+  display: grid;
+  justify-items: center;
+  gap: 20px;
+  padding: 20px;
+}
+
+@media (max-width: 767.98px) {
+  .dlPanel[data-qr-only] {
+    display: none;
+  }
+  .dlQr {
+    display: none;
+  }
+}
+
+.dlGrid {
+  display: grid;
+  grid-template-columns: repeat(var(--sv-cols), minmax(0, 1fr));
+  column-gap: var(--sv-gutter);
+  row-gap: 40px;
+}
+
+.dlGrid > * {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+
+.dlFacts {
+  padding: 4px 20px 8px;
+}
+
+/* The /download fact file has no caption, so the card's own edge is its
+   top: no hairline above the first row. */
+.dlFacts > :global(.sv-factfile) {
+  border-top: 0;
+}
+
+@media (min-width: 768px) {
+  .dlFacts {
+    padding: 8px 24px 12px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .dlGrid > .dlFactsCol {
+    grid-column: 1 / span 4;
+  }
+  .dlGrid > .dlBefore {
+    grid-column: 6 / span 7;
+  }
+}
+
+.minutes {
+  display: grid;
+  gap: 12px;
+  margin: 20px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.minute {
+  min-width: 0;
+  padding: 20px;
+  border: 1px solid var(--sv-rule);
+  border-radius: var(--sv-r-md);
+  background: var(--sv-surface);
+  box-shadow: var(--sv-shadow-card);
+}
+
+.minute h3,
+.minute p {
+  margin: 0;
+}
+
+.minute p {
+  margin-top: 6px;
+}
+
+.minuteIndex {
+  display: block;
+  margin-bottom: 10px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  color: var(--sv-green-700);
+}
+
+.minuteShot {
+  margin-bottom: 16px;
+}
+
+@media (min-width: 768px) {
+  .minutes {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px;
+  }
+}
+
+.before .qaList {
+  margin-top: 16px;
+}
+
+.note {
+  margin: 24px 0 0;
+  max-width: 40em;
+}
+
+/* ── /contact ────────────────────────────────────────────────────────── */
+
+.contactGrid {
+  display: grid;
+  grid-template-columns: repeat(var(--sv-cols), minmax(0, 1fr));
+  column-gap: var(--sv-gutter);
+  row-gap: 24px;
+}
+
+.contactGrid > * {
+  grid-column: 1 / -1;
+  min-width: 0;
+}
+
+@media (min-width: 768px) {
+  .contactGrid > .contactForm {
+    grid-column: 1 / span 5;
+  }
+  .contactGrid > .contactAside {
+    grid-column: 6 / span 3;
+  }
+}
+
+@media (min-width: 1024px) {
+  .contactGrid > .contactForm {
+    grid-column: 1 / span 7;
+  }
+  .contactGrid > .contactAside {
+    grid-column: 9 / span 4;
+  }
+}
+
+.formCard {
+  padding: 24px 20px;
+}
+
+@media (min-width: 768px) {
+  .formCard {
+    padding: 32px;
+  }
+}
+
+.notice {
+  margin: 20px 0 0;
+  padding-top: 16px;
+  border-top: 1px solid var(--sv-rule);
+}
+
+.aside {
+  display: grid;
+  gap: 0;
+  padding: 20px 20px 8px;
+  border: 1px solid var(--sv-rule);
+  border-radius: var(--sv-r-md);
+  background: var(--sv-surface);
+}
+
+.aside h2,
+.aside h3,
+.aside p {
+  margin: 0;
+}
+
+.aside h2 {
+  margin-bottom: 10px;
+}
+
+.asideBlock {
+  padding-block: 14px;
+  border-top: 1px solid var(--sv-rule);
+}
+
+.emailRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px 8px;
+  overflow-wrap: anywhere;
+}
+
+.copyBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 1px solid var(--sv-rule);
+  border-radius: var(--sv-r-sm);
+  background: var(--sv-surface);
+  color: var(--sv-fg);
+  cursor: pointer;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .copyBtn:hover {
+    border-color: var(--sv-green-700);
+    color: var(--sv-green-700);
+  }
+}
+
+.copyBtn svg {
+  width: 18px;
+  height: 18px;
+}
+
+.form {
+  display: grid;
+  gap: 20px;
+}
+
+.honeypot {
+  position: absolute;
+  left: -9999px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
