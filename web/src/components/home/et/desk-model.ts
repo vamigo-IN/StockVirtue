@@ -1,20 +1,30 @@
 import { isVolatilityIndex } from '@/components/market/gate';
 import { istDate, type RidgeData } from '@/components/home/ridgeline/model';
-import type { DataLabel, MarketQuote, Snapshot } from '@/market/types';
+import { stampOf } from '@/components/widgets/format';
+import type { DataLabel, Labelled, ListRow, MarketQuote, Snapshot } from '@/market/types';
 
 /**
  * The hero desk's data (Emerald Terminal home, 6 Nov 2026). Pure: no React,
- * no clock, no fetch. Two shapes:
- * - `realDesk()`: with the site-prices gate on and data present, the chart is
- *   a year of real daily closes (the Ridgeline's Nifty 50 series, with the
- *   snapshot's tip) and the watchlist real snapshot rows. The order ticket is
- *   an example derived from the first watchlist price, and the positions are
- *   a sample: both are labelled as such where they are drawn.
- * - `SAMPLE_DESK`: everything static and obviously sample (round numbers).
+ * no clock, no fetch. Real data or none: `realDesk()` builds the desk only
+ * with the site-prices gate on and the data there, and every figure in it
+ * is a market price with its label and time:
+ * - the chart: a year of real daily closes (the Ridgeline's Nifty 50
+ *   series, else its first, with the snapshot's tip);
+ * - the watchlist: snapshot rows;
+ * - the order ticket: the first watchlist stock at its last price, 20
+ *   shares, and the order's value;
+ * - "Biggest moves": the large caps' top three gainers and losers (the
+ *   movers, LIVE licence only), else the curated indices from the snapshot.
+ * Null when that isn't possible: the page then draws no desk.
  */
 
 /** The chart's viewBox and plot area (px in the 440 × 220 box). */
 export const CHART = { w: 440, h: 220, right: 384, top: 10, bottom: 190 } as const;
+
+/** Shares on the order ticket (the "How a trade works" steps say 20). */
+export const TICKET_QTY = 20;
+/** Rows per side in "Biggest moves". */
+const MOVES_EACH = 3;
 
 export type ChartModel = {
   /** The close line and the filled area under it. */
@@ -36,6 +46,26 @@ export type DeskQuote = {
   asOf: string;
 };
 
+/** A row in "Biggest moves" (a movers row: one label and time for the list). */
+export type DeskMove = { symbol: string; name: string; ltp: number; changePct: number };
+
+export type DeskMoves =
+  | {
+      /** The large caps' movers (LIVE licence). */
+      kind: 'movers';
+      gainers: DeskMove[];
+      losers: DeskMove[];
+      label: DataLabel;
+      asOf: string;
+    }
+  | {
+      /** No movers: the curated indices the chart doesn't show. */
+      kind: 'indices';
+      rows: DeskQuote[];
+      label: DataLabel;
+      asOf: string;
+    };
+
 export type RealDesk = {
   chart: {
     name: string;
@@ -52,9 +82,13 @@ export type RealDesk = {
   attribution: string;
   delayMinutes: number;
   right: Snapshot['right'];
-  /** The example order: a limit a little under the first watchlist stock's price. */
-  ticket: { symbol: string; exchange: string; price: number; qty: number };
+  /** The first watchlist stock at its last price: a limit buy of TICKET_QTY. Null without a stock. */
+  ticket: (DeskQuote & { exchange: string; qty: number }) | null;
+  moves: DeskMoves | null;
 };
+
+/** The movers lists the page fetched (either may be null: unavailable). */
+export type HomeMovers = { gainers: Labelled<ListRow[]> | null; losers: Labelled<ListRow[]> | null };
 
 const int = new Intl.NumberFormat('en-IN', { maximumFractionDigits: 0 });
 const price2 = new Intl.NumberFormat('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -108,26 +142,68 @@ export function lineModel(values: number[], dates: string[]): ChartModel | null 
   };
 }
 
+const priced = (q: MarketQuote) => Number.isFinite(q.ltp) && q.ltp > 0 && !!q.asOf;
+
+const deskQuote = (q: MarketQuote): DeskQuote => ({
+  symbol: q.symbol,
+  name: q.name,
+  ltp: q.ltp,
+  changePct: q.changePct,
+  label: q.label,
+  asOf: q.asOf,
+});
+
 /** The rows the watchlist shows: stocks first, then indices (never a volatility index). */
 function watchRows(snapshot: Snapshot): MarketQuote[] {
-  const ok = (q: MarketQuote) => Number.isFinite(q.ltp) && q.ltp > 0 && !!q.asOf;
-  const stocks = snapshot.instruments.filter((q) => q.kind === 'STOCK' && ok(q));
-  const indices = snapshot.instruments.filter((q) => q.kind === 'INDEX' && !isVolatilityIndex(q.ref) && ok(q));
+  const stocks = snapshot.instruments.filter((q) => q.kind === 'STOCK' && priced(q));
+  const indices = snapshot.instruments.filter((q) => q.kind === 'INDEX' && !isVolatilityIndex(q.ref) && priced(q));
   return [...stocks, ...indices].slice(0, 5);
 }
 
-/** A price a little under `ltp`, on the 5-paise tick: the example limit order's price. */
-export function exampleLimit(ltp: number): number {
-  return Math.floor((ltp * 0.99) / 0.05) * 0.05;
+/**
+ * "Biggest moves": the top three risers of the gainers list and fallers of
+ * the losers list (a list on a one-way day can hold the other kind: those
+ * rows are left out), with one label and time for both. Without a usable
+ * movers answer, the curated indices other than the charted one.
+ */
+export function deskMoves(movers: HomeMovers | null, snapshot: Snapshot, chartRef: string): DeskMoves | null {
+  const lists = [movers?.gainers, movers?.losers].filter(
+    (a): a is Labelled<ListRow[]> => !!a && a.available && !!a.label && !!a.asOf,
+  );
+  const pick = (a: Labelled<ListRow[]> | null | undefined, up: boolean): DeskMove[] =>
+    (a && lists.includes(a) ? a.data : [])
+      .filter((r) => Number.isFinite(r.ltp) && r.ltp > 0 && typeof r.changePct === 'number' && (up ? r.changePct > 0 : r.changePct < 0))
+      .slice(0, MOVES_EACH)
+      .map((r) => ({ symbol: r.symbol, name: r.name, ltp: r.ltp, changePct: r.changePct as number }));
+  const gainers = pick(movers?.gainers, true);
+  const losers = pick(movers?.losers, false);
+  if (gainers.length || losers.length) {
+    const stamp = stampOf(lists.map((a) => ({ label: a.label as DataLabel, asOf: a.asOf as string })));
+    if (stamp.label && stamp.asOf) {
+      return { kind: 'movers', gainers, losers, label: stamp.label, asOf: stamp.asOf };
+    }
+  }
+  const indices = snapshot.instruments
+    .filter((q) => q.kind === 'INDEX' && !isVolatilityIndex(q.ref) && q.ref !== chartRef && priced(q))
+    .slice(0, 4);
+  if (indices.length < 2) return null;
+  const stamp = stampOf(indices);
+  return stamp.label && stamp.asOf
+    ? { kind: 'indices', rows: indices.map(deskQuote), label: stamp.label, asOf: stamp.asOf }
+    : null;
 }
 
 /**
- * The real desk, or null when the data isn't there (then the page draws the
- * sample desk): the snapshot (gate on, licence not OFF), the Ridgeline with a
+ * The real desk, or null when the data isn't there (the page then draws no
+ * desk): the snapshot (gate on, licence not OFF), the Ridgeline with a
  * usable Nifty 50 series (else its first series), and at least three
  * watchlist rows.
  */
-export function realDesk(snapshot: Snapshot | null, ridge: RidgeData | null): RealDesk | null {
+export function realDesk(
+  snapshot: Snapshot | null,
+  ridge: RidgeData | null,
+  movers: HomeMovers | null = null,
+): RealDesk | null {
   if (!snapshot || snapshot.right === 'OFF' || !ridge || !ridge.series.length) return null;
   const series = ridge.series.find((s) => s.ref === 'NSE:NIFTY') ?? ridge.series[0];
   const values: number[] = [];
@@ -154,7 +230,7 @@ export function realDesk(snapshot: Snapshot | null, ridge: RidgeData | null): Re
   const rows = watchRows(snapshot);
   if (!model || rows.length < 3) return null;
   const newest = rows.reduce((a, q) => (Date.parse(q.asOf) > Date.parse(a) ? q.asOf : a), rows[0].asOf);
-  const first = rows.find((q) => q.kind === 'STOCK') ?? rows[0];
+  const stock = rows.find((q) => q.kind === 'STOCK');
   return {
     chart: {
       name: series.name,
@@ -165,64 +241,12 @@ export function realDesk(snapshot: Snapshot | null, ridge: RidgeData | null): Re
       label: tip.label,
       asOf: tip.asOf,
     },
-    watch: rows.map((q) => ({
-      symbol: q.symbol,
-      name: q.name,
-      ltp: q.ltp,
-      changePct: q.changePct,
-      label: q.label,
-      asOf: q.asOf,
-    })),
+    watch: rows.map(deskQuote),
     watchStamp: { label: rows[0].label, asOf: newest },
     attribution: snapshot.attribution,
     delayMinutes: snapshot.delayMinutes,
     right: snapshot.right,
-    ticket: { symbol: first.symbol, exchange: first.exchange || 'NSE', price: exampleLimit(first.ltp), qty: 20 },
+    ticket: stock ? { ...deskQuote(stock), exchange: stock.exchange || 'NSE', qty: TICKET_QTY } : null,
+    moves: deskMoves(movers, snapshot, series.ref),
   };
 }
-
-/* ── The sample desk (gate off, or no data): static, round, obviously sample. ── */
-
-export type Candle = { x: number; o: number; c: number; h: number; l: number; up: boolean };
-
-/** 24 sample candles between 1,580 and 1,620 (a fixed sequence, never a real price). */
-const SAMPLE_CLOSES = [
-  1592, 1588, 1590, 1596, 1594, 1599, 1597, 1603, 1601, 1598, 1604, 1608, 1606, 1611, 1609, 1605, 1610, 1614,
-  1612, 1609, 1613, 1617, 1615, 1600,
-];
-export const SAMPLE_SCALE = { lo: 1580, hi: 1620, ticks: [1590, 1600, 1610] } as const;
-
-export function sampleCandles(): Candle[] {
-  const step = CHART.right / SAMPLE_CLOSES.length;
-  const y = (v: number) =>
-    CHART.top + (1 - (v - SAMPLE_SCALE.lo) / (SAMPLE_SCALE.hi - SAMPLE_SCALE.lo)) * (CHART.bottom - CHART.top);
-  let open = 1590;
-  return SAMPLE_CLOSES.map((close, i) => {
-    const o = open;
-    const c = i === SAMPLE_CLOSES.length - 1 ? 1600 : close;
-    open = c;
-    const hi = Math.max(o, c) + 2;
-    const lo = Math.min(o, c) - 2;
-    return { x: step * i + step / 2, o: y(o), c: y(c), h: y(hi), l: y(lo), up: c >= o };
-  });
-}
-export function sampleY(v: number): number {
-  return CHART.top + (1 - (v - SAMPLE_SCALE.lo) / (SAMPLE_SCALE.hi - SAMPLE_SCALE.lo)) * (CHART.bottom - CHART.top);
-}
-
-/** The sample watchlist: round numbers, never today's prices. */
-export const SAMPLE_WATCH: { symbol: string; ltp: number; changePct: number }[] = [
-  { symbol: 'HDFCBANK', ltp: 1600, changePct: 1 },
-  { symbol: 'RELIANCE', ltp: 3000, changePct: 0.5 },
-  { symbol: 'INFY', ltp: 1800, changePct: 2 },
-  { symbol: 'TCS', ltp: 4000, changePct: -1.5 },
-  { symbol: 'SBIN', ltp: 800, changePct: 0.75 },
-];
-export const SAMPLE_TICKET = { symbol: 'HDFCBANK', exchange: 'NSE', price: 1590, qty: 20 } as const;
-
-/** The sample positions (shown on both desks, always labelled "Sample"). */
-export const SAMPLE_POSITIONS: { symbol: string; qty: string; pnl: number }[] = [
-  { symbol: 'HDFCBANK', qty: '×20', pnl: 200 },
-  { symbol: 'INFY', qty: '×10', pnl: 400 },
-  { symbol: 'TCS', qty: '×5', pnl: -100 },
-];

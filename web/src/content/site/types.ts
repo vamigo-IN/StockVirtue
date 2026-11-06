@@ -204,7 +204,7 @@ export const HOME_FEATURE_IDS = ['live-data', 'order-types', 'charges', 'fno-mcx
 
 /** A fact card: the big figure, its name and one line. Its small extra (balance, stamps, modules, shield) is code. */
 export type HomeFactCard = { id: ContentId; figure: FactLine; title: Line; body: FactTextField };
-/** A "What you can trade" card. Its sample panel (order types, sample option chain, commodities) is code. */
+/** A "What you can trade" card. Its panel (real prices while the site shows them, else words) is code. */
 export type HomeTradeCard = { id: ContentId; title: Line; body: FactTextField };
 /** A feature tile. */
 export type HomeFeature = { id: ContentId; title: Line; body: FactTextField };

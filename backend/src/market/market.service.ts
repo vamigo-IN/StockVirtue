@@ -21,6 +21,7 @@ import {
 } from '../common/margin';
 import { CAP_LISTS, CapSegment } from './cap-segments';
 import { CompanyDirectoryService } from './company-directory.service';
+import { nearestTradingExpiry, strikesAround } from './option-chain-near';
 import { ScripMasterService } from './scrip-master.service';
 import { Instrument } from './scrip-master.types';
 
@@ -578,13 +579,18 @@ export class MarketService {
         notFoundMessage(symbol, exchange),
       );
     }
+    // The short names NIFTY, BANKNIFTY, FINNIFTY, MIDCPNIFTY, NIFTYNXT50 and
+    // BSE BANKEX resolve to the index's share-typed code row (NSE 26000),
+    // which SmartAPI has no candles for: ask for the index row instead
+    // (99926000 "Nifty 50"; ScripMasterService.indexTwin).
+    const series = this.scripMaster.indexTwin(inst) ?? inst;
     // SmartAPI's historical-data endpoint doesn't reliably serve intraday
     // candles for indices (AMXIDX / INDEX). Force the daily interval and a
     // sensible minimum window so the chart actually renders for NIFTY,
     // BANKNIFTY, SENSEX et al. on every range chip.
     const isIndex =
-      inst.instrumentType === 'AMXIDX' ||
-      inst.instrumentType === 'INDEX';
+      series.instrumentType === 'AMXIDX' ||
+      series.instrumentType === 'INDEX';
     let effectiveInterval = interval;
     let effectiveHours = hours;
     if (isIndex) {
@@ -601,8 +607,8 @@ export class MarketService {
     let rows: CandleRow[];
     try {
       rows = await this.smartapi.getCandles({
-        exchange: inst.exchange,
-        symboltoken: inst.token,
+        exchange: series.exchange,
+        symboltoken: series.token,
         interval: effectiveInterval,
         fromdate: formatIst(from),
         todate: formatIst(now),
@@ -615,7 +621,7 @@ export class MarketService {
       // "chart unavailable" — if the daily request fails too. This turns the
       // 500 the app was seeing on F&O contracts into a clean degrade.
       this.logger.warn(
-        `candles ${inst.exchange}:${inst.token} @${effectiveInterval} ` +
+        `candles ${series.exchange}:${series.token} @${effectiveInterval} ` +
           `failed (${(err as Error).message}); retrying daily`,
       );
       effectiveInterval = 'ONE_DAY';
@@ -628,15 +634,15 @@ export class MarketService {
       );
       try {
         rows = await this.smartapi.getCandles({
-          exchange: inst.exchange,
-          symboltoken: inst.token,
+          exchange: series.exchange,
+          symboltoken: series.token,
           interval: 'ONE_DAY',
           fromdate: formatIst(wideFrom),
           todate: formatIst(now),
         });
       } catch (err2) {
         this.logger.warn(
-          `candles daily fallback ${inst.exchange}:${inst.token} ` +
+          `candles daily fallback ${series.exchange}:${series.token} ` +
             `failed (${(err2 as Error).message}); returning empty`,
         );
         rows = [];
@@ -961,6 +967,61 @@ export class MarketService {
         put: serializeLeg(r.put),
       })),
       fetchedAt: new Date().toISOString(),
+    };
+  }
+
+  /**
+   * The website's small option chain: the at-the-money strike for `spot`
+   * and `each` strikes either side of it, at the nearest expiry still
+   * trading at `now` (option-chain-near.ts), each leg's last price and
+   * previous close from ONE OHLC multi-quote (about ten contracts). Null
+   * when the master has no live series for the underlying. Throws when the
+   * quote call fails, so the caller can tell a failure from a quiet chain.
+   */
+  async getOptionChainNear(
+    underlying: string,
+    spot: number,
+    each: number,
+    now: number,
+  ) {
+    if (!this.scripMaster.isReady()) return null;
+    const expiry = nearestTradingExpiry(
+      this.scripMaster.getExpiries(underlying),
+      now,
+    );
+    if (!expiry) return null;
+    const rows = strikesAround(
+      this.scripMaster.getOptionChain(underlying, expiry),
+      spot,
+      each,
+    );
+    if (rows.length === 0) return null;
+    const tokens: Record<string, string[]> = {};
+    for (const r of rows) {
+      for (const leg of [r.call, r.put]) {
+        if (leg) (tokens[leg.exchange] ??= []).push(leg.token);
+      }
+    }
+    const fetched = await this.smartapi.getMultiQuote(tokens, 'OHLC');
+    const byKey = new Map(
+      fetched.map((q) => [`${q.exchange}:${q.symbolToken}`, q]),
+    );
+    const leg = (inst: Instrument | null) => {
+      if (!inst) return null;
+      const q = byKey.get(`${inst.exchange}:${inst.token}`);
+      return {
+        ltp: q && q.ltp > 0 ? q.ltp : null,
+        close: q && q.close > 0 ? q.close : null,
+      };
+    };
+    return {
+      underlying: underlying.toUpperCase(),
+      expiry,
+      strikes: rows.map((r) => ({
+        strike: r.strike,
+        call: leg(r.call),
+        put: leg(r.put),
+      })),
     };
   }
 

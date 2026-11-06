@@ -49,11 +49,20 @@ const SESSION_TTL_SECONDS = 4 * 60 * 60;
 // to keep us well under the shared account's rate limit.
 const QUOTE_CACHE_MS = 2_000;
 const CANDLE_CACHE_MS = 15_000;
+// A candle answer with no rows is kept only this long, so a gap upstream
+// doesn't stick, while a burst of identical requests still shares one call.
+const EMPTY_CANDLE_CACHE_MS = 3_000;
+// One warn line per instrument and interval with no rows, at most this often.
+const EMPTY_CANDLE_LOG_MS = 10 * 60_000;
 const MARKETDATA_CACHE_MS = 5_000;
 const PCR_CACHE_MS = 10_000;
 const SESSION_CACHE_MS = 60_000;
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+/** How long a candle answer is kept: briefly when it has no rows. */
+const candleKeepMs = (rows: unknown[]) =>
+  rows.length > 0 ? CANDLE_CACHE_MS : EMPTY_CANDLE_CACHE_MS;
 
 @Injectable()
 export class SmartApiService implements OnModuleInit {
@@ -64,8 +73,13 @@ export class SmartApiService implements OnModuleInit {
   // round-trip on every SmartAPI call.
   private sessionCache: { data: LoginData; at: number } | null = null;
   // Response micro-cache + in-flight coalescing map (see `cached`).
-  private readonly cache = new Map<string, { at: number; value: unknown }>();
+  private readonly cache = new Map<
+    string,
+    { at: number; ttlMs: number; value: unknown }
+  >();
   private readonly inflight = new Map<string, Promise<unknown>>();
+  /** When each "EX:token INTERVAL" last logged a candle answer with no rows. */
+  private readonly emptyCandleLog = new Map<string, number>();
 
   constructor(
     config: ConfigService<AppConfig, true>,
@@ -123,14 +137,16 @@ export class SmartApiService implements OnModuleInit {
    *  the same key share a single upstream request. This is the main lever for
    *  keeping the shared SmartAPI account under its rate limit — shared reads
    *  (indices, movers, greeks, a chart everyone opens) collapse to one call
-   *  instead of one-per-user, so the limiter almost never has to queue. */
+   *  instead of one-per-user, so the limiter almost never has to queue.
+   *  `keepMs` may shorten the TTL for a given answer (empty candles). */
   private async cached<T>(
     key: string,
     ttlMs: number,
     fn: () => Promise<T>,
+    keepMs?: (value: T) => number,
   ): Promise<T> {
     const hit = this.cache.get(key);
-    if (hit && Date.now() - hit.at < ttlMs) return hit.value as T;
+    if (hit && Date.now() - hit.at < hit.ttlMs) return hit.value as T;
     // B3: a website call may share an app call's request, never the reverse,
     // so an app call never waits in, or is refused by, the website's share.
     const website = currentBrokerLane() === 'website';
@@ -143,7 +159,11 @@ export class SmartApiService implements OnModuleInit {
     const slot = website ? `web:${key}` : key;
     const p = fn()
       .then((value) => {
-        this.cache.set(key, { at: Date.now(), value });
+        this.cache.set(key, {
+          at: Date.now(),
+          ttlMs: keepMs ? keepMs(value) : ttlMs,
+          value,
+        });
         if (this.cache.size > 5000) this.pruneCache();
         return value;
       })
@@ -223,23 +243,53 @@ export class SmartApiService implements OnModuleInit {
     const sig =
       `c:${req.exchange}:${req.symboltoken}:${req.interval}` +
       `:${req.fromdate}:${req.todate}`;
-    return this.cached(sig, CANDLE_CACHE_MS, () =>
-      this.callAuthed('candles', async (jwt) => {
-        const { data } = await this.client.http.post<
-          SmartApiResponse<CandleRow[]>
-        >(
-          '/rest/secure/angelbroking/historical/v1/getCandleData',
-          req,
-          { headers: { Authorization: `Bearer ${jwt}` } },
-        );
-        if (!data.status) {
-          throw new Error(
-            `SmartAPI candles error: ${data.message} (${data.errorcode})`,
+    return this.cached<CandleRow[]>(
+      sig,
+      CANDLE_CACHE_MS,
+      () =>
+        this.callAuthed('candles', async (jwt) => {
+          const { data } = await this.client.http.post<
+            SmartApiResponse<CandleRow[] | null>
+          >(
+            '/rest/secure/angelbroking/historical/v1/getCandleData',
+            req,
+            { headers: { Authorization: `Bearer ${jwt}` } },
           );
-        }
-        return data.data ?? [];
-      }),
+          if (!data.status) {
+            throw new Error(
+              `SmartAPI candles error: ${data.message} (${data.errorcode})`,
+            );
+          }
+          return this.candleRows(req, data.data);
+        }),
+      candleKeepMs,
     );
+  }
+
+  /**
+   * The rows of a candle answer the broker called a success. One with no
+   * rows (data null or []) is logged, once per instrument and interval every
+   * 10 minutes, since nothing else would show it: the chart just comes back
+   * empty.
+   */
+  private candleRows<T>(
+    req: CandleRequest,
+    rows: T[] | null | undefined,
+  ): T[] {
+    if (Array.isArray(rows) && rows.length > 0) return rows;
+    const key = `${req.exchange}:${req.symboltoken} ${req.interval}`;
+    const now = Date.now();
+    const last = this.emptyCandleLog.get(key);
+    if (last === undefined || now - last >= EMPTY_CANDLE_LOG_MS) {
+      if (this.emptyCandleLog.size >= 500) this.emptyCandleLog.clear();
+      this.emptyCandleLog.set(key, now);
+      const data = Array.isArray(rows) ? '[]' : 'null';
+      this.logger.warn(
+        `SmartAPI candles: no rows for ${key} ` +
+          `${req.fromdate} to ${req.todate} (data ${data})`,
+      );
+    }
+    return [];
   }
 
   // Bulk quote — up to ~50 tokens per call, grouped by exchange. `cache`
@@ -287,22 +337,26 @@ export class SmartApiService implements OnModuleInit {
     const sig =
       `coi:${req.exchange}:${req.symboltoken}:${req.interval}` +
       `:${req.fromdate}:${req.todate}`;
-    return this.cached(sig, CANDLE_CACHE_MS, () =>
-      this.callAuthed('candles', async (jwt) => {
-        const { data } = await this.client.http.post<
-          SmartApiResponse<CandleOIRow[]>
-        >(
-          '/rest/secure/angelbroking/historical/v1/getCandleData',
-          { ...req, oi: true },
-          { headers: { Authorization: `Bearer ${jwt}` } },
-        );
-        if (!data.status) {
-          throw new Error(
-            `SmartAPI candles-OI error: ${data.message} (${data.errorcode})`,
+    return this.cached<CandleOIRow[]>(
+      sig,
+      CANDLE_CACHE_MS,
+      () =>
+        this.callAuthed('candles', async (jwt) => {
+          const { data } = await this.client.http.post<
+            SmartApiResponse<CandleOIRow[] | null>
+          >(
+            '/rest/secure/angelbroking/historical/v1/getCandleData',
+            { ...req, oi: true },
+            { headers: { Authorization: `Bearer ${jwt}` } },
           );
-        }
-        return data.data ?? [];
-      }),
+          if (!data.status) {
+            throw new Error(
+              `SmartAPI candles-OI error: ${data.message} (${data.errorcode})`,
+            );
+          }
+          return this.candleRows(req, data.data);
+        }),
+      candleKeepMs,
     );
   }
 

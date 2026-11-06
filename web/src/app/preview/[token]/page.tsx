@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation';
 import type { ReactNode } from 'react';
 import { RequestForm } from '@/app/(public)/(site)/privacy/requests/RequestForm';
 import { NoticeCookieSettings } from '@/components/consent/NoticeCookieSettings';
+import { loadHomeData } from '@/components/home/home-data';
 import { HomeView } from '@/components/home/pages/HomeView';
 import { pricesOnSite } from '@/components/market/gate';
 import { MarketStatus } from '@/components/market/MarketStatus';
@@ -29,10 +30,8 @@ import { getChrome, getPageContent, getPreview, getSharedContent } from '@/lib/s
 import { isLegalKey, isRec, isSiteDoc, parseLegalAnswer, type PreviewAnswer } from '@/lib/site-content/answers';
 import { mergeContent } from '@/lib/site-content/merge';
 import { resolveChrome, type SiteChrome } from '@/lib/site-content/site-chrome';
-import { getRidgeline } from '@/market/ridgeline';
-import { getChart, getIpos, getSnapshot, getTicker } from '@/market/server';
+import { getChart, getTicker } from '@/market/server';
 import type { TickerData } from '@/market/types';
-import { getListing } from '@/news/api';
 import { clientFromHeaders } from '@/portal/backend';
 import { STAFF_COOKIE } from '@/portal/session';
 
@@ -144,15 +143,9 @@ async function DesignedPreview({
 
   switch (itemKey) {
     case 'home': {
-      // As (home)/page.tsx: everything in parallel, every source null-safe.
-      const [wontDo, tickerData, snapshot, ridge, ipos, listing] = await Promise.all([
-        getSharedContent('wont-do'),
-        ticker,
-        getSnapshot(),
-        ticker.then((t) => getRidgeline(pricesOnSite(t))),
-        getIpos(),
-        getListing({ limit: 5 }).catch(() => null),
-      ]);
+      // As (home)/page.tsx: loadHomeData(), everything in parallel, every source null-safe.
+      const [wontDo, data] = await Promise.all([getSharedContent('wont-do'), loadHomeData(ticker)]);
+      const tickerData = data.ticker;
       const gateOn = pricesOnSite(tickerData);
       return (
         <>
@@ -161,7 +154,7 @@ async function DesignedPreview({
               content={mergeContent(defaultContent('home'), draft)}
               wontDo={wontDo}
               settings={settings}
-              data={{ ticker: tickerData, snapshot, ridge, ipos, news: listing ? listing.items : null }}
+              data={data}
             />
           </Family>
           {measure}

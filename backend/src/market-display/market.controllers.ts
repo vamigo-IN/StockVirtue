@@ -56,6 +56,7 @@ import {
   CHART_RANGES,
   ChartRange,
   MarketDataService,
+  OPTION_CHAIN_UNDERLYINGS,
 } from './market-data.service';
 import {
   CreateWidgetDto,
@@ -101,6 +102,18 @@ class ChartQueryDto {
 
   @IsIn(CHART_RANGES)
   range!: ChartRange;
+}
+
+class OptionChainQueryDto {
+  @IsIn(OPTION_CHAIN_UNDERLYINGS)
+  underlying!: (typeof OPTION_CHAIN_UNDERLYINGS)[number];
+}
+
+class ContractNoteQueryDto {
+  /** A curated stock, "EX:SYMBOL" (NSE:HDFCBANK). */
+  @IsString()
+  @MaxLength(50)
+  symbol!: string;
 }
 
 class SuggestQueryDto {
@@ -237,6 +250,20 @@ export class MarketPublicController {
   @Header('Cache-Control', SLOW_CACHE)
   ipos(@Req() req: Request) {
     return this.data.ipos(this.channel(req));
+  }
+
+  /** A few NIFTY (or BANKNIFTY) strikes around the money, nearest expiry. */
+  @Get('option-chain')
+  @Header('Cache-Control', LIVE_CACHE)
+  optionChain(@Query() q: OptionChainQueryDto, @Req() req: Request) {
+    return this.data.optionChain(this.channel(req), q.underlying);
+  }
+
+  /** A curated stock's intraday round trip, with the app's own charges. */
+  @Get('contract-note')
+  @Header('Cache-Control', LIVE_CACHE)
+  contractNote(@Query() q: ContractNoteQueryDto, @Req() req: Request) {
+    return this.data.contractNote(this.channel(req), ref(q.symbol));
   }
 
   /**

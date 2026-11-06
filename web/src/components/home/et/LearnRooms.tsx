@@ -5,7 +5,7 @@ import { FactText, factText } from '@/components/site-content/FactText';
 import { ACADEMY_MODULES, withFacts } from '@/content/app';
 import type { HomeContent } from '@/content/site/types';
 import { fmtCaptureDate, resolveScreen } from '../screens';
-import { ArrowRight, SampleTag, SectionHead } from './parts';
+import { ArrowRight, SectionHead } from './parts';
 import e from './et.module.css';
 
 const ACADEMY_TITLE_ID = 'home-academy-title';
@@ -74,24 +74,49 @@ export function Academy({ content }: { content: HomeContent['learning'] }) {
   );
 }
 
-/** The sample leaderboard: made-up traders and returns, labelled "Sample". */
-const BOARD = [
-  { name: 'Trader A', ret: 6.4 },
-  { name: 'Trader B', ret: 4.1 },
-  { name: 'You', ret: 2.8 },
-  { name: 'Trader C', ret: 1.2 },
-  { name: 'Trader D', ret: -0.9 },
-];
+/**
+ * How a room works, in four steps (interface strings, F11). Checked against
+ * the app: rooms are private (a 6-character invite code) or public, and a
+ * tournament has a start and an end (backend rooms.service.ts, the app's
+ * join-by-code screen); each member's return counts from when they joined,
+ * or from a tournament's start (rooms-lifecycle.service.ts re-captures the
+ * baseline at the bell) and is a percentage of their own starting value
+ * (so accounts of any size compete evenly); credits received are taken
+ * out before ranking.
+ * Words only: no leaderboard, no people, no figures.
+ */
+const ROOM_STEPS = withFacts(
+  ['F11'],
+  [
+    {
+      title: 'Create a room',
+      body: 'Keep it private for friends or make it public. A tournament also has a start and an end time.',
+    },
+    {
+      title: 'Share the invite code',
+      body: 'Friends join a private room with its six-character code. Anyone can join a public one.',
+    },
+    {
+      title: 'Trade as you normally would',
+      body: 'Everyone trades from their own account. Returns count from when each person joins, or from a tournament’s start.',
+    },
+    {
+      title: 'Ranked on trading returns',
+      body: 'Returns are in per cent, so a bigger account has no head start, and bonuses and other credits don’t count.',
+    },
+  ],
+  null,
+);
 
 /**
  * Rooms and leaderboards (Emerald Terminal): content.learning.board (label,
  * heading, the text from 768 px and the phone sentence below it, the link
- * to /features#learning) beside a sample leaderboard on the emerald ground,
- * labelled "Sample". F11: credits are taken out before ranking. Server
+ * to /features#learning) beside "How a room works" on the emerald ground:
+ * four numbered steps in words (F11). No leaderboard: the public site never
+ * shows made-up traders, or real readers' names and returns. Server
  * component.
  */
 export function Rooms({ content }: { content: HomeContent['learning']['board'] }) {
-  const rankedOn = withFacts(['F11'], 'Ranked on trading returns only: referral bonuses and other credits are taken out.', null);
   return (
     <section className={clsx(e.section, e.white)} aria-labelledby={ROOMS_TITLE_ID}>
       <div className="sv-container">
@@ -107,28 +132,24 @@ export function Rooms({ content }: { content: HomeContent['learning']['board'] }
               <ArrowRight />
             </Link>
           </div>
-          <div className={clsx('sv-emerald', e.board)} role="group" aria-label="Sample leaderboard">
-            <div className={e.boardTop}>
-              <div>
-                <h3 className={e.h3}>Friday traders</h3>
-                <p className={e.boardSub}>Private room · 5 traders</p>
-              </div>
-              <SampleTag>Sample leaderboard</SampleTag>
+          {ROOM_STEPS ? (
+            <div className={clsx('sv-emerald', e.board)}>
+              <h3 className={e.h3}>A room, step by step</h3>
+              <ol className={e.roomSteps}>
+                {ROOM_STEPS.map((s, i) => (
+                  <li key={s.title} className={e.roomStep}>
+                    <span className={e.roomNum} aria-hidden="true">
+                      {String(i + 1).padStart(2, '0')}
+                    </span>
+                    <div>
+                      <h4 className={e.roomTitle}>{s.title}</h4>
+                      <p className={e.roomBody}>{s.body}</p>
+                    </div>
+                  </li>
+                ))}
+              </ol>
             </div>
-            <ol className={e.boardRows}>
-              {BOARD.map((r, i) => (
-                <li key={r.name} className={e.boardRow}>
-                  <span className={e.boardRank}>{i + 1}</span>
-                  <span>{r.name}</span>
-                  <span className={r.ret >= 0 ? e.up : e.down}>
-                    {r.ret >= 0 ? '+' : '−'}
-                    {Math.abs(r.ret).toFixed(2)}%
-                  </span>
-                </li>
-              ))}
-            </ol>
-            {rankedOn ? <p className={e.boardNote}>{rankedOn}</p> : null}
-          </div>
+          ) : null}
         </div>
       </div>
     </section>

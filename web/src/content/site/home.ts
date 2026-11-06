@@ -244,7 +244,7 @@ export const HOME_DEFAULT: HomeContent = {
       },
       {
         value:
-          "Many lessons use real Indian companies as examples. When you finish the one on order types, the next stop-loss you set is in the same app, on the same prices. Four of the app's 20 badges are for lessons and quizzes.",
+          "Many lessons are built around real Indian companies. When you finish the one on order types, the next stop-loss you set is in the same app, on the same prices. Four of the app's 20 badges are for lessons and quizzes.",
         facts: ['F27', 'F9', 'F10'],
         fallback: null,
       },

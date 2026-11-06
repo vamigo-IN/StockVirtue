@@ -23,6 +23,8 @@ import {
   sessionOpen,
   Shown,
 } from './data-rights';
+import { expiryDate } from '../market/option-chain-near';
+import { intradayNote, type IntradayNote, NOTE_QTY } from './contract-note';
 import { MarketCache } from './market-cache';
 import { MarketClock } from './market-clock';
 import { MarketConfigService, TickerConfig } from './market-config.service';
@@ -66,6 +68,41 @@ export interface Labelled<T> {
   attribution: string;
   data: T;
 }
+
+/** The website's small option chain (optionChain). */
+export interface MiniOptionChain {
+  underlying: string;
+  /** The index's display name, from the curated snapshot ("Nifty 50"). */
+  name: string;
+  /** The expiry date, "2026-11-10" (IST). */
+  expiry: string;
+  /** The index level the strikes were picked around. */
+  spot: number;
+  /** Ascending; a leg's last price is null when it has none. */
+  strikes: { strike: number; call: number | null; put: number | null }[];
+}
+
+/** The home page's worked contract note (contractNote). */
+export interface WorkedNote extends IntradayNote {
+  ref: string;
+  symbol: string;
+  name: string;
+  exchange: string;
+}
+
+/** MarketService.getOptionChainNear's answer, as cached with its time and level. */
+interface CachedChain {
+  at: number;
+  spot: number;
+  chain: NonNullable<Awaited<ReturnType<MarketService['getOptionChainNear']>>>;
+}
+
+/** The underlyings the website's option chain is offered for. */
+export const OPTION_CHAIN_UNDERLYINGS = ['NIFTY', 'BANKNIFTY'] as const;
+/** Seconds one option-chain answer is reused (one broker call a minute at most). */
+const OPTION_CHAIN_TTL = 60;
+/** Strikes shown either side of the at-the-money one. */
+const OPTION_CHAIN_EACH_SIDE = 2;
 
 export const CHART_RANGES = ['1D', '5D', '1M', '6M', '1Y'] as const;
 export type ChartRange = (typeof CHART_RANGES)[number];
@@ -439,6 +476,140 @@ export class MarketDataService {
         dayChangePct: null,
         gainPct: null,
       })),
+    };
+  }
+
+  /**
+   * The website's small option chain (the home page's F&O card): the
+   * at-the-money strike and two either side at the nearest expiry still
+   * trading, each leg's last price, and the index level the strikes were
+   * picked around (the curated snapshot's). LIVE rights only, like the
+   * movers; labelled LIVE while NSE is open, else EOD at the last close.
+   * One OHLC multi-quote of about ten contracts a minute at most, in the
+   * website's share of the broker (B3), however many readers.
+   */
+  async optionChain(
+    channel: Channel,
+    underlying: string,
+  ): Promise<Labelled<MiniOptionChain | null>> {
+    const { right, attribution } = await this.rights(channel);
+    const none = (reason: 'rights' | 'upstream') => ({
+      available: false,
+      reason,
+      label: null,
+      asOf: null,
+      attribution,
+      data: null,
+    });
+    if (right !== 'LIVE') return none('rights');
+    const snap = await this.snapshot(channel);
+    const index = snap.instruments.find((q) => q.ref === `NSE:${underlying}`);
+    if (!index) return none('upstream');
+    const priced = (v: CachedChain | null) =>
+      !!v && v.chain.strikes.some((s) => !!s.call?.ltp || !!s.put?.ltp);
+    const { value: cached, refused } = await this.brokerAnswer(
+      channel,
+      `option-chain:${underlying}`,
+      OPTION_CHAIN_TTL,
+      async (): Promise<CachedChain | null> => {
+        try {
+          const chain = await this.market.getOptionChainNear(
+            underlying,
+            index.ltp,
+            OPTION_CHAIN_EACH_SIDE,
+            this.clock.now(),
+          );
+          return chain
+            ? { at: this.clock.now(), spot: index.ltp, chain }
+            : null;
+        } catch {
+          return null;
+        }
+      },
+      priced,
+    );
+    // A failed or unpriced chain is kept a minute at most (B3), never shown.
+    const expiry = cached ? expiryDate(cached.chain.expiry) : null;
+    if (refused || !cached || !priced(cached) || !expiry) {
+      return none('upstream');
+    }
+    const now = this.clock.now();
+    const holidays = this.holidaySet();
+    const open = sessionOpen('NSE', new Date(now), holidays);
+    return {
+      available: true,
+      label: open ? 'LIVE' : 'EOD',
+      asOf: iso(
+        open ? cached.at : lastSessionClose('NSE', new Date(now), holidays),
+      ),
+      attribution,
+      data: {
+        underlying,
+        name: index.name,
+        expiry,
+        spot: cached.spot,
+        strikes: cached.chain.strikes.map((s) => ({
+          strike: s.strike,
+          call: s.call?.ltp ?? null,
+          put: s.put?.ltp ?? null,
+        })),
+      },
+    };
+  }
+
+  /**
+   * A worked contract note on a curated stock's real prices (the home
+   * page's "How a trade works"): NOTE_QTY shares bought at the day's open
+   * and sold at the last price, intraday, charged by the order engine's own
+   * fee schedule (contract-note.ts). The prices are the snapshot's, so the
+   * note has the quote's label and time, and costs no broker call. Not
+   * available when the licence shows no open (EOD rights while the market
+   * is open show only the previous close).
+   */
+  async contractNote(
+    channel: Channel,
+    ref: string,
+  ): Promise<Labelled<WorkedNote | null>> {
+    const snap = await this.snapshot(channel);
+    const q = snap.instruments.find(
+      (i) => i.ref === ref && i.kind === MarketInstrumentKind.STOCK,
+    );
+    if (!q) {
+      if (snap.right === 'OFF') {
+        return {
+          available: false,
+          reason: 'rights',
+          label: null,
+          asOf: null,
+          attribution: snap.attribution,
+          data: null,
+        };
+      }
+      throw new NotFoundException('That stock isn’t available here.');
+    }
+    const open = q.open;
+    if (open === null || !(open > 0) || !(q.ltp > 0)) {
+      return {
+        available: false,
+        reason: snap.right === 'LIVE' ? 'upstream' : 'rights',
+        label: null,
+        asOf: null,
+        attribution: snap.attribution,
+        data: null,
+      };
+    }
+    return {
+      available: true,
+      label: q.label,
+      asOf: q.asOf,
+      attribution: snap.attribution,
+      data: {
+        ref: q.ref,
+        symbol: q.symbol,
+        name: q.name,
+        exchange: q.exchange,
+        ...intradayNote(q.exchange, open, q.ltp, NOTE_QTY),
+      },
     };
   }
 

@@ -113,7 +113,7 @@ export const HOME_FORM: FormSchema = {
     {
       id: 'trade',
       title: 'What you can trade',
-      help: 'Equity, F&O and MCX, in three cards. Their order is fixed; the panels in them (the order types, a sample option chain, the commodities) are fixed too.',
+      help: 'Equity, F&O and MCX, in three cards. Their order is fixed, and so are the panels in them: real prices while the site shows them (three shares, the NIFTY option chain, the MCX commodities), otherwise the order types, the contracts and the commodities.',
       nodes: [
         { node: 'field', path: 'trade.label', label: 'Side label' },
         { node: 'field', path: 'trade.title', label: 'Heading' },
@@ -158,7 +158,7 @@ export const HOME_FORM: FormSchema = {
     {
       id: 'stage',
       title: 'How a trade works',
-      help: 'One practice trade in three numbered steps (#inside-the-app), beside an example contract note (fixed, and labelled as an example).',
+      help: 'One practice trade in three numbered steps (#inside-the-app), beside a contract note (fixed): worked out with the app’s own charges on today’s prices while the site shows prices, otherwise the lines it lists and when each is charged.',
       nodes: [
         { node: 'field', path: 'stage.label', label: 'Side label' },
         { node: 'field', path: 'stage.title', label: 'Heading', help: 'Three lines on phones.' },
@@ -222,7 +222,7 @@ export const HOME_FORM: FormSchema = {
     {
       id: 'learning',
       title: 'Trading Academy and rooms',
-      help: 'The Academy with its seven modules (fixed, from the app), then rooms and the sample leaderboard.',
+      help: 'The Academy with its seven modules (fixed, from the app), then rooms, beside four fixed steps on how a room works.',
       nodes: [
         { node: 'field', path: 'learning.label', label: 'Side label' },
         { node: 'field', path: 'learning.title', label: 'Heading' },
@@ -290,13 +290,13 @@ export const HOME_FORM: FormSchema = {
     {
       id: 'gate-off',
       title: 'Without prices',
-      help: 'Shown only while the site shows no prices (see it with “Gate off” in the preview).',
+      help: 'Used when the home page can’t draw its live desk: while the site shows no prices (see it with “Gate off” in the preview), or without market data.',
       nodes: [
         {
           node: 'field',
           path: 'gateOff.homeScreen',
           label: 'Home screenshot',
-          help: `Beside the headline from 1024 px, in place of the sample desk. ${SCREEN_HELP}`,
+          help: `Beside the headline from 1024 px, in place of the live desk. Without one, the headline has the band to itself. ${SCREEN_HELP}`,
         },
       ],
     },

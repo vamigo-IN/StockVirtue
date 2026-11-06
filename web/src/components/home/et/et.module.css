@@ -1,7 +1,7 @@
 /* The home page, "I · Emerald Terminal" (6 Nov 2026; design/emerald-terminal-brief.md).
    Values come from src/styles/tokens.css (stream A): the three grounds are the
-   light page (default), .sv-emerald (the hero, the download band, the sample
-   leaderboard) and .sv-terminal (the desk, the heatmap band), which remap the
+   light page (default), .sv-emerald (the hero, the download band, the rooms
+   panel) and .sv-terminal (the desk, the heatmap band), which remap the
    semantic tokens (--sv-fg, --sv-fg-2, --sv-fg-3, --sv-rule, --sv-up …) used here. */
 
 /* ── Shared ─────────────────────────────────────────────────────────────── */
@@ -101,22 +101,6 @@
   color: var(--sv-neon);
 }
 
-/* "Sample screen", "Example order", "Sample figures": a dashed mono tag. */
-.tag {
-  display: inline-flex;
-  align-items: center;
-  height: 24px;
-  padding: 0 9px;
-  border-radius: var(--sv-r-sm);
-  border: 1px dashed var(--sv-control);
-  color: var(--sv-fg-2);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-  white-space: nowrap;
-}
-
 .h3 {
   margin: 0;
   font-size: 20px;
@@ -178,6 +162,15 @@
     align-items: center;
     gap: 48px;
     padding-bottom: 148px;
+  }
+  /* No desk and no screenshot (prices off, no data): the type-led hero, the
+     text alone on the band, at a measure that still reads as one column. */
+  .heroInner.heroSolo {
+    grid-template-columns: minmax(0, 1fr);
+    padding-top: clamp(56px, 7vw, 104px);
+  }
+  .heroSolo .heroText {
+    max-width: 760px;
   }
 }
 .heroText {
@@ -487,16 +480,26 @@
   font-family: var(--font-mono);
   text-align: right;
 }
+/* "Place buy order": a link to the app's Play listing (orders are placed in the app). */
 .place {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 38px;
+  min-height: 44px;
   border-radius: var(--sv-r-sm);
   background: var(--sv-neon);
   color: var(--sv-neon-ink);
   font-weight: 800;
   font-size: 13.5px;
+  text-decoration: none;
+  transition: filter var(--sv-dur-1) var(--sv-ease-out);
+}
+.place:hover {
+  filter: brightness(1.08);
+}
+.place:focus-visible {
+  outline: 2px solid var(--sv-focus);
+  outline-offset: 2px;
 }
 .note {
   margin: 0;
@@ -504,7 +507,20 @@
   line-height: 1.45;
   color: var(--sv-fg-3);
 }
-/* The ticket and the positions: from 640 px only (phones get the chart and the watchlist). */
+/* "Gainers" / "Losers" over their rows in "Biggest moves". */
+.group {
+  margin: 8px 0 2px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--sv-fg-3);
+}
+.group + .rows .row:first-child {
+  border-top: 0;
+}
+/* The ticket and "Biggest moves": from 640 px only (phones get the chart and the watchlist). */
 .lower {
   display: none;
 }
@@ -515,64 +531,8 @@
     gap: 10px;
     margin-top: 10px;
   }
-}
-.total {
-  display: flex;
-  justify-content: space-between;
-  align-items: baseline;
-  gap: 8px;
-  margin-top: 6px;
-  padding-top: 8px;
-  border-top: 1px solid var(--sv-term-line);
-}
-.total span:first-child {
-  font-size: 12px;
-  color: var(--sv-fg-2);
-}
-.total span:last-child {
-  font-family: var(--font-mono);
-  font-size: 17px;
-  font-weight: 600;
-}
-/* The decorative "order placed" float: from 1024 px only. */
-.float {
-  display: none;
-}
-@media (min-width: 1024px) {
-  .float {
-    position: absolute;
-    left: -28px;
-    bottom: -40px;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 12px 18px 12px 12px;
-    border-radius: var(--sv-r-md);
-    background: var(--sv-surface);
-    color: var(--sv-ink);
-    box-shadow: 0 24px 48px -12px rgb(0 10 6 / 0.5);
-    font-size: 13px;
-    line-height: 1.35;
-  }
-  .float b {
-    display: block;
-    font-size: 13.5px;
-  }
-  .float span span {
-    font-family: var(--font-mono);
-    font-size: 12px;
-    color: var(--sv-text-2);
-  }
-  .floatTick {
-    flex: none;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 36px;
-    height: 36px;
-    border-radius: var(--sv-r-sm);
-    background: var(--sv-green-050);
-    color: var(--sv-green-700);
+  .lower.lowerOne {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
@@ -817,11 +777,75 @@
   text-transform: uppercase;
   color: var(--sv-fg-3);
 }
+/* A card's live list: name, last price and % in a white box, then its Stamp. */
+.miniBox {
+  min-width: 0;
+  border-radius: var(--sv-r-sm);
+  background: var(--sv-surface);
+  border: 1px solid var(--sv-rule);
+  overflow-x: auto;
+}
+.mini {
+  width: 100%;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+.mini th,
+.mini td {
+  padding: 8px 12px;
+  vertical-align: middle;
+}
+.mini tbody tr + tr {
+  border-top: 1px solid var(--sv-rule);
+}
+.mini tbody th {
+  text-align: left;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--sv-fg);
+}
+.mini td {
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  white-space: nowrap;
+  color: var(--sv-fg);
+}
+.mini td + td {
+  padding-left: 4px;
+}
+.miniSub {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 400;
+  color: var(--sv-fg-3);
+}
+.miniNote {
+  margin: 0;
+  padding: 8px 12px 0;
+  border-top: 1px solid var(--sv-rule);
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--sv-fg-2);
+}
+.miniStamp {
+  display: block;
+  padding: 8px 12px 10px;
+}
+.mini + .miniStamp {
+  border-top: 1px solid var(--sv-rule);
+}
 .chainBox {
   border-radius: var(--sv-r-sm);
   background: var(--sv-surface);
   border: 1px solid var(--sv-rule);
   overflow-x: auto;
+}
+.chainExpiry {
+  font-weight: 400;
+  color: var(--sv-fg-3);
 }
 .chainHead {
   display: flex;
@@ -874,11 +898,16 @@
   letter-spacing: 0.05em;
 }
 .chainNote {
-  margin: 0;
-  padding: 8px 12px;
   border-top: 1px solid var(--sv-rule);
+}
+.chainNote p {
+  margin: 0;
+  padding: 8px 12px 0;
   font-size: 12px;
   color: var(--sv-fg-2);
+}
+.chainNote .miniStamp {
+  padding-top: 4px;
 }
 
 /* ── Features ───────────────────────────────────────────────────────────── */
@@ -1009,11 +1038,32 @@
   border-top: 2px solid var(--sv-fg);
   font-weight: 700;
 }
+.noteLead {
+  margin: 10px 0 0;
+  font-size: 14.5px;
+  line-height: 1.5;
+  color: var(--sv-fg-2);
+}
+.noteTable td,
+.noteTable th {
+  line-height: 1.4;
+}
+.noteTable td.noteWhen {
+  font-family: inherit;
+  font-size: 13.5px;
+  color: var(--sv-fg-2);
+  text-align: right;
+}
 .noteFoot {
-  margin: 0;
+  display: grid;
+  gap: 6px;
   padding: 12px 20px 16px;
   font-size: 13px;
+  line-height: 1.5;
   color: var(--sv-fg-2);
+}
+.noteFoot p {
+  margin: 0;
 }
 
 /* ── IPO watch ──────────────────────────────────────────────────────────── */
@@ -1249,53 +1299,49 @@
     linear-gradient(160deg, var(--sv-emerald) 0%, var(--sv-emerald-2) 100%);
   box-shadow: var(--sv-shadow-2);
 }
-.boardTop {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px 12px;
-  margin-bottom: 12px;
-}
-.boardTop .h3 {
+.board .h3 {
   font-size: 19px;
 }
-.boardSub {
-  margin: 2px 0 0;
-  font-size: 13.5px;
-  color: var(--sv-fg-2);
-}
-.board .tag {
-  border-color: rgb(214 243 227 / 0.45);
-  color: var(--sv-fg-2);
-}
-.boardRows {
-  margin: 0;
+/* "How a room works": four numbered steps, words only. */
+.roomSteps {
+  margin: 14px 0 0;
   padding: 0;
   list-style: none;
 }
-.boardRow {
+.roomStep {
   display: grid;
-  grid-template-columns: 28px minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 12px;
-  min-height: 44px;
+  grid-template-columns: 40px minmax(0, 1fr);
+  gap: 14px;
+  padding: 14px 0;
   border-top: 1px solid var(--sv-rule);
+}
+.roomStep:last-child {
+  padding-bottom: 2px;
+}
+.roomNum {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 1px solid rgb(52 224 137 / 0.45);
+  color: var(--sv-neon);
   font-family: var(--font-mono);
-  font-variant-numeric: tabular-nums;
   font-size: 13px;
+  font-weight: 600;
 }
-.boardRow:first-child {
-  background: rgb(52 224 137 / 0.1);
-  box-shadow: inset 2px 0 0 var(--sv-neon);
+.roomTitle {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.3;
+  color: var(--sv-fg);
 }
-.boardRank {
-  padding-left: 8px;
-  color: var(--sv-fg-2);
-}
-.boardNote {
-  margin: 12px 0 0;
-  font-size: 13px;
+.roomBody {
+  margin: 4px 0 0;
+  font-size: 14.5px;
+  line-height: 1.5;
   color: var(--sv-fg-2);
 }
 
