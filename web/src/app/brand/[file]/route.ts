@@ -1,4 +1,4 @@
-import sharp from 'sharp';
+import sharp, { type Sharp } from 'sharp';
 import { getSettings } from '@/lib/settings';
 
 /**
@@ -13,7 +13,7 @@ type Slot = 'favicon' | 'shareImage';
 
 const FILES: Record<
   string,
-  { slot: Slot; type: string; render: (img: sharp.Sharp) => sharp.Sharp }
+  { slot: Slot; type: string; render: (img: Sharp) => Sharp }
 > = {
   'icon.png': {
     slot: 'favicon',
