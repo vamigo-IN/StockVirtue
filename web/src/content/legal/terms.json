@@ -1,0 +1,775 @@
+{
+  "format": 1,
+  "key": "terms",
+  "lang": "en",
+  "schemaVersion": 1,
+  "revision": {
+    "dateShown": "2026-11-02T18:30:00.000Z",
+    "dateLabel": "3 November 2026",
+    "noticeVersion": null
+  },
+  "content": {
+    "seo": {
+      "title": "Terms & Conditions",
+      "description": [
+        {
+          "type": "text",
+          "text": "The terms and conditions governing your use of "
+        },
+        {
+          "type": "token",
+          "attrs": {
+            "name": "site.name"
+          }
+        },
+        {
+          "type": "text",
+          "text": ", the virtual stock-market simulator."
+        }
+      ]
+    },
+    "title": "Terms & Conditions",
+    "summary": [
+      {
+        "type": "text",
+        "text": "The terms that govern your use of "
+      },
+      {
+        "type": "token",
+        "attrs": {
+          "name": "site.name"
+        }
+      },
+      {
+        "type": "text",
+        "text": " — an educational simulator, not a broker."
+      }
+    ],
+    "body": {
+      "type": "doc",
+      "content": [
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "These Terms & Conditions (\"Terms\") govern your access to and use of the "
+            },
+            {
+              "type": "token",
+              "attrs": {
+                "name": "site.name"
+              }
+            },
+            {
+              "type": "text",
+              "text": " mobile application and the website at "
+            },
+            {
+              "type": "token",
+              "attrs": {
+                "name": "site.url"
+              }
+            },
+            {
+              "type": "text",
+              "text": " (together, the \"Service\"), operated by "
+            },
+            {
+              "type": "token",
+              "attrs": {
+                "name": "site.company"
+              }
+            },
+            {
+              "type": "text",
+              "text": " (\"we\", \"us\", \"our\"). By creating an account or using the Service, you agree to these Terms. If you do not agree, do not use the Service."
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "attrs": {
+            "level": 2,
+            "anchor": "1-what-stockvirtue-is-and-is-not"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "1. What "
+            },
+            {
+              "type": "token",
+              "attrs": {
+                "name": "site.name"
+              }
+            },
+            {
+              "type": "text",
+              "text": " is — and is not"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "token",
+              "attrs": {
+                "name": "site.name"
+              }
+            },
+            {
+              "type": "text",
+              "text": " is an "
+            },
+            {
+              "type": "text",
+              "text": "educational stock-market simulator",
+              "marks": [
+                {
+                  "type": "bold"
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "text": ". It lets you place simulated trades using "
+            },
+            {
+              "type": "text",
+              "text": "virtual money",
+              "marks": [
+                {
+                  "type": "bold"
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "text": " against real market data. "
+            },
+            {
+              "type": "token",
+              "attrs": {
+                "name": "site.name"
+              }
+            },
+            {
+              "type": "text",
+              "text": " is "
+            },
+            {
+              "type": "text",
+              "text": "not",
+              "marks": [
+                {
+                  "type": "bold"
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "text": " a stock broker, exchange, depository, clearing member, or investment adviser, and is not registered with the Securities and Exchange Board of India (SEBI) or any regulator. No real securities are bought or sold, and no real money is ever deposited, held, transferred, or withdrawn through the Service."
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "attrs": {
+            "level": 2,
+            "anchor": "2-no-investment-advice"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "2. No investment advice"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "Nothing in the Service constitutes investment, financial, legal, or tax advice, or a recommendation to buy, sell, or hold any security. Any data, content, lessons, tools, or results are provided for education and illustration only. You are solely responsible for any decisions you make, including any real-world investing you choose to do elsewhere. Please consult a SEBI-registered investment adviser before making real investment decisions."
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "attrs": {
+            "level": 2,
+            "anchor": "3-eligibility-accounts"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "3. Eligibility & accounts"
+            }
+          ]
+        },
+        {
+          "type": "bulletList",
+          "content": [
+            {
+              "type": "listItem",
+              "content": [
+                {
+                  "type": "paragraph",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "You must be at least 18 years old to have an account. You confirm this when you sign up; we close accounts that belong to anyone younger."
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "listItem",
+              "content": [
+                {
+                  "type": "paragraph",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "You agree to provide accurate information and to keep your login credentials secure."
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "listItem",
+              "content": [
+                {
+                  "type": "paragraph",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "You are responsible for all activity under your account."
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "listItem",
+              "content": [
+                {
+                  "type": "paragraph",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "You may sign in via email, Google, or phone number. How we handle that and all other personal data is explained in our "
+                    },
+                    {
+                      "type": "text",
+                      "text": "Privacy notice",
+                      "marks": [
+                        {
+                          "type": "link",
+                          "attrs": {
+                            "href": "/privacy"
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "type": "text",
+                      "text": ", which you accept separately when you sign up."
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "listItem",
+              "content": [
+                {
+                  "type": "paragraph",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "Leaderboards and rooms show your display name and returns to other users; choose a nickname if you prefer."
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "attrs": {
+            "level": 2,
+            "anchor": "4-virtual-money-in-app-items"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "4. Virtual money & in-app items"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "The Service provides virtual balances, points, badges, leaderboards, and similar items. These have "
+            },
+            {
+              "type": "text",
+              "text": "no monetary value",
+              "marks": [
+                {
+                  "type": "bold"
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "text": ", cannot be exchanged for real money or securities, and may be adjusted, reset, or removed at any time. Referral or bonus credits are likewise virtual and carry no cash value."
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "attrs": {
+            "level": 2,
+            "anchor": "5-market-data"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "5. Market data"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "Market prices and related data are obtained from third-party sources and may be delayed, inaccurate, or unavailable. We do not guarantee the accuracy, completeness, timeliness, or availability of any data, and the simulated environment may differ from real-market execution."
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "attrs": {
+            "level": 2,
+            "anchor": "6-acceptable-use"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "6. Acceptable use"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "You agree not to:"
+            }
+          ]
+        },
+        {
+          "type": "bulletList",
+          "content": [
+            {
+              "type": "listItem",
+              "content": [
+                {
+                  "type": "paragraph",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "use the Service for any unlawful purpose or in violation of any applicable law or regulation;"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "listItem",
+              "content": [
+                {
+                  "type": "paragraph",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "attempt to gain unauthorised access to the Service, other accounts, or our systems;"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "listItem",
+              "content": [
+                {
+                  "type": "paragraph",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "interfere with, disrupt, reverse-engineer, scrape, or overload the Service;"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "listItem",
+              "content": [
+                {
+                  "type": "paragraph",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "misrepresent the Service as real trading or as affiliated with any exchange or regulator;"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "listItem",
+              "content": [
+                {
+                  "type": "paragraph",
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "upload malicious code or abuse referral, competition, or reward mechanics."
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "attrs": {
+            "level": 2,
+            "anchor": "7-intellectual-property"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "7. Intellectual property"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "The Service, including its software, design, content, and trademarks, is owned by "
+            },
+            {
+              "type": "token",
+              "attrs": {
+                "name": "site.company"
+              }
+            },
+            {
+              "type": "text",
+              "text": " or its licensors and is protected by law. We grant you a limited, revocable, non-exclusive, non-transferable licence to use the Service for personal, non-commercial education. You may not copy, modify, distribute, or create derivative works without our written permission."
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "attrs": {
+            "level": 2,
+            "anchor": "8-third-party-services"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "8. Third-party services"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "The Service relies on third-party providers (e.g. Google services, market-data feeds, analytics, and email). Your use of those services may be subject to their own terms and privacy policies."
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "attrs": {
+            "level": 2,
+            "anchor": "9-disclaimers"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "9. Disclaimers"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "The Service is provided \"as is\" and \"as available\" without warranties of any kind, whether express or implied, including fitness for a particular purpose, accuracy, or non-infringement. We do not warrant that the Service will be uninterrupted, secure, or error-free. See also our "
+            },
+            {
+              "type": "text",
+              "text": "Risk Disclaimer",
+              "marks": [
+                {
+                  "type": "link",
+                  "attrs": {
+                    "href": "/disclaimer"
+                  }
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "text": "."
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "attrs": {
+            "level": 2,
+            "anchor": "10-limitation-of-liability"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "10. Limitation of liability"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "To the maximum extent permitted by law, "
+            },
+            {
+              "type": "token",
+              "attrs": {
+                "name": "site.company"
+              }
+            },
+            {
+              "type": "text",
+              "text": " and its officers, employees, and partners will not be liable for any indirect, incidental, special, consequential, or punitive damages, or for any loss of profits, data, or goodwill, arising from your use of (or inability to use) the Service. Because no real money is involved in the Service, you acknowledge that simulated outcomes carry no real-world financial value."
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "attrs": {
+            "level": 2,
+            "anchor": "11-termination-and-deleting-your-account"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "11. Termination and deleting your account"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "We may suspend or terminate your access for breach of these Terms or to protect the Service or other users. You can delete your account at any time in the app (Profile → Privacy & your data → Delete my account) or through our "
+            },
+            {
+              "type": "text",
+              "text": "privacy requests page",
+              "marks": [
+                {
+                  "type": "link",
+                  "attrs": {
+                    "href": "/privacy/requests"
+                  }
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "text": ". Deletion takes effect at once; a locked copy is kept for one year, as the law requires, and then erased. Accounts unused for three years are erased after an email notice. Virtual balances and items end with the account."
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "attrs": {
+            "level": 2,
+            "anchor": "12-changes-to-these-terms"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "12. Changes to these Terms"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "We may update these Terms from time to time. Material changes will be reflected by updating the \"Updated\" date above and, where they matter to you, announced in the app or by email before they take effect. Continued use of the Service after changes take effect constitutes acceptance of the revised Terms. Changes to how we use personal data follow our Privacy notice, which asks for your consent again where the law requires."
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "attrs": {
+            "level": 2,
+            "anchor": "13-governing-law"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "13. Governing law"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "These Terms are governed by the laws of India, and the courts at our registered place of business shall have exclusive jurisdiction, subject to applicable law."
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "attrs": {
+            "level": 2,
+            "anchor": "14-contact-and-grievances"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "14. Contact and grievances"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "Questions about these Terms? Contact us at "
+            },
+            {
+              "type": "token",
+              "attrs": {
+                "name": "site.email",
+                "as": "mailto"
+              }
+            },
+            {
+              "type": "text",
+              "text": " or via our "
+            },
+            {
+              "type": "text",
+              "text": "contact page",
+              "marks": [
+                {
+                  "type": "link",
+                  "attrs": {
+                    "href": "/contact"
+                  }
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "text": "."
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "Complaints about personal data, or about content and conduct on the Service, go to our Grievance Officer"
+            },
+            {
+              "type": "token",
+              "attrs": {
+                "name": "officer.name",
+                "before": ", "
+              }
+            },
+            {
+              "type": "text",
+              "text": ": "
+            },
+            {
+              "type": "token",
+              "attrs": {
+                "name": "officer.email",
+                "as": "mailto"
+              }
+            },
+            {
+              "type": "token",
+              "attrs": {
+                "name": "officer.phone",
+                "before": ", "
+              }
+            },
+            {
+              "type": "text",
+              "text": ". We reply within "
+            },
+            {
+              "type": "token",
+              "attrs": {
+                "name": "privacy.responseDays"
+              }
+            },
+            {
+              "type": "text",
+              "text": " days."
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "attrs": {
+            "variant": "note"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "This document is a general template provided for convenience and does not constitute legal advice. Please have it reviewed by a qualified lawyer before relying on it."
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

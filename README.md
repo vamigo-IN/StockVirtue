@@ -135,10 +135,26 @@ most duties apply from 13 May 2027). What the code does:
   `/privacy` and, in Hindi, `/privacy/hi`. Every acceptance and every cookie
   choice is a row in `consent_records`: notice version, purposes granted and
   refused, where it was given. An account that hasn't accepted the current
-  notice sees it in the app (1.4.0+) before anything else. The version lives
-  in three places that must change together: `PRIVACY_NOTICE_VERSION`
-  (`backend/src/privacy/privacy.constants.ts`), `NOTICE_VERSION`
-  (`web/src/lib/privacy-notice.ts`) and `kPrivacyNoticeVersion` (the app).
+  notice sees it in the app (1.4.0+) before anything else. The version is
+  one database version (`privacy_notice_versions`), published from the
+  portal (Pages → Privacy notice): a **minor** change (a typo or wording fix;
+  Admins may publish only small fixes of at most 40 words, and Super Admins
+  are emailed every one) keeps the version and asks nobody again; a
+  **material** change (Super Admins only) gets a new id such as `2027-03`,
+  publishes the English and Hindi notices together, shows a dated "We
+  updated our privacy notice" line on the site, and asks every account to
+  accept it again in the app. Accepting keeps the person's analytics choice
+  unless the change affects analytics, and a change that affects cookies
+  asks website visitors to choose their cookies again (a new
+  `cookie_consent_versions` row). `SEED_NOTICE_VERSION`
+  (`backend/src/privacy/privacy.constants.ts`) is only the boot fallback.
+- **The app notice gate** (Settings → Privacy, Super Admins). While it is on,
+  an account that hasn't accepted the current notice can only read and
+  accept it, sign out, correct or download its data, raise requests, switch
+  analytics or trade emails off, and delete the account; every other app
+  call answers 403 `notice_required`, which tells people on apps older than
+  1.4.0 to update. Sign-up is strict while it is on. It ships **off**;
+  `PRIVACY_NOTICE_GATE_DISABLED=true` forces it off (needs an API restart).
 - **Optional purposes are off until chosen.** App analytics (Firebase) is off
   until the person turns it on, and the Android build strips the
   advertising-ID permissions. Website analytics and ads wait for the cookie
@@ -206,6 +222,22 @@ most duties apply from 13 May 2027). What the code does:
   app and at `https://stockvirtue.com/privacy/requests`) and answer "No" to
   the advertising ID question for 1.4.0.
 - Set `PRIVACY_REQUIRE_SIGNUP_CONSENT=true` once most users run 1.4.0.
+- Deploying the admin-managed site (W7): run `npx prisma migrate deploy`
+  before restarting the API and the worker (the API still boots without it,
+  on notice version `2026-11` and cookie choice version 1, and logs
+  `site_cms migration not applied`). Deploy the backend before the website
+  and before app 1.4.1 (the API refuses fields it doesn't know). Nobody is
+  asked to accept the notice again by the deploy. Set the API's
+  `PUBLIC_SITE_URL` to the website's `NEXT_PUBLIC_SITE_URL` (both default to
+  `https://stockvirtue.com`), and build the website while the new API is up:
+  its build log must not contain `legal fallback in use` (`web/README.md`,
+  Deploy). The release order is backend, then website, then app 1.4.1.
+- **Switching the app notice gate on is the last step**, with no deploy:
+  after app 1.4.1 has been on Google Play's production track at 100% (not a
+  staged rollout or a testing track) for at least 2 days, a Super Admin
+  opens Settings → Privacy, reads how many accounts it would block, ticks
+  the Play confirmation and switches it on. Switching it off applies to the
+  next request.
 
 ## License
 

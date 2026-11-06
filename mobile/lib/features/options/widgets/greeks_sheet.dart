@@ -276,7 +276,7 @@ class _GreeksSheet extends StatelessWidget {
                     Expanded(
                       child: Text(
                         hasOfficial
-                            ? 'Live greeks & IV from Angel One'
+                            ? 'Live greeks and IV from our market data feed'
                               '${bsm != null ? '; Rho from Black-Scholes' : ''}.'
                             : 'Black-Scholes-Merton. r = 6.5%, q = 0. Stock '
                                 'options are American so these are '

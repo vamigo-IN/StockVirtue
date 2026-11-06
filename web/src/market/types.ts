@@ -37,6 +37,13 @@ export interface Snapshot {
   sessions: Sessions;
   generatedAt: string;
   instruments: MarketQuote[];
+  /**
+   * Backend task B1: the sorted "NSE:SYM" refs of every stock the website
+   * lists by name (the movers' cap lists and the Nifty 50, Bank Nifty and
+   * Sensex members), whose stock pages will have a price. Absent on an
+   * older backend: then only the curated stock refs count as quotable.
+   */
+  quotableStocks?: string[];
 }
 
 export interface TickerConfig {
@@ -127,6 +134,10 @@ export interface ListedIpo {
   ltp: number | null;
   dayChangePct: number | null;
   gainPct: number | null;
+  /** Whether the stock trades (resolves in the scrip master). The API already sends these three. */
+  tradeable?: boolean;
+  exchange?: string;
+  tradingsymbol?: string | null;
 }
 
 export interface IpoBoard {

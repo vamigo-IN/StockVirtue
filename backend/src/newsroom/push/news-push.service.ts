@@ -7,24 +7,38 @@ import {
   Prisma,
 } from '@prisma/client';
 import type { MulticastMessage } from 'firebase-admin/messaging';
+import { AuditService } from '../../audit/audit.service';
 import { FirebaseAdminService } from '../../firebase/firebase-admin.service';
 import { CompanyDirectoryService } from '../../market/company-directory.service';
+import { NoticeGateService } from '../../privacy/notice-gate.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RedisService } from '../../redis/redis.service';
 import { StorageService } from '../../storage/storage.service';
 import { istDay, listedWhere } from '../public/public-articles';
 import { FOLLOW_EXCHANGES } from '../readers/news-alerts.service';
+import {
+  BREAKING_WINDOW_MS,
+  breakingNotifies,
+  EDITORS_PICK_TITLE,
+  EDITORS_PICK_WINDOW_MS,
+  editorsPickCampaign,
+  EVERY_READER_KINDS,
+  GRACE_MS,
+  PUSH_WINDOW_MS,
+  STOCKS_WINDOW_MS,
+} from './push-rules';
+
+// The timing rules live in push-rules.ts (the portal reads them too).
+export {
+  BREAKING_WINDOW_MS,
+  EDITORS_PICK_WINDOW_MS,
+  GRACE_MS,
+  STOCKS_WINDOW_MS,
+} from './push-rules';
 
 const Kind = NotificationCampaignKind;
 const Status = NotificationCampaignStatus;
 
-/// Pushes wait this long after a story goes live, so a mistake taken down
-/// straight away never reaches anyone.
-export const GRACE_MS = 30_000;
-/// Breaking pushes only for stories first published this recently.
-export const BREAKING_WINDOW_MS = 3 * 3600_000;
-/// Followed-stock pushes only for stories first published this recently.
-export const STOCKS_WINDOW_MS = 6 * 3600_000;
 /// News pushes per reader per day (IST), all kinds together.
 export const DAILY_NEWS_PUSHES = 5;
 /// The app's Android notification channel for news.
@@ -88,15 +102,18 @@ export function shortCompanyName(name: string): string {
 }
 
 /**
- * Breaking-news and followed-stock pushes. Runs in the worker from a sweep
- * every 30 seconds: stories that went live recently get their campaigns
- * (at most one of each kind per story), then each campaign goes to its
- * readers through FCM. Every reader gets at most one push per story and
- * DAILY_NEWS_PUSHES a day, readers' alert settings are honoured, and
- * device tokens FCM no longer recognises are dropped. A story taken down
- * mid-send stops the send; a reader no device of whose took the push keeps
- * their place (and their daily allowance) for a retry; an FCM outage puts
- * the rest of the campaign back in the queue while the story is fresh.
+ * Breaking-news, editor's-notification and followed-stock pushes. Runs in
+ * the worker from a sweep every 30 seconds: stories that went live recently
+ * get their campaigns (at most one of each kind per story, and BREAKING or
+ * EDITORS_PICK, never both), then each campaign goes to its readers through
+ * FCM. "Send notification now" in the portal queues an EDITORS_PICK
+ * campaign itself (ArticleWorkflowService.notifyNow); the sweep sends it.
+ * Every reader gets at most one push per story and DAILY_NEWS_PUSHES a day,
+ * readers' alert settings are honoured, and device tokens FCM no longer
+ * recognises are dropped. A story taken down mid-send stops the send; a
+ * reader no device of whose took the push keeps their place (and their
+ * daily allowance) for a retry; an FCM outage puts the rest of the campaign
+ * back in the queue while the story is fresh.
  */
 @Injectable()
 export class NewsPushService {
@@ -108,6 +125,8 @@ export class NewsPushService {
     private readonly firebase: FirebaseAdminService,
     private readonly storage: StorageService,
     private readonly directory: CompanyDirectoryService,
+    private readonly gate: NoticeGateService,
+    private readonly audit: AuditService,
   ) {}
 
   /** One pass: tidy up, plan new campaigns, send what's due. */
@@ -119,7 +138,9 @@ export class NewsPushService {
         status: Status.QUEUED,
         scheduledAt: { lte: new Date(Math.max(now.getTime(), Date.now())) },
       },
-      // Breaking first, so its readers aren't sent the same story again.
+      // Breaking first, so its readers aren't sent the same story again; an
+      // editor's notification (EDITORS_PICK, last) goes after the
+      // followed-stock push, so followers keep the "<company> in the news" one.
       orderBy: [{ scheduledAt: 'asc' }, { kind: 'asc' }],
       select: { id: true },
       take: 20,
@@ -130,9 +151,13 @@ export class NewsPushService {
 
   /**
    * Creates the campaigns stories now qualify for: breaking stories first
-   * published in the last BREAKING_WINDOW_MS, and stories tagged with listed
-   * stocks first published in the last STOCKS_WINDOW_MS. A story republished
-   * after a correction never pushes again.
+   * published in the last BREAKING_WINDOW_MS; stories an editor asked to
+   * notify ("Send a notification when published", notifyOnPublish) first
+   * published in the last EDITORS_PICK_WINDOW_MS, unless breaking news
+   * notifies them anyway; and stories tagged with listed stocks first
+   * published in the last STOCKS_WINDOW_MS. A story sends one every-reader
+   * push (BREAKING or EDITORS_PICK) ever, and a story edited or republished
+   * later never pushes again.
    */
   async plan(now = new Date()): Promise<number> {
     // Only stories still owed a campaign, newest first, so a busy day's
@@ -149,7 +174,14 @@ export class NewsPushService {
                 firstPublishedAt: {
                   gte: new Date(now.getTime() - BREAKING_WINDOW_MS),
                 },
-                pushCampaigns: { none: { kind: Kind.BREAKING } },
+                pushCampaigns: { none: { kind: { in: EVERY_READER_KINDS } } },
+              },
+              {
+                notifyOnPublish: true,
+                firstPublishedAt: {
+                  gte: new Date(now.getTime() - EDITORS_PICK_WINDOW_MS),
+                },
+                pushCampaigns: { none: { kind: { in: EVERY_READER_KINDS } } },
               },
               {
                 firstPublishedAt: {
@@ -168,6 +200,8 @@ export class NewsPushService {
         id: true,
         title: true,
         isBreaking: true,
+        notifyOnPublish: true,
+        publishedAt: true,
         firstPublishedAt: true,
         stocks: {
           select: { exchange: true, symbol: true },
@@ -180,11 +214,11 @@ export class NewsPushService {
     for (const s of stories) {
       const age = now.getTime() - (s.firstPublishedAt?.getTime() ?? 0);
       const has = new Set(s.pushCampaigns.map((c) => c.kind));
-      if (
-        s.isBreaking &&
-        age <= BREAKING_WINDOW_MS &&
-        !has.has(Kind.BREAKING)
-      ) {
+      // One every-reader push per story, ever: breaking news, or the
+      // editor's notification. Breaking wins when both are asked for.
+      const notified = EVERY_READER_KINDS.some((k) => has.has(k));
+      const breaking = breakingNotifies(s, now);
+      if (breaking && !notified) {
         if (
           await this.create({
             kind: Kind.BREAKING,
@@ -197,6 +231,13 @@ export class NewsPushService {
         ) {
           created++;
         }
+      } else if (
+        s.notifyOnPublish &&
+        !breaking &&
+        !notified &&
+        age <= EDITORS_PICK_WINDOW_MS
+      ) {
+        if (await this.createEditorsPick(s, now)) created++;
       }
       const listed = s.stocks.filter(
         (x) => x.exchange === 'NSE' || x.exchange === 'BSE',
@@ -290,10 +331,11 @@ export class NewsPushService {
           });
           return;
         }
+        // An editor's notification goes to the breaking-news readers.
         const batch =
-          c.kind === Kind.BREAKING
-            ? await this.breakingReaders(cursor)
-            : await this.stockReaders(symbols, cursor);
+          c.kind === Kind.FOLLOWED_STOCKS
+            ? await this.stockReaders(symbols, cursor)
+            : await this.breakingReaders(cursor);
         if (!batch.length) break;
         cursor = batch[batch.length - 1].userId;
         const admitted = await this.admit(
@@ -382,16 +424,25 @@ export class NewsPushService {
     }
     if (checkAge) {
       const age = Date.now() - (s.firstPublishedAt?.getTime() ?? 0);
-      const window =
-        kind === Kind.BREAKING ? BREAKING_WINDOW_MS : STOCKS_WINDOW_MS;
-      if (age > window) return 'The story was too old by the time it was due.';
+      if (age > PUSH_WINDOW_MS[kind]) {
+        return 'The story was too old by the time it was due.';
+      }
     }
     return null;
   }
 
   // ── Audiences ───────────────────────────────────────────────────────
 
-  /** Readers with a device, an active account and breaking news on. */
+  /**
+   * Readers with a device, an active account and breaking news on: the
+   * audience of breaking pushes and of editors' notifications (EDITORS_PICK;
+   * readers who turned breaking alerts off have said not to be interrupted
+   * by stories, and the app's "Breaking news" switch is the only news switch
+   * that isn't about their own stocks). While the app notice gate is on,
+   * only accounts that accepted the current privacy notice (W7 addendum
+   * §5.11.8): news pushes are the only ones not about the person's own
+   * account.
+   */
   private breakingReaders(after: string): Promise<Recipient[]> {
     return this.prisma.$queryRaw<Recipient[]>`
       SELECT DISTINCT t."userId" AS "userId"
@@ -399,6 +450,7 @@ export class NewsPushService {
         JOIN users u ON u.id = t."userId"
         LEFT JOIN news_alert_preferences p ON p."userId" = t."userId"
        WHERE u.status = 'ACTIVE'
+         ${this.gate.audienceClause()}
          AND COALESCE(p.breaking, true)
          AND t."userId" > ${after}
        ORDER BY t."userId"
@@ -408,7 +460,8 @@ export class NewsPushService {
   /**
    * Readers following any of the story's stocks (a watchlist entry, or an
    * open position, in the company), with a device and the alert on. Each
-   * comes with the first of the story's stocks they follow.
+   * comes with the first of the story's stocks they follow. While the app
+   * notice gate is on, only accounts that accepted the current notice.
    */
   private async stockReaders(
     refs: string[],
@@ -436,6 +489,7 @@ export class NewsPushService {
         JOIN users u ON u.id = f."userId"
         LEFT JOIN news_alert_preferences p ON p."userId" = f."userId"
        WHERE u.status = 'ACTIVE'
+         ${this.gate.audienceClause()}
          AND COALESCE(p."followedStocks", true)
          AND EXISTS (SELECT 1 FROM device_tokens t WHERE t."userId" = f."userId")
          AND f."userId" > ${after}
@@ -515,7 +569,9 @@ export class NewsPushService {
         r.userId,
         kind === Kind.BREAKING
           ? 'Breaking news'
-          : this.stockTitle(r.symbol ?? ''),
+          : kind === Kind.EDITORS_PICK
+            ? EDITORS_PICK_TITLE
+            : this.stockTitle(r.symbol ?? ''),
       ]),
     );
     const byTitle = new Map<string, string[]>();
@@ -605,6 +661,50 @@ export class NewsPushService {
   ): Promise<boolean> {
     try {
       await this.prisma.notificationCampaign.create({ data });
+      return true;
+    } catch (err) {
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === 'P2002'
+      ) {
+        return false;
+      }
+      throw err;
+    }
+  }
+
+  /**
+   * Queues the editor's notification a story asked for ("Send a
+   * notification when published") now that it is live, with its audit row.
+   * The staff member's choice is the story's own notify_on_publish entry;
+   * this one is the system sending it. False if it already exists.
+   */
+  private async createEditorsPick(
+    s: { id: string; title: string; publishedAt: Date | null },
+    now: Date,
+  ): Promise<boolean> {
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        const c = await tx.notificationCampaign.create({
+          data: editorsPickCampaign(s, now),
+          select: { id: true },
+        });
+        await this.audit.record(
+          {
+            actor: null,
+            action: 'news.article.notify',
+            entityType: 'NewsArticle',
+            entityId: s.id,
+            after: { campaignId: c.id, kind: Kind.EDITORS_PICK },
+            meta: {
+              title: s.title,
+              when: 'on publish',
+              audience: 'App readers with breaking alerts on',
+            },
+          },
+          tx,
+        );
+      });
       return true;
     } catch (err) {
       if (

@@ -1,13 +1,39 @@
-import { mergeAttributes, Node } from '@tiptap/core';
+import { Mark, mergeAttributes, Node } from '@tiptap/core';
 import { Blockquote } from '@tiptap/extension-blockquote';
 import { ListItem } from '@tiptap/extension-list';
 import { TableCell, TableHeader, TableKit } from '@tiptap/extension-table';
+import { TextAlign } from '@tiptap/extension-text-align';
 import { CharacterCount, Placeholder } from '@tiptap/extensions';
 import { ReactNodeViewRenderer } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { WIDGET_TYPES } from '@/components/widgets/meta';
+import {
+  type HighlightColor,
+  isHighlightColor,
+  isTextAlign,
+  isTextColor,
+  TEXT_ALIGNS,
+  type TextColor,
+} from './formatting';
 import { CalloutView, FigureView, RelatedView, VideoView } from './node-views';
 import { WidgetNodeView } from './WidgetNodeView';
+
+declare module '@tiptap/core' {
+  interface Commands<ReturnType> {
+    textColor: {
+      /** Colours the selection (or what is typed next) with a palette colour. */
+      setTextColor: (color: TextColor) => ReturnType;
+      /** Back to the default text colour. */
+      unsetTextColor: () => ReturnType;
+    };
+    highlight: {
+      /** Highlights the selection (or what is typed next) with a palette tint. */
+      setHighlight: (color: HighlightColor) => ReturnType;
+      /** Removes the highlight. */
+      unsetHighlight: () => ReturnType;
+    };
+  }
+}
 
 /**
  * The editor's document model. It matches the server's content allowlist
@@ -248,6 +274,138 @@ const FlowTableHeader = TableHeader.extend({ content: FLOW });
 /** Links: http(s), mailto and site paths only (the server enforces the same). */
 const ALLOWED_LINK = /^(https?:\/\/|mailto:|\/(?!\/))/i;
 
+/**
+ * Text colour and highlight: a palette NAME on a mark (formatting.ts), drawn
+ * as `<span data-text-color>` / `<mark data-highlight>` and coloured by
+ * article-prose.css. They only parse from that same markup, so text pasted
+ * from Word, Google Docs or a web page arrives in the default colour: its
+ * inline colours (style="color…", background-color, a bare <mark>) match no
+ * rule and are dropped. Copy and paste inside the editor keeps them.
+ */
+const TextColorMark = Mark.create({
+  name: 'textColor',
+  addAttributes() {
+    return {
+      color: {
+        default: null,
+        parseHTML: (el) => {
+          const v = el.getAttribute('data-text-color');
+          return isTextColor(v) ? v : null;
+        },
+        renderHTML: (attrs) =>
+          isTextColor(attrs.color) ? { 'data-text-color': attrs.color } : {},
+      },
+    };
+  },
+  parseHTML() {
+    return [
+      {
+        tag: 'span[data-text-color]',
+        getAttrs: (el) =>
+          isTextColor(el.getAttribute('data-text-color')) ? null : false,
+      },
+    ];
+  },
+  renderHTML({ HTMLAttributes }) {
+    return ['span', HTMLAttributes, 0];
+  },
+  addCommands() {
+    return {
+      setTextColor:
+        (color) =>
+        ({ commands }) =>
+          isTextColor(color) && commands.setMark(this.name, { color }),
+      unsetTextColor:
+        () =>
+        ({ commands }) =>
+          commands.unsetMark(this.name),
+    };
+  },
+});
+
+const HighlightMark = Mark.create({
+  name: 'highlight',
+  addAttributes() {
+    return {
+      color: {
+        default: null,
+        parseHTML: (el) => {
+          const v = el.getAttribute('data-highlight');
+          return isHighlightColor(v) ? v : null;
+        },
+        renderHTML: (attrs) =>
+          isHighlightColor(attrs.color) ? { 'data-highlight': attrs.color } : {},
+      },
+    };
+  },
+  parseHTML() {
+    return [
+      {
+        tag: 'mark[data-highlight]',
+        getAttrs: (el) =>
+          isHighlightColor(el.getAttribute('data-highlight')) ? null : false,
+      },
+    ];
+  },
+  renderHTML({ HTMLAttributes }) {
+    return ['mark', HTMLAttributes, 0];
+  },
+  addCommands() {
+    return {
+      setHighlight:
+        (color) =>
+        ({ commands }) =>
+          isHighlightColor(color) && commands.setMark(this.name, { color }),
+      unsetHighlight:
+        () =>
+        ({ commands }) =>
+          commands.unsetMark(this.name),
+    };
+  },
+});
+
+/**
+ * Paragraph and heading alignment (Tiptap's TextAlign: setTextAlign,
+ * unsetTextAlign, toggleTextAlign; Mod-Shift-L/E/R/J). Centre, right and
+ * justify are stored as `attrs.textAlign`; left is the default and is never
+ * stored (Mod-Shift-L and the menu's "Align left" unset it). Like the
+ * colours, it parses only from the editor's own `data-text-align`, so a
+ * pasted Word document's justified or centred paragraphs come in left
+ * aligned (house style), while copy and paste inside the editor keeps it.
+ */
+const StoryTextAlign = TextAlign.extend({
+  addGlobalAttributes() {
+    return [
+      {
+        types: this.options.types,
+        attributes: {
+          textAlign: {
+            default: null,
+            parseHTML: (el) => {
+              const v = el.getAttribute('data-text-align');
+              return isTextAlign(v) ? v : null;
+            },
+            renderHTML: (attrs) =>
+              isTextAlign(attrs.textAlign)
+                ? { 'data-text-align': attrs.textAlign }
+                : {},
+          },
+        },
+      },
+    ];
+  },
+  addKeyboardShortcuts() {
+    return {
+      ...this.parent?.(),
+      'Mod-Shift-l': () => this.editor.commands.unsetTextAlign(),
+    };
+  },
+}).configure({
+  types: ['heading', 'paragraph'],
+  alignments: [...TEXT_ALIGNS],
+  defaultAlignment: null,
+});
+
 export function articleExtensions() {
   return [
     StarterKit.configure({
@@ -278,6 +436,9 @@ export function articleExtensions() {
     FlowTableHeader,
     FlowBlockquote,
     FlowListItem,
+    TextColorMark,
+    HighlightMark,
+    StoryTextAlign,
     Figure,
     Callout,
     Video,

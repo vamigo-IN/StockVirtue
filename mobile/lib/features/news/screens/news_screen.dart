@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' show min;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -6,10 +7,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../widgets/error_retry_view.dart';
 import '../news_models.dart';
 import '../news_repository.dart';
+import '../widgets/news_separate_section.dart';
 import '../widgets/news_tiles.dart';
 
 /// All of StockVirtue's news: latest or most read, by category, with
 /// breaking stories on top, search, and the reader's saved stories.
+/// Sections the latest list leaves out (Official updates) have their chip
+/// up front and a block of their own in the Latest view.
 class NewsScreen extends ConsumerStatefulWidget {
   const NewsScreen({super.key});
 
@@ -18,18 +22,54 @@ class NewsScreen extends ConsumerStatefulWidget {
 }
 
 class _NewsScreenState extends ConsumerState<NewsScreen> {
+  /// Stories in the Latest view before the separate sections' blocks: the
+  /// website's front shows six Top stories on a phone, then Official updates.
+  static const _storiesBeforeSections = 6;
+
+  final _scroll = ScrollController();
   String? _category;
   bool _trending = false;
 
   NewsQuery get _query => (category: _category, trending: _trending);
 
   @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  /// Shows another list, from its top.
+  void _show({String? category, bool trending = false}) {
+    setState(() {
+      _category = category;
+      _trending = trending;
+    });
+    if (_scroll.hasClients) _scroll.jumpTo(0);
+  }
+
+  @override
   Widget build(BuildContext context) {
     final feed = ref.watch(newsFeedProvider(_query));
-    final categories = ref.watch(newsCategoriesProvider).value ?? const [];
-    final breaking = (!_trending && _category == null)
+    final all =
+        ref.watch(newsCategoriesProvider).value ?? const <NewsCategory>[];
+    final separate = [for (final c in all) if (c.keepSeparate) c];
+    final categories = [
+      ...separate,
+      for (final c in all) if (!c.keepSeparate) c,
+    ];
+    final latest = !_trending && _category == null;
+    final breaking = latest
         ? ref.watch(breakingNewsProvider).value ?? const <NewsCard>[]
         : const <NewsCard>[];
+    final sections = latest
+        ? [
+            for (final c in separate)
+              SeparateNewsSection(
+                category: c,
+                onSeeAll: () => _show(category: c.slug),
+              ),
+          ]
+        : const <Widget>[];
     return Scaffold(
       appBar: AppBar(
         title: const Text('News', style: TextStyle(fontWeight: FontWeight.w700)),
@@ -54,6 +94,7 @@ class _NewsScreenState extends ConsumerState<NewsScreen> {
         onRefresh: () {
           ref.invalidate(breakingNewsProvider);
           ref.invalidate(newsCategoriesProvider);
+          ref.invalidate(separateNewsProvider);
           return ref.refresh(newsFeedProvider(_query).future);
         },
         child: NotificationListener<ScrollNotification>(
@@ -69,6 +110,7 @@ class _NewsScreenState extends ConsumerState<NewsScreen> {
             return false;
           },
           child: ListView(
+            controller: _scroll,
             padding: const EdgeInsets.only(bottom: 32),
             children: [
               SizedBox(
@@ -79,28 +121,19 @@ class _NewsScreenState extends ConsumerState<NewsScreen> {
                   children: [
                     _Choice(
                       label: 'Latest',
-                      selected: !_trending && _category == null,
-                      onTap: () => setState(() {
-                        _trending = false;
-                        _category = null;
-                      }),
+                      selected: latest,
+                      onTap: () => _show(),
                     ),
                     _Choice(
                       label: 'Most read',
                       selected: _trending,
-                      onTap: () => setState(() {
-                        _trending = true;
-                        _category = null;
-                      }),
+                      onTap: () => _show(trending: true),
                     ),
                     for (final c in categories)
                       _Choice(
                         label: c.name,
                         selected: !_trending && _category == c.slug,
-                        onTap: () => setState(() {
-                          _trending = false;
-                          _category = c.slug;
-                        }),
+                        onTap: () => _show(category: c.slug),
                       ),
                   ],
                 ),
@@ -122,7 +155,7 @@ class _NewsScreenState extends ConsumerState<NewsScreen> {
                     onRetry: () => ref.invalidate(newsFeedProvider(_query)),
                   ),
                 ],
-                data: (s) => _stories(context, s),
+                data: (s) => _stories(context, s, sections),
               ),
             ],
           ),
@@ -131,7 +164,13 @@ class _NewsScreenState extends ConsumerState<NewsScreen> {
     );
   }
 
-  List<Widget> _stories(BuildContext context, NewsFeedState s) {
+  /// The list, with [sections] (the separate sections' blocks, Latest view
+  /// only) after its first few stories.
+  List<Widget> _stories(
+    BuildContext context,
+    NewsFeedState s,
+    List<Widget> sections,
+  ) {
     final t = Theme.of(context).textTheme;
     if (s.items.isEmpty) {
       return [
@@ -145,12 +184,19 @@ class _NewsScreenState extends ConsumerState<NewsScreen> {
             style: t.bodyMedium,
           ),
         ),
+        ...sections,
       ];
     }
     final lead = !_trending && s.items.first.image != null;
-    return [
+    final tiles = [
       if (lead) NewsHeroCard(card: s.items.first),
       for (final c in lead ? s.items.skip(1) : s.items) NewsListTile(card: c),
+    ];
+    final at = min(_storiesBeforeSections, tiles.length);
+    return [
+      ...tiles.take(at),
+      ...sections,
+      ...tiles.skip(at),
       if (s.loadingMore)
         const Padding(
           padding: EdgeInsets.all(16),

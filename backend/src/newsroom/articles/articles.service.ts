@@ -34,12 +34,17 @@ import {
   safeHref,
 } from '../content/article-content';
 import { WidgetValidation } from '../content/widget-validation.service';
+import { breakingUntil } from '../breaking';
 import { MediaService } from '../media/media.service';
 import { NewsCache } from '../public/news-cache';
+import {
+  NOTIFY_CAMPAIGN_INCLUDE,
+  notificationView,
+} from '../push/push-rules';
 import { freeSlug, RESERVED_ARTICLE_SLUGS, slugify } from '../slug';
 import { TaxonomyService } from '../taxonomy/taxonomy.service';
 import { ArticleCapabilities, capabilities, has } from './article-access';
-import { ArticleSnapshot, recordVersion } from './article-versions';
+import { recordVersion, storedSnapshot } from './article-versions';
 import { UpdateArticleDto } from './articles.dto';
 
 export const STALE_VERSION =
@@ -62,7 +67,9 @@ const ACCESS_SELECT = {
   summary: true,
   contentText: true,
   categoryId: true,
-  correctionNote: true,
+  // When its breaking time starts (setFlags, publish): newsroom/breaking.ts.
+  isBreaking: true,
+  breakingAt: true,
   assignments: { select: { assigneeId: true, role: true, status: true } },
 } satisfies Prisma.NewsArticleSelect;
 export type ArticleAccessRow = Prisma.NewsArticleGetPayload<{
@@ -97,6 +104,8 @@ const DETAIL_INCLUDE = {
     select: { exchange: true, symbol: true },
     orderBy: [{ isPrimary: 'desc' }, { symbol: 'asc' }],
   },
+  // Its notification to app readers (breaking or an editor's), if any.
+  pushCampaigns: NOTIFY_CAMPAIGN_INCLUDE,
 } satisfies Prisma.NewsArticleInclude;
 type DetailRow = Prisma.NewsArticleGetPayload<{
   include: typeof DETAIL_INCLUDE;
@@ -277,7 +286,7 @@ export class ArticlesService {
       include: { editor: { select: { id: true, displayName: true } } },
     });
     if (!v) throw new NotFoundException('Version not found.');
-    const snap = v.snapshot as unknown as ArticleSnapshot;
+    const snap = storedSnapshot(v.snapshot);
     return {
       id: v.id,
       version: v.version,
@@ -734,7 +743,7 @@ export class ArticlesService {
       where: { id: versionId, articleId: id },
     });
     if (!v) throw new NotFoundException('Version not found.');
-    const snap = v.snapshot as unknown as ArticleSnapshot;
+    const snap = storedSnapshot(v.snapshot);
     const r = await this.renderContent(snap.content);
     // Anything deleted since that version is left empty rather than failing.
     const category = snap.categoryId
@@ -1119,11 +1128,14 @@ export class ArticlesService {
       sectors: a.sectors,
       isFeatured: a.isFeatured,
       isBreaking: a.isBreaking,
+      // The Placement card's "Breaking until": 24 hours from when it became
+      // breaking. Null while it isn't breaking, or isn't out yet.
+      breakingAt: a.breakingAt,
+      breakingUntil: breakingUntil(a),
       isAiGenerated: a.isAiGenerated,
       seo: a.seo,
       sourceAttribution: a.sourceAttribution,
       editorialNotes: a.editorialNotes,
-      correctionNote: a.correctionNote,
       retractedAt: a.retractedAt,
       retractionNote: a.retractionNote,
       related: a.related.map((r) => r.related),
@@ -1155,6 +1167,9 @@ export class ArticlesService {
         createdAt: r.createdAt,
       })),
       can,
+      notifyOnPublish: a.notifyOnPublish,
+      // The Placement card's notification control (push/push-rules.ts).
+      notification: notificationView(a, a.pushCampaigns[0] ?? null),
     };
   }
 }

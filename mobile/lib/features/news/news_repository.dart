@@ -402,6 +402,20 @@ final newsCategoriesProvider =
   return ref.watch(newsRepositoryProvider).categories();
 });
 
+/// Stories in a separate section's block on the News screen: as many as the
+/// website's front shows of Official updates on a phone.
+const separateNewsCount = 3;
+
+/// The newest stories of a section kept out of the latest list (Official
+/// updates), for its block on the News screen.
+final separateNewsProvider =
+    FutureProvider.autoDispose.family<List<NewsCard>, String>((ref, slug) async {
+  final page = await ref
+      .watch(newsRepositoryProvider)
+      .latest(category: slug, limit: separateNewsCount);
+  return page.items;
+});
+
 final breakingNewsProvider = FutureProvider.autoDispose<List<NewsCard>>((ref) {
   return ref.watch(newsRepositoryProvider).breaking();
 });

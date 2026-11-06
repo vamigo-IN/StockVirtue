@@ -1,0 +1,524 @@
+/* ============================================================================
+   The news front (spec §5.9): the nameplate, the bands and their grids, the
+   story regions the layout chooser sets out (chooser.ts), and the module
+   rails (BandModule.tsx). Only layout and the nameplate's type live here:
+   the units are StoryCard's and the modules W0m's.
+
+   Width ranges match chooser.ts: phones < 768 px, tablets 768–1023 px,
+   desktop >= 1024 px (1024–1279 and >= 1280 differ only in the split).
+   The band grid is the page grid (--sv-cols: 8 on tablets, 12 from 1024).
+   With a paired module the stories take cols 1–9 and the rail 10–12 from
+   1280, 1–8 and 9–12 at 1024–1279, 1–5 and 6–8 on tablets (spec §5.9.1);
+   without one they take the whole band. The main column is a grid of
+   --m page columns, so the units inside it sit on the page's column lines.
+
+   A rail counts only while it shows something: a module's own root
+   ([data-market-module]), its loading skeleton ([aria-busy]) or the
+   Academy panel. A module that drew nothing in the browser (the licence
+   changed after the page was cached) hides, and a band whose rail has
+   nothing left lays out as a band without a module (the spec's
+   empty-column rule). Browsers without :has() keep the server's choice,
+   with the rail under the stories.
+   ========================================================================== */
+
+.front {
+  padding-bottom: var(--sv-block-news);
+}
+
+/* ── Visibility by width range (FrontUnit.on, FrontRegion.on) ──────────── */
+@media (max-width: 767.98px) {
+  .hideP {
+    display: none !important;
+  }
+}
+@media (min-width: 768px) and (max-width: 1023.98px) {
+  .hideT {
+    display: none !important;
+  }
+}
+@media (min-width: 1024px) {
+  .hideD {
+    display: none !important;
+  }
+}
+
+/* ── Nameplate (spec §5.9.1): the visible H1 and the dateline ─────────────
+   40 px on phones (the name and the short dateline on one row), 56 px from
+   768 (the long dateline under the name), white with a 1 px rule below;
+   the MarketStatus line on the right from 1024. */
+.nameplate {
+  /* Emerald Terminal: the nameplate sits on the mint ground, no rule. */
+  background: transparent;
+}
+.plate {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: 40px;
+  padding-block: 8px;
+}
+.plateText {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 2px 12px;
+  min-width: 0;
+}
+.title {
+  margin: 0;
+  color: var(--sv-fg);
+  font-family: var(--font-sans);
+  font-weight: 800;
+  font-stretch: 100%;
+  font-size: 20px;
+  line-height: 24px;
+  letter-spacing: -0.03em;
+}
+.dateline {
+  margin: 0;
+  color: var(--sv-fg-3);
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  line-height: 18px;
+  letter-spacing: 0;
+}
+.dateLong {
+  display: none;
+}
+.status {
+  display: none;
+}
+@media (min-width: 768px) {
+  .plate {
+    min-height: 56px;
+    padding-block: 14px 2px;
+  }
+  .plateText {
+    flex-direction: column;
+    flex-wrap: nowrap;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 0;
+  }
+  .title {
+    font-size: 26px;
+    line-height: 30px;
+  }
+  .dateLong {
+    display: inline;
+  }
+  .dateShort {
+    display: none;
+  }
+}
+@media (min-width: 1024px) {
+  .title {
+    font-size: 32px;
+    line-height: 36px;
+  }
+  .status {
+    display: block;
+    flex: none;
+  }
+}
+
+/* ── Bands ────────────────────────────────────────────────────────────── */
+.band {
+  margin-top: var(--sv-block-news);
+}
+/* Trending: once the full-bleed paper band; on the mint ground it is a
+   sheet like the others (the class stays as a hook). */
+.paper {
+  background: transparent;
+}
+.head {
+  margin-bottom: var(--sv-head-gap);
+}
+
+/* ── The band's white sheet (Emerald Terminal): white on the mint ground,
+   16 px corners, a hairline and the soft emerald card shadow. Everything a
+   band draws sits inside it. Ad units Google inserts between bands land on
+   the mint ground between the sheets. ─────────────────────────────────── */
+.sheet {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--sv-rule);
+  border-radius: var(--sv-r-lg, 16px);
+  background: var(--sv-surface);
+  box-shadow: var(--sv-shadow-card, 0 16px 40px rgb(3 68 45 / 0.12));
+}
+@media (min-width: 768px) {
+  .sheet {
+    padding: 24px;
+  }
+}
+@media (min-width: 1280px) {
+  .sheet {
+    padding: 28px 32px 32px;
+  }
+}
+/* A band's head sits flush with the sheet's top edge: the RuleHead's own
+   2 px rule would double the sheet's border there. */
+.sheet > .head:first-child {
+  margin-top: -4px;
+}
+
+/* ── The band grid ───────────────────────────────────────────────────────
+   Phones: one column, the rail after the stories (the DOM order). */
+.main,
+.region {
+  min-width: 0;
+}
+.grid > .rail {
+  margin-top: 24px;
+  padding-top: 24px;
+  border-top: 1px solid var(--sv-rule);
+}
+/* After the featured splash, a little air before the first row. */
+.grid[data-layout^="featured"] > .main > .lead + .region {
+  margin-top: 16px;
+}
+
+@media (min-width: 768px) {
+  .grid {
+    --m: 8;
+    --f-lead: 5;
+    --f-side: 3;
+    --c-lead: 5;
+    --c-side: 3;
+    --s-img: 5;
+    --s-text: 3;
+    display: grid;
+    grid-template-columns: repeat(var(--sv-cols), minmax(0, 1fr));
+    column-gap: var(--sv-gutter);
+    row-gap: 32px;
+    align-items: start;
+  }
+  .grid > .main {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: repeat(var(--m), minmax(0, 1fr));
+    column-gap: var(--sv-gutter);
+    row-gap: 24px;
+    align-items: start;
+  }
+  /* Without :has() support the rail sits under the stories. */
+  .grid > .rail {
+    grid-column: 1 / -1;
+    margin-top: 0;
+  }
+  /* Beside the stories, the rail's hairline runs down the middle of the
+     gutter (no width is taken from either column). */
+  .grid[data-aside]:has(> .rail > .academy, > .rail > .module [data-market-module], > .rail > .module [aria-busy="true"]) > .rail {
+    position: relative;
+    padding-top: 0;
+    border-top: 0;
+  }
+  .grid[data-aside]:has(> .rail > .academy, > .rail > .module [data-market-module], > .rail > .module [aria-busy="true"]) > .rail::before {
+    content: "";
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    left: calc(var(--sv-gutter) / -2);
+    width: 1px;
+    background: var(--sv-rule);
+  }
+  .main > .region {
+    grid-column: 1 / -1;
+  }
+  .grid[data-layout^="featured"] > .main > .lead + .region {
+    margin-top: 0;
+  }
+  .grid[data-aside]:has(> .rail > .academy, > .rail > .module [data-market-module], > .rail > .module [aria-busy="true"]) {
+    --m: 5;
+  }
+  .grid[data-aside]:has(> .rail > .academy, > .rail > .module [data-market-module], > .rail > .module [aria-busy="true"]) > .main {
+    grid-column: 1 / span 5;
+  }
+  .grid[data-aside]:has(> .rail > .academy, > .rail > .module [data-market-module], > .rail > .module [aria-busy="true"]) > .rail {
+    grid-column: 6 / -1;
+  }
+}
+@media (min-width: 1024px) {
+  .grid {
+    --m: 12;
+    --f-lead: 8;
+    --f-side: 4;
+    --c-lead: 5;
+    --c-side: 7;
+    --s-img: 7;
+    --s-text: 5;
+  }
+  .grid[data-aside]:has(> .rail > .academy, > .rail > .module [data-market-module], > .rail > .module [aria-busy="true"]) {
+    --m: 8;
+    --f-lead: 5;
+    --f-side: 3;
+    --c-lead: 4;
+    --c-side: 4;
+    --s-img: 5;
+    --s-text: 3;
+  }
+  .grid[data-aside]:has(> .rail > .academy, > .rail > .module [data-market-module], > .rail > .module [aria-busy="true"]) > .main {
+    grid-column: 1 / span 8;
+  }
+  .grid[data-aside]:has(> .rail > .academy, > .rail > .module [data-market-module], > .rail > .module [aria-busy="true"]) > .rail {
+    grid-column: 9 / -1;
+  }
+}
+@media (min-width: 1280px) {
+  .grid[data-aside]:has(> .rail > .academy, > .rail > .module [data-market-module], > .rail > .module [aria-busy="true"]) {
+    --m: 9;
+    --f-lead: 6;
+    --f-side: 3;
+    --c-lead: 4;
+    --c-side: 5;
+    --s-img: 5;
+    --s-text: 4;
+  }
+  .grid[data-aside]:has(> .rail > .academy, > .rail > .module [data-market-module], > .rail > .module [aria-busy="true"]) > .main {
+    grid-column: 1 / span 9;
+  }
+  .grid[data-aside]:has(> .rail > .academy, > .rail > .module [data-market-module], > .rail > .module [aria-busy="true"]) > .rail {
+    grid-column: 10 / -1;
+  }
+}
+
+/* ── featured: the splash, the features beside it, the briefs under it ──
+   Desktop (and tablets without a module): the splash in cols 1–6 of 9
+   (5 of 8, 8 of 12), the features stacked on the right, the briefs in two
+   columns under the splash. */
+@media (min-width: 768px) {
+  .grid[data-layout="featured"] > .main {
+    grid-template-rows: auto 1fr;
+  }
+  .grid[data-layout="featured"] > .main > .lead {
+    grid-column: 1 / span var(--f-lead);
+    grid-row: 1;
+  }
+  .grid[data-layout="featured"] > .main > .side {
+    grid-column: span var(--f-side) / -1;
+    grid-row: 1 / span 2;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+  }
+  .grid[data-layout="featured"] > .main > .briefs {
+    grid-column: 1 / span var(--f-lead);
+    grid-row: 2;
+  }
+}
+/* Tablets with a module (spec §5.9.2, "5 + 3"): the splash in cols 1–5
+   beside the module, then stories 2–3 as a 2-up row across cols 1–8 (a
+   lone second story: a large row), then the briefs in two columns. The
+   main column steps aside (display: contents), so its regions sit on the
+   band grid itself. */
+@media (min-width: 768px) and (max-width: 1023.98px) {
+  .grid[data-aside][data-layout="featured"]:has(> .rail > .academy, > .rail > .module [data-market-module], > .rail > .module [aria-busy="true"]) > .main {
+    display: contents;
+  }
+  .grid[data-aside][data-layout="featured"]:has(> .rail > .academy, > .rail > .module [data-market-module], > .rail > .module [aria-busy="true"]) > .main > .lead {
+    grid-column: 1 / span 5;
+    grid-row: 1;
+  }
+  .grid[data-aside][data-layout="featured"]:has(> .rail > .academy, > .rail > .module [data-market-module], > .rail > .module [aria-busy="true"]) > .rail {
+    grid-row: 1;
+  }
+  .grid[data-aside][data-layout="featured"]:has(> .rail > .academy, > .rail > .module [data-market-module], > .rail > .module [aria-busy="true"]) > .main > :is(.side, .tail, .briefs) {
+    grid-column: 1 / -1;
+    grid-row: auto;
+  }
+  .grid[data-aside][data-layout="featured"]:has(> .rail > .academy, > .rail > .module [data-market-module], > .rail > .module [aria-busy="true"]) > .main > .side {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: var(--sv-gutter);
+  }
+  .grid[data-aside][data-layout="featured"]:has(> .rail > .academy, > .rail > .module [data-market-module], > .rail > .module [aria-busy="true"]) > .main > .briefs {
+    columns: 2;
+  }
+}
+
+/* ── featured, one story: a horizontal splash across the main column ─────
+   (image cols 1–5 of 9, text 6–9; StoryCard reads the three variables).
+   Tablets with a module stack it: image above the text, in cols 1–5. */
+@media (min-width: 768px) {
+  .grid[data-layout="featured-one"] > .main > .lead {
+    --sv-splash-cols: var(--m);
+    --sv-splash-image: var(--s-img);
+    --sv-splash-text: var(--s-text);
+  }
+}
+@media (min-width: 768px) and (max-width: 1023.98px) {
+  .grid[data-aside][data-layout="featured-one"]:has(> .rail > .academy, > .rail > .module [data-market-module], > .rail > .module [aria-busy="true"]) > .main > .lead [data-orientation="horizontal"] {
+    display: block;
+  }
+  .grid[data-aside][data-layout="featured-one"]:has(> .rail > .academy, > .rail > .module [data-market-module], > .rail > .module [aria-busy="true"]) > .main > .lead [data-orientation="horizontal"] > :last-child {
+    margin-top: 16px;
+  }
+}
+
+/* ── Feature grids (Top stories, Learn) and a category's pair of rows ──── */
+@media (min-width: 768px) {
+  .grid2,
+  .grid3,
+  .pair {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    column-gap: var(--sv-gutter);
+    row-gap: 24px;
+    align-items: start;
+  }
+}
+@media (min-width: 1024px) {
+  .grid3 {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (min-width: 768px) and (max-width: 1023.98px) {
+  /* Cols 1–5 beside a module are too narrow for two rows side by side. */
+  .grid[data-aside]:has(> .rail > .academy, > .rail > .module [data-market-module], > .rail > .module [aria-busy="true"]) .pair {
+    display: block;
+  }
+}
+
+/* ── category: a lead feature with briefs beside it, then lines ───────────
+   cols 1–4 + 5–9 of 9 (4 + 4 of 8, 5 + 7 of 12, 5 + 3 on tablets without
+   a module); on tablets with a module the briefs go under the feature. */
+@media (min-width: 768px) {
+  .grid[data-layout="category"] > .main > .lead {
+    grid-column: 1 / span var(--c-lead);
+    grid-row: 1;
+  }
+  .grid[data-layout="category"] > .main > .side {
+    grid-column: span var(--c-side) / -1;
+    grid-row: 1;
+  }
+  .grid[data-layout="category"] > .main > .lines {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+}
+@media (min-width: 768px) and (max-width: 1023.98px) {
+  .grid[data-aside][data-layout="category"]:has(> .rail > .academy, > .rail > .module [data-market-module], > .rail > .module [aria-busy="true"]) > .main > :is(.lead, .side, .lines) {
+    grid-column: 1 / -1;
+    grid-row: auto;
+  }
+}
+
+/* ── Lists in CSS columns: briefs, notices, list mode ─────────────────── */
+.briefs > *,
+.notices > *,
+.list > *,
+.lines > * {
+  break-inside: avoid;
+}
+@media (min-width: 768px) {
+  .briefs,
+  .notices,
+  .list {
+    columns: 2;
+    column-gap: var(--sv-gutter);
+  }
+}
+@media (min-width: 768px) and (max-width: 1023.98px) {
+  /* Beside a module on a tablet (cols 1–5), lists keep one column. */
+  .grid[data-aside]:has(> .rail > .academy, > .rail > .module [data-market-module], > .rail > .module [aria-busy="true"]) > .main > :is(.briefs, .list) {
+    columns: auto;
+  }
+  /* A one-item list never leaves its second column empty. */
+  .region[data-n-t="1"] {
+    columns: auto !important;
+  }
+}
+@media (min-width: 1024px) {
+  .region[data-n-d="1"] {
+    columns: auto !important;
+  }
+}
+
+/* ── Rails and modules ──────────────────────────────────────────────────── */
+.rail {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+  min-width: 0;
+}
+/* A module that drew nothing (no root, no skeleton) hides, so no empty
+   aside is left on the page. */
+.module:not(.academy):not(:has([data-market-module], [aria-busy="true"])) {
+  display: none;
+}
+/* A rail with nothing left: the band lays out without a module. */
+.grid[data-aside]:not(:has(> .rail > .academy, > .rail > .module [data-market-module], > .rail > .module [aria-busy="true"])) > .rail {
+  display: none;
+}
+
+/* Phones (spec §5.9.3, §5.9.5): Markets now, IPO watch and the commodity
+   board stay open, with at most 4 rows each (IPO watch: 2). */
+@media (max-width: 767.98px) {
+  .module [data-market-module="index-board"] tbody > tr:nth-child(n + 5) {
+    display: none;
+  }
+  .module [data-market-module="index-board"] tbody > tr:nth-child(4) > * {
+    border-bottom: 0;
+  }
+  .module [data-market-module="commodity-board"] > table tbody > tr:nth-child(n + 3) {
+    display: none;
+  }
+  .module [data-market-module="commodity-board"] > table tbody > tr:nth-child(2) > * {
+    border-bottom: 0;
+  }
+  /* IPO watch: two rows (spec §5.9.5): at most two open issues; with two
+     open, no upcoming list; with one, one upcoming issue. */
+  .module [data-market-module="ipo-watch"] > ul:nth-of-type(1) > li:nth-child(n + 3) {
+    display: none;
+  }
+  .module [data-market-module="ipo-watch"] > ul:nth-of-type(1) > li:nth-child(2) {
+    border-bottom: 0;
+  }
+  .module [data-market-module="ipo-watch"]:has(> ul:nth-of-type(1) > li:nth-child(2)) > :is(ul:nth-of-type(2), :has(+ ul:nth-of-type(2))) {
+    display: none;
+  }
+  .module [data-market-module="ipo-watch"] > ul:nth-of-type(2) > li:nth-child(n + 2) {
+    display: none;
+  }
+  .module [data-market-module="ipo-watch"] > ul:nth-of-type(2) > li:first-child {
+    border-bottom: 0;
+  }
+}
+
+/* Markets now as its own band (no featured and no Top stories section):
+   the module at a reading width, left-aligned; gone when it draws
+   nothing. */
+.moduleBand:not(:has(> .rail > .module [data-market-module], > .rail > .module [aria-busy="true"])) {
+  display: none;
+}
+/* Its module sits on a white card of its own. */
+.moduleBand > .rail {
+  padding: 16px;
+  border: 1px solid var(--sv-rule);
+  border-radius: var(--sv-r-lg, 16px);
+  background: var(--sv-surface);
+  box-shadow: var(--sv-shadow-card, 0 16px 40px rgb(3 68 45 / 0.12));
+}
+@media (min-width: 768px) {
+  .moduleBand > .rail {
+    padding: 24px;
+  }
+  .moduleBand {
+    display: grid;
+    grid-template-columns: repeat(var(--sv-cols), minmax(0, 1fr));
+    column-gap: var(--sv-gutter);
+  }
+  .moduleBand > .rail {
+    grid-column: 1 / span 5;
+  }
+}
+@media (min-width: 1024px) {
+  .moduleBand > .rail {
+    grid-column: 1 / span 6;
+  }
+}

@@ -3,6 +3,7 @@ import { NewsStatus, NewsVersionReason } from '@prisma/client';
 import { AuditService } from '../../audit/audit.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { recordVersion } from '../articles/article-versions';
+import { breakingAtOnPublish } from '../breaking';
 import { NewsCache } from '../public/news-cache';
 
 /// The delayed job may fire a moment before the scheduled second.
@@ -47,7 +48,13 @@ export class ArticlePublisher {
     const published = await this.prisma.$transaction(async (tx) => {
       const a = await tx.newsArticle.findUnique({
         where: { id },
-        select: { status: true, scheduledAt: true, firstPublishedAt: true },
+        select: {
+          status: true,
+          scheduledAt: true,
+          firstPublishedAt: true,
+          isBreaking: true,
+          breakingAt: true,
+        },
       });
       if (
         !a ||
@@ -65,6 +72,8 @@ export class ArticlePublisher {
           publishedAt: now,
           firstPublishedAt: a.firstPublishedAt ?? now,
           scheduledAt: null,
+          // Marked breaking before it went out: its 24 hours start now.
+          ...breakingAtOnPublish(a, now),
           version: { increment: 1 },
         },
       });

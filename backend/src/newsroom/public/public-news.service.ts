@@ -6,6 +6,7 @@ import { CompanyDirectoryService } from '../../market/company-directory.service'
 import { PrismaService } from '../../prisma/prisma.service';
 import { RedisService } from '../../redis/redis.service';
 import { ClientInfo } from '../../staff/staff-request';
+import { breakingWhere } from '../breaking';
 import {
   APP_DOC_VERSION,
   ArticleBlocksService,
@@ -31,8 +32,6 @@ import {
 
 const PAGE_SIZE = 12;
 const MAX_PAGE_SIZE = 50;
-/// Breaking stories leave the banner after this long, flag or no flag.
-const BREAKING_HOURS = 24;
 /// "Trending" = most read today and yesterday (IST).
 const TRENDING_DAYS = 2;
 /// Most-read stories considered when ranking a trending list.
@@ -258,7 +257,12 @@ export class PublicNewsService {
     return this.cache.get(`trending:${limit}`, () => this.trendingCards(limit));
   }
 
-  /** Active categories as a tree (one level of children). */
+  /**
+   * Active categories as a tree (one level of children). `keepSeparate`
+   * marks a section whose stories the plain latest list leaves out (Official
+   * updates), so the app can give it its own way in, as the website's front
+   * does.
+   */
   categories() {
     return this.cache.get('categories', () =>
       this.prisma.newsCategory.findMany({
@@ -268,6 +272,7 @@ export class PublicNewsService {
           slug: true,
           name: true,
           description: true,
+          keepSeparate: true,
           children: {
             where: { isActive: true },
             orderBy: [{ position: 'asc' }, { name: 'asc' }],
@@ -622,14 +627,19 @@ export class PublicNewsService {
     return rows.map((r) => toCard(r, this.image));
   }
 
-  private breakingCards(limit: number) {
-    return this.cards(
-      {
-        isBreaking: true,
-        publishedAt: { gte: new Date(Date.now() - BREAKING_HOURS * 3600_000) },
-      },
-      limit,
-    );
+  /** Inside their 24 hours (newsroom/breaking.ts), most recently marked first. */
+  private async breakingCards(limit: number) {
+    const rows = await this.prisma.newsArticle.findMany({
+      where: { AND: [listedWhere(), breakingWhere()] },
+      orderBy: [
+        { breakingAt: { sort: 'desc', nulls: 'last' } },
+        { publishedAt: 'desc' },
+        { id: 'desc' },
+      ],
+      take: limit,
+      select: CARD_SELECT,
+    });
+    return rows.map((r) => toCard(r, this.image));
   }
 
   private async trendingCards(limit: number) {

@@ -27,6 +27,12 @@ export class NoticeAcceptanceDto {
   @IsBoolean() adult!: boolean;
   /** Optional: app usage analytics. */
   @IsOptional() @IsBoolean() analytics?: boolean;
+  /**
+   * App 1.4.1: the value the analytics box was prefilled with, sent only
+   * when the screen prefilled it with the person's current choice (W7
+   * addendum §5.12). Absent from older apps.
+   */
+  @IsOptional() @IsBoolean() analyticsPrefilled?: boolean;
 }
 
 export class AnalyticsConsentDto {

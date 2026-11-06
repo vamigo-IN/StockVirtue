@@ -26,6 +26,7 @@ import {
   CreateArticleDto,
   FlagsDto,
   NoteDto,
+  NotifyDto,
   ReviewDto,
   ScheduleDto,
   UpdateArticleDto,
@@ -325,24 +326,7 @@ export class ArticlesController {
     return this.workflow.reopen(actor, id, dto.version, this.client(req));
   }
 
-  @StaffOnly('news.correct')
-  @Post(':id/correct')
-  @HttpCode(200)
-  correct(
-    @CurrentStaff() actor: StaffPrincipal,
-    @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: NoteDto,
-    @Req() req: Request,
-  ) {
-    return this.workflow.correct(
-      actor,
-      id,
-      dto.version,
-      dto.note,
-      this.client(req),
-    );
-  }
-
+  /** news.correct is the permission's historical key: it now gates retraction only. */
   @StaffOnly('news.correct')
   @Post(':id/retract')
   @HttpCode(200)
@@ -370,6 +354,49 @@ export class ArticlesController {
     @Req() req: Request,
   ) {
     return this.workflow.setFlags(actor, id, dto, this.client(req));
+  }
+
+  /**
+   * "Send a notification when published": one push to app readers with
+   * breaking alerts on once the story goes live (now or at its scheduled
+   * time). Staff who may publish and place stories only.
+   */
+  @StaffOnly('news.publish', 'news.feature')
+  @Put(':id/notify')
+  setNotify(
+    @CurrentStaff() actor: StaffPrincipal,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: NotifyDto,
+    @Req() req: Request,
+  ) {
+    return this.workflow.setNotify(
+      actor,
+      id,
+      dto.notifyOnPublish,
+      this.client(req),
+    );
+  }
+
+  /** The story's notification state (the Placement card polls it while one is on its way). */
+  @StaffOnly('news.read')
+  @Get(':id/notify')
+  notification(
+    @CurrentStaff() actor: StaffPrincipal,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.workflow.notification(actor, id);
+  }
+
+  /** "Send notification now" for a story already live (once per story). */
+  @StaffOnly('news.publish', 'news.feature')
+  @Post(':id/notify')
+  @HttpCode(200)
+  notifyNow(
+    @CurrentStaff() actor: StaffPrincipal,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Req() req: Request,
+  ) {
+    return this.workflow.notifyNow(actor, id, this.client(req));
   }
 
   private client(req: Request) {

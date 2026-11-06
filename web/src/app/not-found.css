@@ -1,0 +1,13 @@
+/* ============================================================================
+   The root 404's stylesheet (src/app/not-found.tsx, spec §5.8): the public
+   stylesheet, imported through this file of its own.
+   Why not import ./(public)/public.css directly: Next 15.5 (webpack) gives
+   each CSS file to only one of the entries that import it, and on Windows
+   builds its depth sort (path.split('/')) sees every absolute path as depth
+   1, so the (public) layout claims public.css and the root not-found gets
+   no stylesheet at all (an unstyled 404 on the built site and on the dev
+   server). A file that no layout imports always stays with the not-found.
+   It loads only where the 404 renders: never on /admin, never on a page.
+   Edit public.css, never this file.
+   ========================================================================== */
+@import "./(public)/public.css";

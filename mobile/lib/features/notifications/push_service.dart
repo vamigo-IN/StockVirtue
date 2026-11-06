@@ -28,11 +28,15 @@ const _androidChannel = AndroidNotificationChannel(
 const _newsChannel = AndroidNotificationChannel(
   'stockvirtue_news',
   'News alerts',
-  description: 'Breaking news and stories about stocks you follow.',
+  description:
+      'Breaking news, editors’ picks and stories about stocks you follow.',
   importance: Importance.high,
 );
 
 /// A news push's story: from FCM data, or a local notification's payload.
+/// Every kind of news push (breaking news, an editor's pick, a stock you
+/// follow) carries the same data, {type: 'news', slug, articleId,
+/// campaignId}, so any of them opens its story, in old app versions too.
 typedef NewsTap = ({String slug, String? campaignId});
 
 NewsTap? _newsFromData(Map<String, dynamic> data) {
@@ -210,7 +214,10 @@ void _openNews(NewsTap tap) {
   }
 }
 
-/// Wires push end-to-end while a user is signed in:
+/// Wires push end-to-end while a user is signed in and has accepted the
+/// current privacy notice (until then the server refuses the device token,
+/// under the app notice gate, and the app is behind the notice screen; it
+/// starts once the notice is accepted):
 ///  • registers/refreshes the FCM device token with the backend (so background
 ///    pushes reach the device),
 ///  • shows an OS notification + prepends to the inbox for realtime socket
@@ -314,10 +321,11 @@ final pushLifecycleProvider = Provider<void>((ref) {
 
   ref.onDispose(stop);
   ref.listen(authControllerProvider, (_, _) {
-    final loggedIn = ref.read(authControllerProvider).value != null;
-    if (loggedIn && subs.isEmpty) {
+    final user = ref.read(authControllerProvider).value;
+    final active = user != null && !user.needsPrivacyNotice;
+    if (active && subs.isEmpty) {
       start();
-    } else if (!loggedIn && subs.isNotEmpty) {
+    } else if (!active && subs.isNotEmpty) {
       stop();
     }
   }, fireImmediately: true);

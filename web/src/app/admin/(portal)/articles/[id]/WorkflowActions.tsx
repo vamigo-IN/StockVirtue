@@ -45,7 +45,7 @@ export type Act = (
 
 type Ask =
   | { kind: 'approve' | 'request-changes' | 'reject' | 'unpublish' }
-  | { kind: 'correct' | 'retract' }
+  | { kind: 'retract' }
   | { kind: 'schedule' }
   | {
       kind: 'confirm';
@@ -67,12 +67,7 @@ function inAnHour() {
 }
 
 const TEXTS: Record<
-  | 'approve'
-  | 'request-changes'
-  | 'reject'
-  | 'unpublish'
-  | 'correct'
-  | 'retract',
+  'approve' | 'request-changes' | 'reject' | 'unpublish' | 'retract',
   {
     title: string;
     body: string;
@@ -114,14 +109,6 @@ const TEXTS: Record<
     required: false,
     success: 'Taken down. The article is a draft again.',
   },
-  correct: {
-    title: 'Publish a correction',
-    body: 'Save your fixes to the text first. Readers see the corrected story; this note stays in its history and is not shown to them.',
-    label: 'Publish correction',
-    field: 'What was corrected',
-    required: true,
-    success: 'Correction published.',
-  },
   retract: {
     title: 'Retract this article?',
     body: 'Retracted stories stay online with a prominent notice explaining why. This can’t be undone from the portal.',
@@ -144,6 +131,15 @@ export function WorkflowActions({
   onDelete: () => Promise<void>;
 }) {
   const c = article.can;
+  // "Send a notification when published" is on (NotifyControl): say so in
+  // the publish and schedule confirmations, so the publisher knows.
+  const notifies =
+    article.notification?.state === 'switch' &&
+    article.notification.notifyOnPublish;
+  const notifyLine = notifies
+    ? ' A notification goes to app readers with breaking news alerts on when it’s live.'
+    : '';
+  const publishBody = `It goes live on the website immediately.${notifyLine}`;
   const [ask, setAsk] = useState<Ask>(null);
   const [text, setText] = useState('');
   const [when, setWhen] = useState(inAnHour);
@@ -179,7 +175,7 @@ export function WorkflowActions({
             kind: 'confirm',
             path: 'publish',
             title: 'Publish this article now?',
-            body: 'It goes live on the website immediately.',
+            body: publishBody,
             label: 'Publish',
             success: 'Published.',
           }),
@@ -197,12 +193,8 @@ export function WorkflowActions({
         icon: Undo2,
         run: () => act('withdraw', {}, 'Withdrawn. You can edit it again.'),
       };
-    if (c.correct)
-      return {
-        label: 'Publish correction',
-        icon: MessageSquareWarning,
-        run: () => open({ kind: 'correct' }),
-      };
+    // A live story has no next step: editors fix it by editing and saving,
+    // and readers see its "Updated" time (correction notes were retired).
     return null;
   })();
 
@@ -238,7 +230,7 @@ export function WorkflowActions({
           kind: 'confirm',
           path: 'publish',
           title: 'Publish this article now?',
-          body: 'It goes live on the website immediately.',
+          body: publishBody,
           label: 'Publish',
           success: 'Published.',
         }),
@@ -268,13 +260,7 @@ export function WorkflowActions({
       run: () => void act('withdraw', {}, 'Withdrawn.'),
     });
   }
-  if (c.correct && primary?.label !== 'Publish correction') {
-    more.push({
-      label: 'Publish correction…',
-      icon: MessageSquareWarning,
-      run: () => open({ kind: 'correct' }),
-    });
-  }
+  // `correct` is the retraction capability (permission news.correct).
   if (c.correct && !article.retractedAt) {
     more.push({
       label: 'Retract…',
@@ -370,8 +356,7 @@ export function WorkflowActions({
       setError('Write at least a few words.');
       return;
     }
-    const key =
-      ask.kind === 'correct' || ask.kind === 'retract' ? 'note' : 'comment';
+    const key = ask.kind === 'retract' ? 'note' : 'comment';
     const extra = text.trim() ? { [key]: text.trim() } : {};
     if (await act(ask.kind, extra, t.success)) setAsk(null);
   }
@@ -430,7 +415,7 @@ export function WorkflowActions({
               {ask?.kind === 'confirm'
                 ? ask.body
                 : ask?.kind === 'schedule'
-                  ? 'The article goes live automatically at this time (your local time).'
+                  ? `The article goes live automatically at this time (your local time).${notifyLine}`
                   : textAsk?.body}
             </DialogDescription>
           </DialogHeader>

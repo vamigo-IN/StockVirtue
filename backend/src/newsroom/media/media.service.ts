@@ -549,6 +549,12 @@ export class MediaService {
         'This image is the website’s logo, favicon or share image. Pick another one in Site settings first.',
       );
     }
+    const pages = await this.siteContentUses(id);
+    if (pages > 0) {
+      throw new ConflictException(
+        `This image is used on ${pages === 1 ? 'a website page' : `${pages} website pages`} (a draft or the published text). Remove it from ${pages === 1 ? 'that page' : 'them'} first.`,
+      );
+    }
     const uses = await this.usageCount(id);
     if (uses > 0) {
       throw new ConflictException(
@@ -617,6 +623,26 @@ export class MediaService {
          OR content::text LIKE ${`%${id}%`}
          OR seo::text LIKE ${`%${id}%`}`;
     return Number(rows[0]?.n ?? 0);
+  }
+
+  /**
+   * Website pages (W7) whose draft or live revision shows this image. An
+   * image only an older revision used may go; restoring that revision then
+   * asks for another image. Without the W7 tables nothing uses it.
+   */
+  private async siteContentUses(id: string): Promise<number> {
+    try {
+      const rows = await this.prisma.$queryRaw<{ n: bigint }[]>`
+        SELECT count(*)::bigint AS n FROM site_content c
+        LEFT JOIN site_content_revisions r ON r.id = c."publishedRevisionId"
+        WHERE c.status <> 'ARCHIVED'
+          AND (c.draft::text LIKE ${`%${id}%`} OR r.content::text LIKE ${`%${id}%`})`;
+      return Number(rows[0]?.n ?? 0);
+    } catch (err) {
+      const msg = String((err as { message?: string } | null)?.message ?? '');
+      if (/42P01|does not exist/.test(msg)) return 0;
+      throw err;
+    }
   }
 
   private async find(id: string): Promise<AssetRow> {

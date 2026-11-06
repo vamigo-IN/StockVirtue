@@ -13,6 +13,7 @@ import 'features/market/company_directory_sync.dart';
 import 'features/onboarding/onboarding_storage.dart';
 import 'features/notifications/push_service.dart';
 import 'features/onboarding/screens/onboarding_screen.dart';
+import 'features/privacy/privacy_lifecycle.dart';
 import 'features/privacy/screens/privacy_notice_screen.dart';
 import 'features/profile/screens/complete_profile_screen.dart';
 import 'features/ticks/ticks_providers.dart';
@@ -23,11 +24,15 @@ class StockVirtueApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    // Connects/disconnects the Socket.IO client based on auth state.
+    // Connects/disconnects the Socket.IO client based on auth state (and only
+    // once the current privacy notice is accepted).
     ref.watch(socketLifecycleProvider);
     // Registers the FCM device token + shows incoming push notifications
     // (realtime socket events + foreground FCM) while signed in.
     ref.watch(pushLifecycleProvider);
+    // Re-checks the privacy notice on resume and when the API answers
+    // `notice_required`, and brings the notice screen to the front.
+    ref.watch(privacyLifecycleProvider);
     // Fire-and-forget fetch of /market/holidays — the resolved list
     // overrides the curated fallback inside market_hours.dart for every
     // subsequent isMarketOpen() check.

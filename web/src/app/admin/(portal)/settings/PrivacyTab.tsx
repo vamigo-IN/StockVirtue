@@ -1,6 +1,7 @@
 'use client';
 
 import { Info } from 'lucide-react';
+import { NoticeGateCard } from '@/components/portal/site-content/NoticeGateCard';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import {
   Card,
@@ -154,6 +155,7 @@ export function PrivacyTab({
         }
         onDiscard={g.reset}
       />
+      <NoticeGateCard />
     </div>
   );
 }

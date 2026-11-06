@@ -59,9 +59,18 @@ class NewsPicture extends StatelessWidget {
 
 /// Small labels: BREAKING, and "AI-assisted" for stories that use AI text.
 class NewsLabels extends StatelessWidget {
-  const NewsLabels({super.key, required this.card, this.showCategory = true});
+  const NewsLabels({
+    super.key,
+    required this.card,
+    this.showCategory = true,
+    this.dateOnly = false,
+  });
   final NewsCard card;
   final bool showCategory;
+
+  /// The date it went out instead of "3h ago" (Official updates' notices,
+  /// as on the website).
+  final bool dateOnly;
 
   @override
   Widget build(BuildContext context) {
@@ -69,7 +78,7 @@ class NewsLabels extends StatelessWidget {
     final m = context.market;
     final scheme = Theme.of(context).colorScheme;
     final parts = <Widget>[];
-    if (card.isBreaking) {
+    if (card.isBreakingNow) {
       parts.add(Container(
         padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
         decoration: BoxDecoration(
@@ -98,7 +107,7 @@ class NewsLabels extends StatelessWidget {
     }
     if (card.publishedAt != null) {
       parts.add(Text(
-        newsAgo(card.publishedAt!),
+        dateOnly ? istDate(card.publishedAt!) : newsAgo(card.publishedAt!),
         style: t?.copyWith(color: scheme.onSurfaceVariant),
       ));
     }
@@ -249,10 +258,13 @@ class BreakingStrip extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    if (cards.isEmpty) return const SizedBox.shrink();
+    // Only stories still inside their 24 hours (a list fetched a while ago
+    // may hold one that has run out).
+    final live = cards.where((c) => c.isBreakingNow);
+    if (live.isEmpty) return const SizedBox.shrink();
     final m = context.market;
     final t = Theme.of(context).textTheme;
-    final c = cards.first;
+    final c = live.first;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
       child: Material(

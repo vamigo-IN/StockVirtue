@@ -1,5 +1,5 @@
 /**
- * Article widgets: the twenty block types the editor's widget picker offers.
+ * Article widgets: the 22 block types the editor's widget picker offers.
  * A widget is stored as structured JSON — a type, a schema version and a
  * config — never as HTML or script. Every config passes through `cleanWidget`
  * on save, which keeps only the fields its type defines, within their limits.
@@ -32,11 +32,18 @@ export const WIDGET_TYPES = [
   'educational',
   'risk_disclaimer',
   'promo_banner',
+  'stock_list',
+  'index_table',
 ] as const;
 export type WidgetType = (typeof WIDGET_TYPES)[number];
 
 /** Seconds between refreshes a widget may ask for (0 = never). */
 export const REFRESH_CHOICES = [0, 5, 15, 30, 60, 300] as const;
+/**
+ * Rows in a stock list or an index table. 15 stays inside one public quotes
+ * request (the API takes up to 20 refs) and one allowlist lookup.
+ */
+export const TABLE_ROWS = { min: 2, max: 15 } as const;
 export const CHART_RANGES = ['1D', '5D', '1M', '6M', '1Y'] as const;
 export const MOVER_SEGMENTS = ['largecap', 'midcap', 'smallcap'] as const;
 export const IPO_VIEWS = ['open', 'upcoming', 'listed', 'issue'] as const;
@@ -69,6 +76,8 @@ export type WidgetConfig = Record<string, unknown>;
 export interface WidgetRefs {
   stocks: string[];
   curated: string[];
+  /** Curated refs that must be indices on the market list (Index table). */
+  indices?: string[];
 }
 
 interface WidgetDef {
@@ -148,6 +157,56 @@ function refList(
   return list;
 }
 
+/**
+ * An ordered list of refs for a table, each at most once. The writer's order
+ * is the table's order, so a repeat is a mistake to fix, never dropped
+ * quietly. Lengths are checked before each ref is read.
+ */
+function tableRefs(
+  v: unknown,
+  each: (x: unknown) => string,
+  many: string,
+): string[] {
+  const raw: unknown[] = Array.isArray(v) ? v : [];
+  if (raw.length < TABLE_ROWS.min) {
+    throw new WidgetConfigError(`Choose at least ${TABLE_ROWS.min} ${many}.`);
+  }
+  if (raw.length > TABLE_ROWS.max) {
+    throw new WidgetConfigError(`Choose up to ${TABLE_ROWS.max} ${many}.`);
+  }
+  const list: string[] = [];
+  for (const x of raw) {
+    const ref = each(x);
+    if (list.includes(ref)) {
+      throw new WidgetConfigError(
+        `${ref.slice(ref.indexOf(':') + 1)} is in the list twice. Remove one.`,
+      );
+    }
+    list.push(ref);
+  }
+  return list;
+}
+
+/** An index on the market list is an NSE or BSE ref ("NSE:NIFTY IT"). */
+function indexRef(v: unknown): string {
+  const ref = instrumentRef(v, 'an index');
+  if (!ref.startsWith('NSE:') && !ref.startsWith('BSE:')) {
+    throw new WidgetConfigError(
+      `${ref.slice(ref.indexOf(':') + 1)} isn’t an index. Choose indices from the market list.`,
+    );
+  }
+  return ref;
+}
+
+/** A table's optional title, and whether it shows the day's range. */
+function tableExtras(c: Raw): { title?: string; dayRange: boolean } {
+  const title = text(c.title, 60, 'a title');
+  return {
+    ...(title ? { title } : {}),
+    dayRange: typeof c.dayRange === 'boolean' ? c.dayRange : true,
+  };
+}
+
 const none = (): WidgetRefs => ({ stocks: [], curated: [] });
 const isStockRef = (r: string) => r.startsWith('NSE:') || r.startsWith('BSE:');
 
@@ -157,7 +216,7 @@ const split = (refs: string[]): WidgetRefs => ({
   curated: refs,
 });
 
-// ── The twenty widgets ────────────────────────────────────────────────────
+// ── The widgets ───────────────────────────────────────────────────────────
 
 const movers = (label: string): WidgetDef => ({
   version: 1,
@@ -427,6 +486,36 @@ export const WIDGETS: Record<WidgetType, WidgetDef> = {
     },
     refs: none,
     text: (c) => `${c.headline as string}\n${c.body as string}`,
+  },
+  // Its stocks reach the public quote allowlist through refs(): every save
+  // writes them to the story's widget index, which the allowlist reads once
+  // the story is listed (as for Related stocks).
+  stock_list: {
+    version: 1,
+    label: 'Stock list',
+    clean: (c) => ({
+      ...tableExtras(c),
+      symbols: tableRefs(c.symbols, (x) => stockRef(x), 'stocks'),
+      refresh: refresh(c.refresh, 15),
+    }),
+    refs: (c) => ({ stocks: c.symbols as string[], curated: [] }),
+  },
+  // Indices from the curated market list (as for Index quote): checked
+  // against it on save, kind INDEX included (refs().indices), and always
+  // quotable from the live snapshot.
+  index_table: {
+    version: 1,
+    label: 'Index table',
+    clean: (c) => ({
+      ...tableExtras(c),
+      symbols: tableRefs(c.symbols, indexRef, 'indices'),
+      refresh: refresh(c.refresh, 15),
+    }),
+    refs: (c) => ({
+      stocks: [],
+      curated: c.symbols as string[],
+      indices: c.symbols as string[],
+    }),
   },
 };
 

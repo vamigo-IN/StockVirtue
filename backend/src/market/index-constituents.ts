@@ -9,6 +9,10 @@
 /// Last refreshed 2026-05 against NSE / BSE published constituent
 /// snapshots. Keep this list lean: only indices that appear on the
 /// home strip or the F&O landing need a constituents entry.
+///
+/// 2026-11: Tata Motors is TMPV (Tata Motors Passenger Vehicles) in the
+/// Nifty 50 and Nifty Auto: NSE renamed TATAMOTORS on 24 Oct 2025
+/// (circular NSE/FAOP/70882), and NSE Indices' lists of 5 Nov 2026 have it.
 
 export interface IndexConstituent {
   symbol: string;
@@ -89,7 +93,7 @@ const INDEX_CONSTITUENTS: Record<string, IndexConstituentSet> = {
       { symbol: 'POWERGRID', name: 'Power Grid Corporation' },
       { symbol: 'ULTRACEMCO', name: 'UltraTech Cement' },
       { symbol: 'WIPRO', name: 'Wipro' },
-      { symbol: 'TATAMOTORS', name: 'Tata Motors' },
+      { symbol: 'TMPV', name: 'Tata Motors Passenger Vehicles' },
       { symbol: 'ADANIENT', name: 'Adani Enterprises' },
       { symbol: 'JSWSTEEL', name: 'JSW Steel' },
       { symbol: 'NESTLEIND', name: 'Nestle India' },
@@ -188,7 +192,7 @@ const INDEX_CONSTITUENTS: Record<string, IndexConstituentSet> = {
     members: [
       { symbol: 'MARUTI', name: 'Maruti Suzuki' },
       { symbol: 'M&M', name: 'Mahindra & Mahindra' },
-      { symbol: 'TATAMOTORS', name: 'Tata Motors' },
+      { symbol: 'TMPV', name: 'Tata Motors Passenger Vehicles' },
       { symbol: 'BAJAJ-AUTO', name: 'Bajaj Auto' },
       { symbol: 'EICHERMOT', name: 'Eicher Motors' },
       { symbol: 'HEROMOTOCO', name: 'Hero MotoCorp' },
@@ -227,6 +231,9 @@ const INDEX_CONSTITUENTS: Record<string, IndexConstituentSet> = {
   },
 
   // ─── BSE Sensex (30 stocks) ───────────────────────────────────────
+  // Stale: TATAMOTORS no longer trades, and Tata Motors Passenger Vehicles
+  // was reported dropped from the Sensex on 22 Dec 2025. Refresh this list
+  // against BSE's published constituents; it is left as it was until then.
   SENSEX: {
     exchange: 'NSE',
     members: [

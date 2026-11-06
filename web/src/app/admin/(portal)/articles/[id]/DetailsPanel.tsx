@@ -2,7 +2,7 @@
 
 import { useQueryClient } from '@tanstack/react-query';
 import { ImagePlus, Newspaper, Plus, X } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { RelatedDialog } from '@/components/editor/EditorDialogs';
 import { MediaPicker } from '@/components/portal/MediaPicker';
@@ -21,6 +21,7 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
 import { api, errorMessage } from '@/portal/api';
+import { formatDateTime } from '@/portal/format';
 import {
   invalidateArticles,
   qk,
@@ -31,6 +32,7 @@ import {
 } from '@/portal/queries';
 import type { ArticleDetail, Category, StockRef, Tag } from '@/portal/types';
 import type { Draft, DraftKey } from './draft';
+import { NotifyControl } from './NotifyControl';
 
 const SECTORS = [
   'Banking',
@@ -59,6 +61,27 @@ function categoryPath(c: Category, all: Category[]): string {
   return parent ? `${parent.name} › ${c.name}` : c.name;
 }
 
+/**
+ * A ref for a suggestion list that keeps it in view while it's open. From xl
+ * the side column scrolls on its own (see ArticleWorkspace), so a list that
+ * opens under an input low in the column would otherwise sit out of sight
+ * below its edge. Only the column moves, never the page.
+ */
+function useKeptInView() {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    const pane = el?.closest<HTMLElement>('[data-scroll-pane]');
+    if (!el || !pane) return;
+    const below =
+      el.getBoundingClientRect().bottom +
+      8 -
+      pane.getBoundingClientRect().bottom;
+    if (below > 0) pane.scrollTop += below;
+  });
+  return ref;
+}
+
 /** Listed companies the story is about; the first one is the main one. */
 function StockInput({
   value,
@@ -72,6 +95,7 @@ function StockInput({
   const [text, setText] = useState('');
   const [q, setQ] = useState('');
   const [focused, setFocused] = useState(false);
+  const listRef = useKeptInView();
   useEffect(() => {
     const t = setTimeout(() => setQ(text.trim()), 250);
     return () => clearTimeout(t);
@@ -147,7 +171,10 @@ function StockInput({
             aria-describedby="stock-help"
           />
           {focused && q && (
-            <div className="absolute inset-x-0 top-full z-20 mt-1 overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-md">
+            <div
+              ref={listRef}
+              className="absolute inset-x-0 top-full z-20 mt-1 overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-md"
+            >
               {search.isPending ? (
                 <p className="px-3 py-2 text-sm text-muted-foreground">
                   Searching…
@@ -206,6 +233,7 @@ function TagInput({
 }) {
   const qc = useQueryClient();
   const [text, setText] = useState('');
+  const listRef = useKeptInView();
   const tags = useTags(text.trim());
   const suggestions = (tags.data ?? [])
     .filter((t) => !value.some((v) => v.id === t.id))
@@ -277,7 +305,10 @@ function TagInput({
             aria-label="Add a tag"
           />
           {text.trim() && (
-            <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-md border bg-popover shadow-md">
+            <div
+              ref={listRef}
+              className="absolute z-20 mt-1 w-full overflow-hidden rounded-md border bg-popover shadow-md"
+            >
               {suggestions.map((t) => (
                 <button
                   key={t.id}
@@ -719,10 +750,17 @@ export function DetailsPanel({
               >
                 Breaking news
                 <span className="text-xs text-muted-foreground">
-                  Tops /news for 24 hours. Within 3 hours of first
+                  Tops /news with the Breaking label for 24 hours from when
+                  it’s switched on (from publication, if it goes out marked).
+                  The label then comes off by itself. Within 3 hours of first
                   publication it also goes to every app reader with breaking
                   alerts on.
                 </span>
+                {article.isBreaking && (
+                  <span className="text-xs font-medium text-foreground">
+                    {breakingNote(article)}
+                  </span>
+                )}
               </Label>
               <Switch
                 id="flag-breaking"
@@ -730,6 +768,7 @@ export function DetailsPanel({
                 onCheckedChange={(v) => void setFlag('isBreaking', v)}
               />
             </div>
+            <NotifyControl article={article} onArticle={onArticle} />
           </CardContent>
         </Card>
       )}
@@ -758,4 +797,17 @@ export function DetailsPanel({
       />
     </div>
   );
+}
+
+/**
+ * The Breaking row's line while the switch is on: when the label comes off
+ * (24 hours after it started; the API's breakingUntil). The worker's sweep
+ * turns the switch off within a few minutes of that.
+ */
+function breakingNote(a: ArticleDetail, now = Date.now()): string {
+  if (!a.breakingUntil) return 'Its 24 hours start when it’s published.';
+  if (Date.parse(a.breakingUntil) > now) {
+    return `Breaking until ${formatDateTime(a.breakingUntil)}`;
+  }
+  return `The Breaking label came off at ${formatDateTime(a.breakingUntil)}. This switch turns itself off within a few minutes.`;
 }

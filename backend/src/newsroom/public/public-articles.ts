@@ -1,4 +1,5 @@
 import { MediaAsset, NewsStatus, Prisma } from '@prisma/client';
+import { breakingSince, isBreakingNow } from '../breaking';
 
 /**
  * THE rule for what readers may see. Every public query is built from these
@@ -39,6 +40,7 @@ export const CARD_SELECT = {
   updatedAt: true,
   readingMinutes: true,
   isBreaking: true,
+  breakingAt: true,
   isFeatured: true,
   isAiGenerated: true,
   category: { select: { slug: true, name: true, isActive: true } },
@@ -63,6 +65,8 @@ export const DETAIL_SELECT = {
   sourceAttribution: true,
   retractedAt: true,
   retractionNote: true,
+  // No correctionNote: correction notes were retired (6 Nov 2026) and the
+  // column is never read. Readers see only the story's updated time.
   category: {
     select: {
       slug: true,
@@ -116,7 +120,14 @@ export interface PublicCard {
   publishedAt: Date;
   updatedAt: Date;
   readingMinutes: number;
+  /** Breaking now: marked, and inside its 24 hours (newsroom/breaking.ts). */
   isBreaking: boolean;
+  /**
+   * When it became breaking, while it is; else null. The website checks it
+   * again as it draws a page, so a response cached a moment before the end
+   * shows no label.
+   */
+  breakingAt: Date | null;
   isFeatured: boolean;
   isAiGenerated: boolean;
   category: { slug: string; name: string } | null;
@@ -146,7 +157,14 @@ export function publicSocials(raw: Prisma.JsonValue): Record<string, string> {
   return out;
 }
 
-export function toCard(row: CardRow, imageOf: ImageOf): PublicCard {
+export function toCard(
+  row: CardRow,
+  imageOf: ImageOf,
+  now = new Date(),
+): PublicCard {
+  // Breaking only while inside its 24 hours, whatever the stored switch
+  // says: the worker's sweep turns it off within minutes of the end.
+  const breaking = isBreakingNow(row, now);
   return {
     id: row.id,
     slug: row.slug,
@@ -157,7 +175,8 @@ export function toCard(row: CardRow, imageOf: ImageOf): PublicCard {
     publishedAt: row.publishedAt!,
     updatedAt: row.updatedAt,
     readingMinutes: row.readingMinutes,
-    isBreaking: row.isBreaking,
+    isBreaking: breaking,
+    breakingAt: breaking ? breakingSince(row) : null,
     isFeatured: row.isFeatured,
     isAiGenerated: row.isAiGenerated,
     // Hidden categories and retired bylines have no public page to link to.

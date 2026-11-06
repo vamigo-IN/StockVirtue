@@ -1,8 +1,10 @@
 import 'server-only';
 import { API_V1, backendHeaders, type ClientInfo } from '@/portal/backend';
+import { breakingNow, expireBreaking } from './breaking';
 import type {
   HomeSection,
   NewsArticle,
+  NewsCard,
   NewsCategoryNode,
   NewsListing,
   NewsSitemap,
@@ -62,6 +64,15 @@ async function orNull<T>(p: Promise<T>): Promise<T | null> {
   }
 }
 
+/**
+ * Cards with the Breaking label only inside their 24 hours (news/breaking.ts),
+ * checked as the page is drawn: a response cached here or in the API a
+ * moment before the end never shows a label that has run out.
+ */
+function current<T extends NewsCard>(cards: T[], now = Date.now()): T[] {
+  return cards.map((card) => expireBreaking(card, now));
+}
+
 function query(params: Record<string, string | number | undefined>) {
   const q = new URLSearchParams();
   for (const [k, v] of Object.entries(params)) {
@@ -73,24 +84,54 @@ function query(params: Record<string, string | number | undefined>) {
 
 export const PAGE_SIZE = 12;
 
-export function getHome() {
-  return emptyAtBuild(get<{ sections: HomeSection[] }>('/home'), {
+/**
+ * The API's last listing page (its PageQueryDto has @Max(500)); past it the
+ * API answers 400. The listing routes accept /page/2 to /page/999, so a page
+ * beyond this one is simply a page that doesn't exist: null, like any other
+ * missing page, which the route turns into its 404 (not a 500).
+ */
+const MAX_PAGE = 500;
+
+export async function getHome(): Promise<{ sections: HomeSection[] }> {
+  const home = await emptyAtBuild(get<{ sections: HomeSection[] }>('/home'), {
     sections: [],
   });
+  const now = Date.now();
+  return {
+    ...home,
+    sections: home.sections.flatMap((section) => {
+      if (section.type !== 'breaking') {
+        return [{ ...section, items: current(section.items, now) }];
+      }
+      // The banner keeps only stories still breaking, and goes when none
+      // are, as the API leaves out a section with no stories.
+      const items = section.items.filter((card) => breakingNow(card, now));
+      return items.length ? [{ ...section, items }] : [];
+    }),
+  };
 }
 
-export function getArticle(slug: string) {
-  return orNull(get<NewsArticle>(`/${encodeURIComponent(slug)}`));
+export async function getArticle(slug: string): Promise<NewsArticle | null> {
+  const article = await orNull(get<NewsArticle>(`/${encodeURIComponent(slug)}`));
+  if (!article) return null;
+  const now = Date.now();
+  return { ...expireBreaking(article, now), related: current(article.related, now) };
 }
 
-export function getListing(params: {
+/**
+ * A page of stories, newest first, or most read first with
+ * `sort: 'trending'` (the API ranks by views over its trending window).
+ */
+export async function getListing(params: {
   category?: string;
   tag?: string;
   author?: string;
   page?: number;
   limit?: number;
-}) {
-  return emptyAtBuild(
+  sort?: 'trending';
+}): Promise<NewsListing | null> {
+  if ((params.page ?? 1) > MAX_PAGE) return null;
+  const listing = await emptyAtBuild(
     orNull(
       get<NewsListing>(
         query({
@@ -102,14 +143,33 @@ export function getListing(params: {
     ),
     null,
   );
+  return listing && { ...listing, items: current(listing.items) };
 }
 
-export function getStock(symbol: string, page = 1) {
-  return orNull(
+export async function getStock(
+  symbol: string,
+  page = 1,
+): Promise<StockListing | null> {
+  if (page > MAX_PAGE) return null;
+  const listing = await orNull(
     get<StockListing>(
       `/stocks/${encodeURIComponent(symbol)}${query({ page, limit: PAGE_SIZE })}`,
     ),
   );
+  return listing && { ...listing, items: current(listing.items) };
+}
+
+/**
+ * The most-read stories right now (`GET /news/trending?limit=`, at most 20),
+ * shared for 30 s like every news fetch. Empty on any error, so a page
+ * simply leaves its trending list out.
+ */
+export async function getTrending(limit = 5): Promise<NewsCard[]> {
+  try {
+    return current(await get<NewsCard[]>(`/trending${query({ limit })}`));
+  } catch {
+    return [];
+  }
 }
 
 export async function getCategories(): Promise<NewsCategoryNode[]> {
@@ -151,5 +211,6 @@ export async function searchNews(
     throw new Error('Too many searches. Try again in a minute.');
   }
   if (!res.ok) throw new Error(`News search answered ${res.status}`);
-  return (await res.json()) as SearchResults;
+  const results = (await res.json()) as SearchResults;
+  return { ...results, items: current(results.items) };
 }

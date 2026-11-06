@@ -114,8 +114,15 @@ export function capabilities(a: ArticleAccessView, actor: StaffPrincipal) {
       !([S.IN_REVIEW, S.SCHEDULED, S.PUBLISHED] as NewsStatus[]).includes(
         a.status,
       ),
+    // Retract a live story. Named after its permission (news.correct), whose
+    // key stays for stored roles; correction notes were retired 6 Nov 2026.
     correct: a.status === S.PUBLISHED && has(actor, 'news.correct'),
     feature: has(actor, 'news.feature') && read,
+    // "Send a notification when published" / "Send notification now": a push
+    // to app readers, so only staff who may publish and place stories (the
+    // same people whose Breaking switch already notifies readers).
+    notify:
+      has(actor, 'news.publish') && has(actor, 'news.feature') && read,
     assign: has(actor, 'news.assign') && read,
     comment: has(actor, 'news.comment') && read,
   };

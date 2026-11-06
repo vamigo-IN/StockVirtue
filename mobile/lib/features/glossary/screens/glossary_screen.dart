@@ -245,8 +245,8 @@ const _sections = <_GlossarySection>[
       ),
       _GlossaryTerm(
         'Trailing stop',
-        'A stop whose trigger ratchets with the market (up for shorts, '
-            'down for longs) so you lock in gains as the trend continues.',
+        'A stop whose trigger ratchets with the market (up for longs, '
+            'down for shorts) so you lock in gains as the trend continues.',
       ),
       _GlossaryTerm(
         'CNC — Cash & Carry',

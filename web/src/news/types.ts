@@ -19,7 +19,13 @@ export interface NewsCard {
   publishedAt: string;
   updatedAt: string;
   readingMinutes: number;
+  /** Breaking now: marked, and inside its 24 hours (news/breaking.ts). */
   isBreaking: boolean;
+  /**
+   * When it became breaking, while it is (null otherwise). Missing from an
+   * API older than 6 Nov 2026.
+   */
+  breakingAt?: string | null;
   isFeatured: boolean;
   isAiGenerated: boolean;
   category: { slug: string; name: string } | null;
@@ -93,6 +99,9 @@ export interface NewsArticle extends Omit<NewsCard, 'category' | 'author'> {
   sources: { name: string; note: string | null }[];
   retractedAt: string | null;
   retractionNote: string | null;
+  // No correctionNote: correction notes were retired on 6 Nov 2026 (a fixed
+  // story shows only its updated time). An older API may still send the
+  // field; nothing reads it.
   seo: {
     title: string | null;
     description: string | null;

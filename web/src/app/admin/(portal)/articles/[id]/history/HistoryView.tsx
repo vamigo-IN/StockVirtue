@@ -35,7 +35,9 @@ const REASONS: Record<VersionInfo['reason'], string> = {
   SUBMIT: 'Sent for review',
   APPROVE: 'Approved',
   PUBLISH: 'Published',
-  CORRECTION: 'Correction',
+  // A change to a live story: a retraction today, or one of the correction
+  // notes retired on 6 Nov 2026 (their note is not shown any more).
+  CORRECTION: 'Live update',
   RESTORE: 'Restored',
 };
 

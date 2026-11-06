@@ -1,0 +1,157 @@
+/* The teaching diagrams (spec §6.8): marks in SVG, labels in HTML over them.
+   Strokes are ink at 2 px whatever the scale (vector-effect); the box keeps
+   the 600 × 240 ratio at 100% of its column. DiagramFrame (W0) draws the
+   figure around it; Replay and the start states belong to DiagramPlayer. */
+
+.root {
+  width: 100%;
+}
+
+.box {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 600 / 240;
+}
+
+.svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+/* ── Marks ─────────────────────────────────────────────────────────────── */
+
+.ink {
+  fill: none;
+  stroke: var(--sv-fg);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+/* A dashed level: the limit price (ink) or the stop-loss (--sv-down). */
+.level {
+  fill: none;
+  stroke: var(--sv-fg);
+  stroke-width: 2;
+  stroke-dasharray: 6 6;
+  vector-effect: non-scaling-stroke;
+}
+
+.stop {
+  stroke: var(--sv-down);
+}
+
+/* The entry level's guide and the bracket's ticks (static). */
+.guide {
+  fill: none;
+  stroke: var(--sv-fg-3);
+  stroke-width: 1.5;
+  stroke-dasharray: 2 5;
+  vector-effect: non-scaling-stroke;
+}
+
+.dot,
+.square {
+  fill: var(--sv-fg);
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+/* The limit order's dot: an ink ring whose fill comes in when the price
+   reaches it (the final frame is filled). */
+.ring {
+  fill: var(--sv-fg);
+  stroke: var(--sv-fg);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+.bar {
+  fill: none;
+  stroke: var(--sv-fg);
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+}
+
+/* The share of the contract's value blocked as margin, grown from the left. */
+.blocked {
+  fill: var(--sv-fg);
+  fill-opacity: 0.22;
+  transform-box: fill-box;
+  transform-origin: left center;
+}
+
+/* ── Labels ────────────────────────────────────────────────────────────── */
+
+.label {
+  position: absolute;
+  margin: 0;
+  color: var(--sv-fg-2);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.disc,
+.keyDisc {
+  box-sizing: border-box;
+  width: 20px;
+  height: 20px;
+  border: 1.5px solid var(--sv-fg);
+  border-radius: 999px;
+  align-items: center;
+  justify-content: center;
+  color: var(--sv-fg);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.disc {
+  display: none;
+  position: absolute;
+  translate: -50% -50%;
+}
+
+.keyDisc {
+  display: inline-flex;
+  flex: none;
+}
+
+.key {
+  display: none;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+  gap: 6px;
+}
+
+.key li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  color: var(--sv-fg-2);
+}
+
+.key li > span:last-child {
+  padding-top: 1px;
+}
+
+/* Below 640 px a keyed diagram swaps its labels for numbered discs and a
+   list under the drawing, in the same order. */
+@media (max-width: 639.98px) {
+  .keyed .label {
+    display: none;
+  }
+  .keyed .disc {
+    display: inline-flex;
+  }
+  .keyed .key {
+    display: grid;
+  }
+}

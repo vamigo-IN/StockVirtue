@@ -1,0 +1,313 @@
+{
+  "format": 1,
+  "key": "disclaimer",
+  "lang": "en",
+  "schemaVersion": 1,
+  "revision": {
+    "dateShown": "2026-06-26T18:30:00.000Z",
+    "dateLabel": "June 27, 2026",
+    "noticeVersion": null
+  },
+  "content": {
+    "seo": {
+      "title": "Risk Disclaimer",
+      "description": [
+        {
+          "type": "token",
+          "attrs": {
+            "name": "site.name"
+          }
+        },
+        {
+          "type": "text",
+          "text": " is an educational simulator using virtual money. It is not investment advice and not a broker."
+        }
+      ]
+    },
+    "title": "Risk Disclaimer",
+    "summary": [
+      {
+        "type": "token",
+        "attrs": {
+          "name": "site.name"
+        }
+      },
+      {
+        "type": "text",
+        "text": " is an educational simulator using virtual money — not investment advice, and not a broker."
+      }
+    ],
+    "body": {
+      "type": "doc",
+      "content": [
+        {
+          "type": "heading",
+          "attrs": {
+            "level": 2,
+            "anchor": "educational-simulator-virtual-money-only"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "Educational simulator — virtual money only"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "token",
+              "attrs": {
+                "name": "site.name"
+              }
+            },
+            {
+              "type": "text",
+              "text": " is a "
+            },
+            {
+              "type": "text",
+              "text": "stock-market simulator built for education",
+              "marks": [
+                {
+                  "type": "bold"
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "text": ". All trading inside the Service is performed with "
+            },
+            {
+              "type": "text",
+              "text": "virtual money",
+              "marks": [
+                {
+                  "type": "bold"
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "text": ". No real securities are traded, and no real funds are ever deposited, held, or withdrawn. Simulated balances, profits, and losses have "
+            },
+            {
+              "type": "text",
+              "text": "no monetary value",
+              "marks": [
+                {
+                  "type": "bold"
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "text": "."
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "attrs": {
+            "level": 2,
+            "anchor": "not-investment-advice"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "Not investment advice"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "Nothing in "
+            },
+            {
+              "type": "token",
+              "attrs": {
+                "name": "site.name"
+              }
+            },
+            {
+              "type": "text",
+              "text": " — including prices, charts, tools, lessons, quizzes, leaderboards, or any output — is investment, financial, legal, or tax advice, or a recommendation to buy, sell, or hold any security. Content is for general education and illustration only."
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "attrs": {
+            "level": 2,
+            "anchor": "not-a-broker-or-adviser"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "Not a broker or adviser"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "token",
+              "attrs": {
+                "name": "site.company"
+              }
+            },
+            {
+              "type": "text",
+              "text": " is not a stock broker, exchange, depository participant, research analyst, or investment adviser, and is not registered with SEBI or any other regulator. "
+            },
+            {
+              "type": "token",
+              "attrs": {
+                "name": "site.name"
+              }
+            },
+            {
+              "type": "text",
+              "text": " does not facilitate real securities transactions."
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "attrs": {
+            "level": 2,
+            "anchor": "markets-carry-real-risk"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "Markets carry real risk"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "Investing and trading in real securities involves substantial risk, including the possible loss of your entire capital. Past performance — real or simulated — is not indicative of future results. Simulated results have inherent limitations and may not reflect real-market conditions such as slippage, liquidity, latency, and order rejection."
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "attrs": {
+            "level": 2,
+            "anchor": "do-your-own-research"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "Do your own research"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "Before making any real investment, conduct your own due diligence and consult a "
+            },
+            {
+              "type": "text",
+              "text": "SEBI-registered investment adviser",
+              "marks": [
+                {
+                  "type": "bold"
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "text": ". You are solely responsible for your real-world financial decisions."
+            }
+          ]
+        },
+        {
+          "type": "heading",
+          "attrs": {
+            "level": 2,
+            "anchor": "data-accuracy"
+          },
+          "content": [
+            {
+              "type": "text",
+              "text": "Data accuracy"
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "Market data is sourced from third parties and may be delayed, incomplete, or inaccurate. We make no warranty as to its accuracy or availability."
+            }
+          ]
+        },
+        {
+          "type": "paragraph",
+          "content": [
+            {
+              "type": "text",
+              "text": "By using "
+            },
+            {
+              "type": "token",
+              "attrs": {
+                "name": "site.name"
+              }
+            },
+            {
+              "type": "text",
+              "text": ", you acknowledge and accept this disclaimer together with our "
+            },
+            {
+              "type": "text",
+              "text": "Terms & Conditions",
+              "marks": [
+                {
+                  "type": "link",
+                  "attrs": {
+                    "href": "/terms"
+                  }
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "text": " and "
+            },
+            {
+              "type": "text",
+              "text": "Privacy Policy",
+              "marks": [
+                {
+                  "type": "link",
+                  "attrs": {
+                    "href": "/privacy"
+                  }
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "text": "."
+            }
+          ]
+        }
+      ]
+    }
+  }
+}

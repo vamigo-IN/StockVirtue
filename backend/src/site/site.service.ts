@@ -3,6 +3,7 @@ import {
   ForbiddenException,
   Injectable,
   Logger,
+  Optional,
 } from '@nestjs/common';
 import { ContactStatus, MediaStatus, Prisma } from '@prisma/client';
 import { ConfigService } from '@nestjs/config';
@@ -13,6 +14,9 @@ import { MailService, escapeHtml } from '../mail/mail.service';
 import { SUPER_ADMIN } from '../rbac/rbac.catalog';
 import { ClientInfo, StaffPrincipal } from '../staff/staff-request';
 import { StorageService } from '../storage/storage.service';
+import { CookieConsentService } from '../site-content/cookie-consent.service';
+import { LegalRecordService } from '../site-content/legal-record.service';
+import { SiteContentCache } from '../site-content/site-content.cache';
 import {
   badAdsTxtLine,
   badRobotsLine,
@@ -73,6 +77,12 @@ export interface SiteImage {
 
 /** What the website reads: the basics plus the config, images resolved. */
 export interface PublicSite extends PublicSiteSettings {
+  /**
+   * The website's cookie choice version (W7 decision 4): the newest
+   * cookie_consent_versions row, 1 when there is none. Top level, not inside
+   * `config`, which the portal saves group by group.
+   */
+  cookieConsent: { version: number };
   config: Omit<SiteConfig, 'branding'> & {
     branding: {
       logo: SiteImage | null;
@@ -104,6 +114,11 @@ export class SiteService {
     private readonly audit: AuditService,
     private readonly config: ConfigService<AppConfig, true>,
     private readonly storage: StorageService,
+    // The W7 Settings hooks (SETTINGS revisions of legal pages, cookie choice
+    // versions). Optional so the settings keep working without them.
+    @Optional() private readonly legalRecord?: LegalRecordService,
+    @Optional() private readonly cookies?: CookieConsentService,
+    @Optional() private readonly siteCache?: SiteContentCache,
   ) {}
 
   /** Read the singleton settings; returns defaults when none saved yet. */
@@ -114,8 +129,12 @@ export class SiteService {
     const config = readConfig(row?.config);
     const images = await this.images(config);
     const pick = (id: string | null) => (id && images.get(id)) || null;
+    const cookieVersion = this.cookies
+      ? await this.cookies.currentVersion()
+      : 1;
     return {
       ...(row ? this.shape(row) : DEFAULTS),
+      cookieConsent: { version: cookieVersion },
       config: {
         ...config,
         branding: {
@@ -159,8 +178,14 @@ export class SiteService {
     const current = readConfig(row?.config);
     const next = await this.checkGroup(group, input, current);
     if (JSON.stringify(current[group]) !== JSON.stringify(next)) {
-      const config = { ...current, [group]: next };
-      await this.prisma.$transaction(async (tx) => {
+      const legalKeys = await this.prisma.$transaction(async (tx) => {
+        // W7 (§4.2): the row is locked first and the write is built from it,
+        // so two saves at once queue instead of undoing each other, and the
+        // records below compare with the row this save replaces.
+        const locked = await this.lockedRow(tx);
+        const base = readConfig(locked?.config);
+        if (JSON.stringify(base[group]) === JSON.stringify(next)) return [];
+        const config = { ...base, [group]: next };
         await tx.siteSetting.upsert({
           where: { id: SINGLETON },
           create: {
@@ -175,13 +200,44 @@ export class SiteService {
             action: `site.config.${group}`,
             entityType: 'SiteSetting',
             entityId: SINGLETON,
-            before: current[group] as unknown as Prisma.InputJsonValue,
+            before: base[group] as unknown as Prisma.InputJsonValue,
             after: next as unknown as Prisma.InputJsonValue,
             ...client,
           },
           tx,
         );
+        // W7: a value a live legal page shows changed → a SETTINGS revision
+        // of that page; then a service visitors weren't asked about switched
+        // on → a new cookie choice version (the last lock, §5.3 step 1).
+        const recorder = {
+          staffId: actor.staffId,
+          userId: actor.userId,
+          email: actor.email,
+        };
+        const keys =
+          (await this.legalRecord?.recordSettingsChange(
+            tx,
+            { contactEmail: locked?.contactEmail ?? '', config },
+            recorder,
+            client,
+          )) ?? [];
+        await this.cookies?.recordSettingsChange(
+          tx,
+          locked?.config ?? {},
+          config,
+          recorder,
+          client,
+        );
+        return keys;
       });
+      // Before the response, so the portal proxy's own refresh (after it)
+      // reads the new values.
+      if (legalKeys.length) {
+        await this.siteCache?.invalidate(
+          'settings',
+          legalKeys.map((k) => `content:${k}`),
+        );
+      }
     }
     return this.getConfigForStaff();
   }
@@ -326,9 +382,29 @@ export class SiteService {
         'Changing injected code needs the "settings.code_injection" permission. Your other changes were not saved either.',
       );
     }
+    let saved: (keyof PublicSiteSettings)[] = [];
     if (changed.length > 0) {
       const data = { ...next, social: next.social as object };
-      await this.prisma.$transaction(async (tx) => {
+      const legalKeys = await this.prisma.$transaction(async (tx) => {
+        // W7 (§4.2): the row is locked first; what changed is decided from
+        // the row this save replaces, so a save made meanwhile isn't undone
+        // unnoticed and the records below compare with the right values.
+        const locked = await this.lockedRow(tx);
+        const before = locked ? this.shape(locked) : DEFAULTS;
+        saved = changedSettings(before, next);
+        if (saved.length === 0) return [] as string[];
+        const code = saved.filter((k) =>
+          (CODE_FIELDS as readonly string[]).includes(k),
+        );
+        if (
+          code.length > 0 &&
+          !actor.roles.includes(SUPER_ADMIN) &&
+          !actor.permissions.has('settings.code_injection')
+        ) {
+          throw new ForbiddenException(
+            'Changing injected code needs the "settings.code_injection" permission. Your other changes were not saved either.',
+          );
+        }
         await tx.siteSetting.upsert({
           where: { id: SINGLETON },
           create: { id: SINGLETON, ...data },
@@ -338,24 +414,40 @@ export class SiteService {
           {
             actor: { userId: actor.userId, email: actor.email },
             action:
-              codeChanged.length > 0
+              code.length > 0
                 ? 'site.settings.code_injection'
                 : 'site.settings.update',
             entityType: 'SiteSetting',
             entityId: SINGLETON,
-            before: Object.fromEntries(changed.map((k) => [k, current[k]])),
-            after: Object.fromEntries(changed.map((k) => [k, next[k]])),
-            meta: { changed },
+            before: Object.fromEntries(saved.map((k) => [k, before[k]])),
+            after: Object.fromEntries(saved.map((k) => [k, next[k]])),
+            meta: { changed: saved },
             ...client,
           },
           tx,
         );
+        // W7: the contact email is a live value on legal pages (§4.2).
+        if (!this.legalRecord) return [] as string[];
+        return this.legalRecord.recordSettingsChange(
+          tx,
+          { contactEmail: data.contactEmail, config: locked?.config ?? {} },
+          { staffId: actor.staffId, userId: actor.userId, email: actor.email },
+          client,
+        );
       });
-      this.logger.log(
-        `Site settings updated by ${actor.email}: ${changed.join(', ')}`,
-      );
+      if (legalKeys.length) {
+        await this.siteCache?.invalidate(
+          'settings',
+          legalKeys.map((k) => `content:${k}`),
+        );
+      }
+      if (saved.length > 0) {
+        this.logger.log(
+          `Site settings updated by ${actor.email}: ${saved.join(', ')}`,
+        );
+      }
     }
-    return { ...(await this.getForStaff()), changed };
+    return { ...(await this.getForStaff()), changed: saved };
   }
 
   /**
@@ -495,6 +587,15 @@ export class SiteService {
     } catch (err) {
       this.logger.warn(`${label} email failed: ${(err as Error).message}`);
     }
+  }
+
+  /**
+   * W7 (§4.2, §5.3 step 1): the settings row, locked for the rest of this
+   * transaction (its first statement), then read. Null before the first save.
+   */
+  private async lockedRow(tx: Prisma.TransactionClient) {
+    await tx.$executeRaw`SELECT 1 FROM site_settings WHERE id = ${SINGLETON} FOR UPDATE`;
+    return tx.siteSetting.findUnique({ where: { id: SINGLETON } });
   }
 
   private shape(row: {

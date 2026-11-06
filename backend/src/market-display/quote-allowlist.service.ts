@@ -1,4 +1,6 @@
 import { Injectable } from '@nestjs/common';
+import { CAP_LISTS } from '../market/cap-segments';
+import { constituentsFor } from '../market/index-constituents';
 import { listedWhere } from '../newsroom/public/public-articles';
 import { PrismaService } from '../prisma/prisma.service';
 import { MarketClock } from './market-clock';
@@ -6,12 +8,35 @@ import { MarketClock } from './market-clock';
 const YES_FOR_MS = 60_000;
 const NO_FOR_MS = 15_000;
 
+/** The indices whose members the website's heatmap shows. */
+const HEATMAP_INDICES = ['NIFTY', 'BANKNIFTY', 'SENSEX'] as const;
+
 /**
- * Which listed stocks the PUBLIC market API may quote: the curated list,
- * plus stocks that published stories reference (related stocks, or widgets
- * in the story or in a saved widget it embeds). Editors' previews use the
- * staff API instead. This keeps the public API from becoming a free price
- * feed for the whole exchange.
+ * The stocks the website lists by name, as "NSE:SYMBOL" refs: every stock in
+ * the movers' large, mid and small cap lists, and every member of the Nifty
+ * 50, Bank Nifty and Sensex (the heatmaps). Their stock pages always have a
+ * price. Built from those lists at start-up, so it follows them; a stock on
+ * two lists (CONCOR) counts once.
+ */
+export const TRACKED_STOCK_REFS: ReadonlySet<string> = new Set([
+  ...Object.values(CAP_LISTS)
+    .flat()
+    .map((symbol) => `NSE:${symbol.toUpperCase()}`),
+  ...HEATMAP_INDICES.flatMap((index) => {
+    const set = constituentsFor(index);
+    return set
+      ? set.members.map((m) => `${set.exchange}:${m.symbol.toUpperCase()}`)
+      : [];
+  }),
+]);
+
+/**
+ * Which listed stocks the PUBLIC market API may quote: the curated list, the
+ * stocks the website lists by name (TRACKED_STOCK_REFS), plus stocks that
+ * published stories reference (related stocks, or widgets in the story or in
+ * a saved widget it embeds). Editors' previews use the staff API instead.
+ * This keeps the public API from becoming a free price feed for the whole
+ * exchange.
  */
 @Injectable()
 export class QuoteAllowlistService {
@@ -28,6 +53,11 @@ export class QuoteAllowlistService {
     const out = new Set<string>();
     const unknown: string[] = [];
     for (const ref of refs) {
+      // Tracked stocks need no query (and take no room in the memo).
+      if (TRACKED_STOCK_REFS.has(ref)) {
+        out.add(ref);
+        continue;
+      }
       const hit = this.memo.get(ref);
       if (hit && hit.until > now) {
         if (hit.ok) out.add(ref);

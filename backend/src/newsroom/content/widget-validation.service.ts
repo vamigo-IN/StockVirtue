@@ -3,6 +3,7 @@ import {
   Injectable,
   ServiceUnavailableException,
 } from '@nestjs/common';
+import { MarketInstrumentKind } from '@prisma/client';
 import { ScripMasterService } from '../../market/scrip-master.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { WidgetConfig, WidgetType, widgetRefs } from './widget-registry';
@@ -16,8 +17,9 @@ export interface WidgetUse {
 /**
  * Checks that the instruments a widget names exist: listed stocks against
  * the scrip master, indices / commodities / currencies against the curated
- * market list, saved widgets against the library. Shared by articles and
- * the saved-widget library.
+ * market list (and, where a widget asks for indices, that they are indices
+ * there), saved widgets against the library. Shared by articles and the
+ * saved-widget library.
  */
 @Injectable()
 export class WidgetValidation {
@@ -39,6 +41,7 @@ export class WidgetValidation {
     const stocks = new Set<string>();
     const curated = new Set<string>();
     const either = new Set<string>();
+    const indices = new Set<string>();
     const savedIds = new Set<string>();
     for (const w of widgets) {
       const refs = widgetRefs(w.widget, w.config);
@@ -48,6 +51,7 @@ export class WidgetValidation {
       for (const r of refs.curated) {
         if (!refs.stocks.includes(r)) curated.add(r);
       }
+      for (const r of refs.indices ?? []) indices.add(r);
       if (w.widgetId) savedIds.add(w.widgetId);
     }
 
@@ -87,6 +91,17 @@ export class WidgetValidation {
       }
     }
 
+    // An index table lists indices only (a stock or commodity on the market
+    // list is not one).
+    const notIndex = [...indices].find(
+      (r) => have.has(r) && have.get(r) !== MarketInstrumentKind.INDEX,
+    );
+    if (notIndex) {
+      throw new BadRequestException(
+        `${notIndex.split(':')[1]} isn’t an index. Choose indices from the market list.`,
+      );
+    }
+
     if (savedIds.size) {
       const n = await this.prisma.marketWidget.count({
         where: { id: { in: [...savedIds] } },
@@ -99,17 +114,19 @@ export class WidgetValidation {
     }
   }
 
-  /** Which of `refs` are on the curated market list (on or off). */
-  private async curatedRefs(refs: string[]): Promise<Set<string>> {
-    if (refs.length === 0) return new Set();
+  /** Which of `refs` are on the curated market list (on or off), and their kind. */
+  private async curatedRefs(
+    refs: string[],
+  ): Promise<Map<string, MarketInstrumentKind>> {
+    if (refs.length === 0) return new Map();
     const pairs = refs.map((r) => {
       const i = r.indexOf(':');
       return { exchange: r.slice(0, i), symbol: r.slice(i + 1) };
     });
     const found = await this.prisma.marketInstrument.findMany({
       where: { OR: pairs },
-      select: { exchange: true, symbol: true },
+      select: { exchange: true, symbol: true, kind: true },
     });
-    return new Set(found.map((f) => `${f.exchange}:${f.symbol}`));
+    return new Map(found.map((f) => [`${f.exchange}:${f.symbol}`, f.kind]));
   }
 }

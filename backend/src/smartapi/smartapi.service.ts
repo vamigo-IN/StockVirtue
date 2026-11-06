@@ -10,7 +10,12 @@ import { AxiosError } from 'axios';
 import { AppConfig, SmartApiConfig } from '../config/configuration';
 import { RedisService } from '../redis/redis.service';
 import { SmartApiClient } from './smartapi.client';
-import { RateBucket, SmartApiRateLimiter } from './smartapi.rate-limiter';
+import {
+  currentBrokerLane,
+  RateBucket,
+  shareRefusal,
+  SmartApiRateLimiter,
+} from './smartapi.rate-limiter';
 import {
   CandleOIRow,
   CandleRequest,
@@ -126,16 +131,24 @@ export class SmartApiService implements OnModuleInit {
   ): Promise<T> {
     const hit = this.cache.get(key);
     if (hit && Date.now() - hit.at < ttlMs) return hit.value as T;
-    const pending = this.inflight.get(key);
-    if (pending) return pending as Promise<T>;
+    // B3: a website call may share an app call's request, never the reverse,
+    // so an app call never waits in, or is refused by, the website's share.
+    const website = currentBrokerLane() === 'website';
+    const pending =
+      this.inflight.get(key) ??
+      (website ? this.inflight.get(`web:${key}`) : undefined);
+    if (pending) {
+      return (website ? shareRefusal(pending) : pending) as Promise<T>;
+    }
+    const slot = website ? `web:${key}` : key;
     const p = fn()
       .then((value) => {
         this.cache.set(key, { at: Date.now(), value });
         if (this.cache.size > 5000) this.pruneCache();
         return value;
       })
-      .finally(() => this.inflight.delete(key));
-    this.inflight.set(key, p);
+      .finally(() => this.inflight.delete(slot));
+    this.inflight.set(slot, p);
     return p as Promise<T>;
   }
 

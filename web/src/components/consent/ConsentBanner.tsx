@@ -3,7 +3,7 @@
 import { useEffect, useId, useState } from 'react';
 import {
   type Consent,
-  CONSENT_VERSION,
+  isCurrentConsent,
   OPEN_SETTINGS_EVENT,
   readConsent,
   saveConsent,
@@ -58,14 +58,29 @@ const TEXT = {
   },
 } satisfies Record<Lang, Record<string, string>>;
 
-/** Records the choice (no IP address, no cookie other than its own id). */
+/**
+ * The "choose again" line (W7 addendum §5.13), above the intro when the
+ * visitor's stored choice was made under an older cookie choice version.
+ * New words for the lawyer and the translator (the spec §9.8 list); TEXT
+ * above stays verbatim, and the language button switches this line too.
+ */
+const AGAIN: Record<Lang, string> = {
+  en: 'We changed how this site uses cookies since you last chose. Please choose again.',
+  hi: 'आपके पिछली बार चुनने के बाद हमने इस साइट पर कुकीज़ के इस्तेमाल में बदलाव किया है। कृपया फिर से चुनें।',
+};
+
+/**
+ * Records the choice (no IP address, no cookie other than its own id), with
+ * the cookie choice version the banner showed: the record says
+ * `cookies-<version>`.
+ */
 function log(c: Consent, source: string) {
   void fetch('/api/consent', {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
       id: c.id,
-      version: CONSENT_VERSION,
+      version: c.version,
       analytics: c.analytics,
       advertising: c.advertising,
       source,
@@ -79,19 +94,30 @@ function log(c: Consent, source: string) {
  * use analytics and advertising cookies: one tap to accept or to refuse, or a
  * choice per purpose, in English or Hindi. Shows again when the choice lapses,
  * when the purposes change, or from "Cookie settings" in the footer.
+ *
+ * `version` is the site's cookie choice version (W7 addendum §5.13, from the
+ * settings payload). A stored choice is current when its version is at
+ * least `version`; otherwise the banner opens with the "choose again" line,
+ * and its switches start off (an old "yes" isn't carried into a new
+ * version). The new choice is saved under `version`, with the old id.
  */
 export function ConsentBanner({
   analytics,
   advertising,
+  version = 1,
 }: {
   /** The analytics services in use (names), if any. */
   analytics: string[];
   /** The advertising services in use (names), if any. */
   advertising: string[];
+  /** The cookie choice version (settings.cookieConsent.version). */
+  version?: number;
 }) {
   const [open, setOpen] = useState(false);
   const [choosing, setChoosing] = useState(false);
   const [lang, setLang] = useState<Lang>('en');
+  /** A stored choice exists, but under an older version: ask again. */
+  const [outdated, setOutdated] = useState(false);
   const [choice, setChoice] = useState({
     analytics: false,
     advertising: false,
@@ -100,25 +126,33 @@ export function ConsentBanner({
   const t = TEXT[lang];
 
   useEffect(() => {
+    if (navigator.language?.toLowerCase().startsWith('hi')) setLang('hi');
+  }, []);
+
+  useEffect(() => {
     const saved = readConsent();
-    if (saved) {
+    if (saved && isCurrentConsent(saved, version)) {
+      setOutdated(false);
       setChoice({ analytics: saved.analytics, advertising: saved.advertising });
     } else {
+      setOutdated(saved !== null);
+      setChoice({ analytics: false, advertising: false });
       setOpen(true);
     }
-    if (navigator.language?.toLowerCase().startsWith('hi')) setLang('hi');
     const reopen = () => {
       const now = readConsent();
+      const current = now !== null && isCurrentConsent(now, version);
+      setOutdated(now !== null && !current);
       setChoice({
-        analytics: !!now?.analytics,
-        advertising: !!now?.advertising,
+        analytics: current && !!now?.analytics,
+        advertising: current && !!now?.advertising,
       });
       setChoosing(true);
       setOpen(true);
     };
     window.addEventListener(OPEN_SETTINGS_EVENT, reopen);
     return () => window.removeEventListener(OPEN_SETTINGS_EVENT, reopen);
-  }, []);
+  }, [version]);
 
   if (!open) return null;
 
@@ -126,9 +160,10 @@ export function ConsentBanner({
     next: { analytics: boolean; advertising: boolean },
     how: string,
   ) => {
-    log(saveConsent(next), how);
+    log(saveConsent(next, version), how);
     setOpen(false);
     setChoosing(false);
+    setOutdated(false);
   };
   const purposes = [
     analytics.length > 0 && {
@@ -166,6 +201,11 @@ export function ConsentBanner({
           {t.language}
         </button>
       </div>
+      {outdated ? (
+        <p className={styles.again} data-consent-again="">
+          {AGAIN[lang]}
+        </p>
+      ) : null}
       <p className={styles.text}>{t.intro}</p>
       <ul
         className={

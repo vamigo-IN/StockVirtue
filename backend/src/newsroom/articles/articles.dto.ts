@@ -217,6 +217,12 @@ export class FlagsDto {
   isBreaking?: boolean;
 }
 
+/** "Send a notification when published" (PUT staff/articles/:id/notify). */
+export class NotifyDto {
+  @IsBoolean()
+  notifyOnPublish!: boolean;
+}
+
 export class ArticleListQueryDto {
   @IsOptional()
   @IsIn(Object.values(NewsStatus))

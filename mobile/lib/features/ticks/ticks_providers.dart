@@ -15,25 +15,41 @@ final ticksServiceProvider = Provider<TicksService>((ref) {
   return service;
 });
 
-/// Connects the Socket.IO client whenever a user is authenticated and
-/// disconnects on logout. Watch this from the top of the widget tree.
+/// Connects the Socket.IO client while a user is signed in and has accepted
+/// the current privacy notice, and disconnects otherwise: on sign-out, and
+/// while a notice waits to be accepted (the server refuses the socket then,
+/// under the app notice gate, and the app is behind the notice screen
+/// anyway). It connects once the notice is accepted. Watch this from the top
+/// of the widget tree.
 final socketLifecycleProvider = Provider<void>((ref) {
+  final service = ref.read(ticksServiceProvider);
+  // A connect asked for and not answered yet (connected or dropped): asking
+  // again would open a second socket beside it.
+  var pending = false;
+  final answers = service.connectionState.listen((_) => pending = false);
+  ref.onDispose(answers.cancel);
+
+  bool wanted() {
+    final user = ref.read(authControllerProvider).value;
+    return user != null && !user.needsPrivacyNotice;
+  }
+
   Future<void> sync() async {
-    final service = ref.read(ticksServiceProvider);
-    final auth = ref.read(authControllerProvider);
-    final loggedIn = auth.value != null;
-    if (loggedIn && !service.isConnected) {
+    if (wanted() && !service.isConnected && !pending) {
       final tokens = await ref.read(authStorageProvider).read();
-      if (tokens != null) {
-        service.connect(
-          defaultApiBaseUrl(),
-          tokens.accessToken,
-          // Reconnects can outlive the 15-min access token; hand the socket a
-          // refreshed one so it re-authenticates instead of going silent.
-          tokenProvider: () => _freshAccessToken(ref),
-        );
-      }
-    } else if (!loggedIn && service.isConnected) {
+      // The account or its notice may have changed while the token loaded.
+      if (!ref.mounted || tokens == null || !wanted()) return;
+      if (service.isConnected || pending) return;
+      pending = true;
+      service.connect(
+        defaultApiBaseUrl(),
+        tokens.accessToken,
+        // Reconnects can outlive the 15-min access token; hand the socket a
+        // refreshed one so it re-authenticates instead of going silent.
+        tokenProvider: () => _freshAccessToken(ref),
+      );
+    } else if (!wanted() && (service.isConnected || pending)) {
+      pending = false;
       service.disconnect();
     }
   }

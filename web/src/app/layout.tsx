@@ -3,17 +3,23 @@ import { Space_Grotesk, JetBrains_Mono } from 'next/font/google';
 import { SITE } from '@/lib/site';
 import { getSettings } from '@/lib/settings';
 
+// The staff portal's faces (/admin only). Their variables sit on <html> but
+// public CSS never references them, so public pages never download them;
+// preload: false keeps every route from preloading them too. The public
+// site's own faces live in src/lib/fonts-public.ts, on #sv-public (spec §3.2.1).
 const spaceGrotesk = Space_Grotesk({
   subsets: ['latin'],
   weight: ['400', '500', '700'],
   variable: '--font-space',
   display: 'swap',
+  preload: false,
 });
 const jetbrainsMono = JetBrains_Mono({
   subsets: ['latin'],
   weight: ['400', '500', '700'],
   variable: '--font-mono-jb',
   display: 'swap',
+  preload: false,
 });
 
 const DEFAULT_KEYWORDS = [
@@ -32,7 +38,7 @@ export async function generateViewport(): Promise<Viewport> {
   return {
     width: 'device-width',
     initialScale: 1,
-    themeColor: branding.themeColor || '#0a0f0d',
+    themeColor: branding.themeColor || '#01261A',
     colorScheme: 'light',
   };
 }
@@ -58,10 +64,12 @@ export async function generateMetadata(): Promise<Metadata> {
     .filter(Boolean);
   const favicon = branding.favicon?.id;
   const indexing = !search.noindex;
+  // No dash in the default title (spec §1.1, rule R12).
+  const defaultTitle = `${title}: ${SITE.tagline}`;
   return {
     metadataBase: new URL(SITE.url),
     title: {
-      default: `${title} — ${SITE.tagline}`,
+      default: defaultTitle,
       template: search.titleTemplate.includes('%s')
         ? search.titleTemplate
         : `%s · ${title}`,
@@ -86,19 +94,18 @@ export async function generateMetadata(): Promise<Metadata> {
     publisher: SITE.company,
     appleWebApp: { capable: true, title: SITE.name, statusBarStyle: 'default' },
     formatDetection: { telephone: false, address: false, email: false },
-    alternates: { canonical: '/' },
     openGraph: {
       type: 'website',
       locale: 'en_IN',
       siteName: SITE.name,
       url: SITE.url,
-      title: `${title} — ${SITE.tagline}`,
+      title: defaultTitle,
       description,
       images: [image],
     },
     twitter: {
       card: 'summary_large_image',
-      title: `${title} — ${SITE.tagline}`,
+      title: defaultTitle,
       description,
       images: [image.url],
       ...(search.twitterHandle
@@ -134,10 +141,11 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 /**
- * Shared shell only: fonts, metadata and <html>/<body>. Stylesheets live in the
- * area layouts — globals.css in (site)/layout.tsx for the marketing pages and
- * portal.css in admin/layout.tsx for the staff portal — so neither area's
- * resets or utilities can leak into the other.
+ * Shared shell only: metadata, <html> and <body>. No stylesheet and no
+ * canonical (every page sets its own). The two areas bring their own CSS:
+ * public.css in (public)/layout.tsx (and the root 404) for the public site,
+ * portal.css in admin/layout.tsx for the staff portal, so neither area's
+ * resets or utilities reach the other.
  */
 export default function RootLayout({
   children,
@@ -146,7 +154,7 @@ export default function RootLayout({
 }) {
   return (
     <html
-      lang="en"
+      lang="en-IN"
       className={`${spaceGrotesk.variable} ${jetbrainsMono.variable}`}
     >
       <body>{children}</body>

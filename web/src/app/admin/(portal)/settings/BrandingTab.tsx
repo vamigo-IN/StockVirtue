@@ -29,7 +29,7 @@ const SLOTS: {
   {
     key: 'logoMediaId',
     title: 'Logo',
-    hint: 'Shown in the website header and footer. A wide PNG with a transparent background works best (about 300 × 64 px).',
+    hint: 'Shown in the website header and the menu. The dark footer uses the built-in light version. A wide PNG with a transparent background works best (about 300 × 64 px).',
     fallback: '/logo.png',
     preview: 'h-12 w-auto max-w-full',
   },

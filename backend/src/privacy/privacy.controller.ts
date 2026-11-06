@@ -19,6 +19,8 @@ import { AppConfig } from '../config/configuration';
 import { clientInfo, ClientInfo, fromSite } from '../staff/staff-request';
 import { AccountErasureService } from './account-erasure.service';
 import { ConsentService } from './consent.service';
+import { NoticeGateExempt } from './notice-gate.decorator';
+import { NoticeGateService } from './notice-gate.service';
 import {
   AnalyticsConsentDto,
   AppRequestDto,
@@ -37,7 +39,10 @@ import { PrivacyService } from './privacy.service';
  * they accept, their data to download, a nominee, requests and grievances,
  * and deleting the account. App routes need the app's sign-in; the website's
  * routes (cookie choices, requests by email) only take calls from the
- * website's own server.
+ * website's own server. Every app route here stays open while the app notice
+ * gate blocks an account (W7 decision 2, addendum §5.11.3): they are how a
+ * person reads and accepts the notice, and their DPDP rights. Granting
+ * analytics is not: it would be consent under a notice not yet accepted.
  */
 @Controller({ path: 'privacy', version: '1' })
 export class PrivacyController {
@@ -47,6 +52,7 @@ export class PrivacyController {
     private readonly requests: PrivacyRequestsService,
     private readonly erasure: AccountErasureService,
     private readonly config: ConfigService<AppConfig, true>,
+    private readonly gate: NoticeGateService,
   ) {}
 
   /** The notice version, the grievance officer and the response time. */
@@ -77,6 +83,7 @@ export class PrivacyController {
   // ── The app ───────────────────────────────────────────────────────
 
   @UseGuards(JwtAuthGuard)
+  @NoticeGateExempt()
   @Get('me')
   status(@CurrentUser() user: User) {
     return this.privacy.status(user);
@@ -84,6 +91,7 @@ export class PrivacyController {
 
   /** Accepting the current notice (and confirming 18+). */
   @UseGuards(JwtAuthGuard)
+  @NoticeGateExempt()
   @Post('me/consent')
   @HttpCode(200)
   async accept(@CurrentUser() user: User, @Body() dto: NoticeAcceptanceDto) {
@@ -91,9 +99,12 @@ export class PrivacyController {
     return this.privacy.status(updated);
   }
 
+  /** Withdraw-only while the notice is pending (s.6(4)): a grant is gated. */
   @UseGuards(JwtAuthGuard)
+  @NoticeGateExempt()
   @Put('me/analytics')
   async analytics(@CurrentUser() user: User, @Body() dto: AnalyticsConsentDto) {
+    if (dto.enabled) this.gate.assertOpen(user);
     const updated = await this.consent.setAnalytics(
       user.id,
       dto.enabled,
@@ -103,36 +114,42 @@ export class PrivacyController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @NoticeGateExempt()
   @Get('me/export')
   export(@CurrentUser() user: User) {
     return this.privacy.export(user);
   }
 
   @UseGuards(JwtAuthGuard)
+  @NoticeGateExempt()
   @Get('me/nominee')
   async nominee(@CurrentUser() user: User) {
     return { nominee: await this.privacy.nominee(user.id) };
   }
 
   @UseGuards(JwtAuthGuard)
+  @NoticeGateExempt()
   @Put('me/nominee')
   async setNominee(@CurrentUser() user: User, @Body() dto: NomineeDto) {
     return { nominee: await this.privacy.setNominee(user.id, dto) };
   }
 
   @UseGuards(JwtAuthGuard)
+  @NoticeGateExempt()
   @Delete('me/nominee')
   removeNominee(@CurrentUser() user: User) {
     return this.privacy.removeNominee(user.id);
   }
 
   @UseGuards(JwtAuthGuard)
+  @NoticeGateExempt()
   @Get('me/requests')
   myRequests(@CurrentUser() user: User) {
     return this.requests.listForUser(user.id);
   }
 
   @UseGuards(JwtAuthGuard)
+  @NoticeGateExempt()
   @Post('me/requests')
   raise(
     @CurrentUser() user: User,
@@ -144,6 +161,7 @@ export class PrivacyController {
 
   /** Deletes the account (the person typed DELETE to confirm). */
   @UseGuards(JwtAuthGuard)
+  @NoticeGateExempt()
   @Post('me/delete')
   @HttpCode(200)
   deleteAccount(

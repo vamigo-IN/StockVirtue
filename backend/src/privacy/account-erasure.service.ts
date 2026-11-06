@@ -20,11 +20,7 @@ import { MailService } from '../mail/mail.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { RedisService } from '../redis/redis.service';
 import { PrivacyMail } from './privacy-mail';
-import {
-  DELETED_RETENTION_MS,
-  INACTIVITY_NOTICE_MS,
-  PRIVACY_NOTICE_VERSION,
-} from './privacy.constants';
+import { DELETED_RETENTION_MS, INACTIVITY_NOTICE_MS } from './privacy.constants';
 import { PrivacyService } from './privacy.service';
 import { newRequestReference } from './privacy-reference';
 
@@ -149,7 +145,10 @@ export class AccountErasureService {
       await tx.consentRecord.create({
         data: {
           userId,
-          noticeVersion: PRIVACY_NOTICE_VERSION,
+          // The version the person accepted, even when they delete from
+          // the notice gate (W7 addendum §5.4 row 9).
+          noticeVersion:
+            user.noticeVersion ?? this.privacy.currentNoticeVersion(),
           refused: ['account', 'analytics'],
           source:
             opts.source === 'self'
