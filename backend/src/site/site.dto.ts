@@ -117,6 +117,18 @@ export class SearchSettingsDto {
   @IsBoolean() llmsEnabled!: boolean;
   @Transform(trim) @IsString() @MaxLength(2000) llmsSummary!: string;
   @IsInt() @Min(5) @Max(200) llmsArticles!: number;
+
+  @IsBoolean() indexNowEnabled!: boolean;
+
+  @Transform(trim)
+  @IsString()
+  @Matches(/^$|^[a-f0-9]{32}$/, {
+    message:
+      'An IndexNow API key is a 32-character hex string. Get one from https://www.bing.com/indexnow/getstarted.',
+  })
+  indexNowApiKey!: string;
+
+  @IsOptional() @IsBoolean() websubEnabled?: boolean;
 }
 
 export class AnalyticsDto {

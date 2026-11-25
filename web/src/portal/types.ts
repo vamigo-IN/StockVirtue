@@ -194,6 +194,9 @@ export interface SiteConfigData {
     llmsEnabled: boolean;
     llmsSummary: string;
     llmsArticles: number;
+    indexNowEnabled: boolean;
+    indexNowApiKey: string;
+    websubEnabled: boolean;
   };
   analytics: {
     ga4Id: string;

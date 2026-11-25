@@ -4,6 +4,7 @@ import {
   ForbiddenException,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import {
   NewsReviewDecision,
@@ -15,6 +16,7 @@ import { AuditService } from '../../audit/audit.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ClientInfo, StaffPrincipal } from '../../staff/staff-request';
 import { breakingAtForSwitch, breakingAtOnPublish } from '../breaking';
+import { IndexNowService } from '../public/indexnow.service';
 import { NewsCache } from '../public/news-cache';
 import { PublishingQueue } from '../publishing/publishing.queue';
 import {
@@ -103,6 +105,7 @@ export class ArticleWorkflowService {
     private readonly articles: ArticlesService,
     private readonly publishing: PublishingQueue,
     private readonly cache: NewsCache,
+    @Optional() private readonly indexNow?: IndexNowService,
   ) {}
 
   submit(
@@ -654,6 +657,7 @@ export class ArticleWorkflowService {
     // Going live, coming down, or a retraction of a live story.
     if (a.status === S.PUBLISHED || m.to === S.PUBLISHED) {
       await this.cache.invalidate(m.action);
+      void this.indexNow?.submitArticle(a.slug);
     }
     return this.articles.get(actor, id);
   }

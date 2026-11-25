@@ -29,6 +29,7 @@ import { NoticeGateService } from '../privacy/notice-gate.service';
 import { PrivacyNoticeService } from '../privacy/privacy-notice.service';
 import { PrivacyRetentionService } from '../privacy/privacy-retention.service';
 import { PrivacyService } from '../privacy/privacy.service';
+import { IndexNowService } from '../newsroom/public/indexnow.service';
 import { NewsCache } from '../newsroom/public/news-cache';
 import { SiteRevalidator } from '../newsroom/public/site-revalidator';
 import { ArticlePublisher } from '../newsroom/publishing/article-publisher';
@@ -93,6 +94,7 @@ import {
     ArticlePublisher,
     // Breaking news ends 24 hours after it started (a 2-minute sweep).
     BreakingExpiry,
+    IndexNowService,
     NewsCache,
     SiteRevalidator,
     PublishingProcessor,

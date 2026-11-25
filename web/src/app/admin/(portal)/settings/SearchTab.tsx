@@ -242,6 +242,82 @@ export function SearchTab({
 
       <Card>
         <CardHeader>
+          <CardTitle>Instant indexing &amp; news publishers</CardTitle>
+          <CardDescription>
+            Notify search engines and news aggregators the moment a story is
+            published.{' '}
+            <a
+              href="https://www.bing.com/indexnow/getstarted"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm text-primary underline-offset-4 hover:underline"
+            >
+              IndexNow docs
+            </a>
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <SwitchRow
+            id="websubEnabled"
+            label="WebSub (PubSubHubbub) instant feed ping"
+            hint={
+              <>
+                Pings Google&apos;s WebSub hub and Superfeedr with{' '}
+                <ViewLink href="/news/feed.xml">/news/feed.xml</ViewLink> on
+                publish so Google News, Discover, Flipboard and Feedly pick up
+                stories immediately.
+              </>
+            }
+            checked={f.websubEnabled}
+            onChange={(v) => g.set('websubEnabled', v)}
+            disabled={off}
+          />
+          <SwitchRow
+            id="indexNowEnabled"
+            label="Enable IndexNow"
+            hint="Notifies Bing, Yandex, Naver, Seznam and Yep on publish. Serves the verification key file at /{key}.txt."
+            checked={f.indexNowEnabled}
+            onChange={(v) => g.set('indexNowEnabled', v)}
+            disabled={off}
+          />
+          <div className="space-y-2">
+            <Label htmlFor="indexNowApiKey">API key</Label>
+            <Input
+              id="indexNowApiKey"
+              value={f.indexNowApiKey}
+              onChange={(e) => g.set('indexNowApiKey', e.target.value)}
+              maxLength={32}
+              spellCheck={false}
+              disabled={off || !f.indexNowEnabled}
+              placeholder="d8e357d1264b43cbbac40cccbef9aca1"
+              className="font-mono text-xs"
+            />
+            <p className="text-xs text-muted-foreground">
+              A 32-character hex string. Get one from{' '}
+              <a
+                href="https://www.bing.com/indexnow/getstarted"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-primary underline-offset-4 hover:underline"
+              >
+                Bing IndexNow
+              </a>
+              , or use the default.
+            </p>
+          </div>
+          {f.indexNowEnabled && f.indexNowApiKey && (
+            <p className="text-xs text-muted-foreground">
+              Key file:{' '}
+              <ViewLink href={`/${f.indexNowApiKey}.txt`}>
+                {`${f.indexNowApiKey}.txt`}
+              </ViewLink>
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
           <CardTitle>LLM sitemap (llms.txt)</CardTitle>
           <CardDescription>
             A plain map of the site for AI assistants such as ChatGPT, Claude
@@ -300,7 +376,7 @@ export function SearchTab({
         busy={g.busy}
         onSave={() =>
           void g.save(
-            'Saved. robots.txt, llms.txt and the sitemaps are updated.',
+            'Saved. robots.txt, llms.txt, IndexNow and the sitemaps are updated.',
           )
         }
         onDiscard={g.reset}

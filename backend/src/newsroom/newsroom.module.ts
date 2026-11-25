@@ -18,6 +18,7 @@ import { MediaController } from './media/media.controller';
 import { MediaService } from './media/media.service';
 import { MediaStorageController } from './media/media-storage.controller';
 import { MediaStorageService } from './media/media-storage.service';
+import { IndexNowService } from './public/indexnow.service';
 import { NewsCache } from './public/news-cache';
 import { PublicNewsController } from './public/public-news.controller';
 import { PublicNewsService } from './public/public-news.service';
@@ -65,6 +66,7 @@ import { TaxonomyService } from './taxonomy/taxonomy.service';
     MediaStorageService,
     SecretBoxService,
     PublishingQueue,
+    IndexNowService,
     NewsCache,
     SiteRevalidator,
     HomepageService,
@@ -77,6 +79,7 @@ import { TaxonomyService } from './taxonomy/taxonomy.service';
   exports: [
     ArticlesService,
     MediaService,
+    IndexNowService,
     NewsCache,
     SiteRevalidator,
     WidgetValidation,

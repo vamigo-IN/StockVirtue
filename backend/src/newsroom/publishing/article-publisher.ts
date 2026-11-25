@@ -1,9 +1,10 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { NewsStatus, NewsVersionReason } from '@prisma/client';
 import { AuditService } from '../../audit/audit.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { recordVersion } from '../articles/article-versions';
 import { breakingAtOnPublish } from '../breaking';
+import { IndexNowService } from '../public/indexnow.service';
 import { NewsCache } from '../public/news-cache';
 
 /// The delayed job may fire a moment before the scheduled second.
@@ -23,6 +24,7 @@ export class ArticlePublisher {
     private readonly prisma: PrismaService,
     private readonly audit: AuditService,
     private readonly cache: NewsCache,
+    @Optional() private readonly indexNow?: IndexNowService,
   ) {}
 
   /** Every scheduled article whose time has come. */
@@ -45,10 +47,11 @@ export class ArticlePublisher {
 
   /** One article, if it is still scheduled and due. */
   async publishScheduled(id: string, now = new Date()): Promise<boolean> {
-    const published = await this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       const a = await tx.newsArticle.findUnique({
         where: { id },
         select: {
+          slug: true,
           status: true,
           scheduledAt: true,
           firstPublishedAt: true,
@@ -62,7 +65,7 @@ export class ArticlePublisher {
         !a.scheduledAt ||
         a.scheduledAt.getTime() > now.getTime() + EARLY_GRACE_MS
       ) {
-        return false;
+        return null;
       }
       // Readers see when it actually went live, even if the worker was late.
       const res = await tx.newsArticle.updateMany({
@@ -77,7 +80,7 @@ export class ArticlePublisher {
           version: { increment: 1 },
         },
       });
-      if (res.count === 0) return false;
+      if (res.count === 0) return null;
       await recordVersion(tx, id, NewsVersionReason.PUBLISH, null, {
         force: true,
       });
@@ -99,12 +102,14 @@ export class ArticlePublisher {
         },
         tx,
       );
-      return true;
+      return { slug: a.slug };
     });
-    if (published) {
+    if (result) {
       this.logger.log(`Published scheduled article ${id}`);
       await this.cache.invalidate('scheduled publish');
+      if (result.slug) void this.indexNow?.submitArticle(result.slug);
+      return true;
     }
-    return published;
+    return false;
   }
 }
