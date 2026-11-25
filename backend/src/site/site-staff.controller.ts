@@ -94,7 +94,7 @@ export class SiteStaffController {
     return this.site.updateConfig(
       actor,
       'search',
-      { ...dto },
+      { ...dto } as SiteConfig['search'],
       this.client(req),
     );
   }

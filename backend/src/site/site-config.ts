@@ -41,6 +41,12 @@ export interface SearchConfig {
   llmsSummary: string;
   /** Latest stories listed in llms.txt. */
   llmsArticles: number;
+  /** IndexNow: instantly notify search engines when content changes. */
+  indexNowEnabled: boolean;
+  /** IndexNow API key — a 32-char hex string served at /{key}.txt. */
+  indexNowApiKey: string;
+  /** WebSub (PubSubHubbub): ping hubs when /news/feed.xml updates. */
+  websubEnabled: boolean;
 }
 
 export interface AnalyticsConfig {
@@ -120,6 +126,9 @@ export const DEFAULT_CONFIG: SiteConfig = {
     llmsEnabled: true,
     llmsSummary: '',
     llmsArticles: 50,
+    indexNowEnabled: false,
+    indexNowApiKey: 'd8e357d1264b43cbbac40cccbef9aca1',
+    websubEnabled: true,
   },
   analytics: { ga4Id: '', gtmId: '', metaPixelId: '', clarityId: '' },
   ads: {

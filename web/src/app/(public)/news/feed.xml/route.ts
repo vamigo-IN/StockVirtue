@@ -1,3 +1,4 @@
+import { getSettings } from '@/lib/settings';
 import { SITE } from '@/lib/site';
 import { getListing } from '@/news/api';
 import { newsPath } from '@/news/routes';
@@ -8,6 +9,11 @@ import { escapeXml, xmlResponse } from '@/news/xml';
 /** Built once, refreshed with the news pages (tag "news" or 30 s). */
 export const dynamic = 'force-static';
 export const revalidate = 30;
+
+const WEBSUB_HUBS = [
+  'https://pubsubhubbub.appspot.com/',
+  'https://pubsubhubbub.superfeedr.com/',
+];
 
 function item(c: NewsCard): string {
   const url = absolute(newsPath.article(c.slug));
@@ -28,9 +34,19 @@ function item(c: NewsCard): string {
 }
 
 export async function GET() {
-  const latest = await getListing({ page: 1, limit: 50 });
+  const [latest, settings] = await Promise.all([
+    getListing({ page: 1, limit: 50 }),
+    getSettings(),
+  ]);
   const items = latest?.items ?? [];
   const built = items[0]?.publishedAt ?? new Date().toISOString();
+  const { search } = settings.config;
+  const hubLinks =
+    search.websubEnabled && !search.noindex
+      ? WEBSUB_HUBS.map(
+          (hub) => `<atom:link href="${escapeXml(hub)}" rel="hub"/>`,
+        ).join('\n')
+      : '';
   const xml = `<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0" xmlns:atom="http://www.w3.org/2005/Atom" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:media="http://search.yahoo.com/mrss/">
 <channel>
@@ -39,6 +55,7 @@ export async function GET() {
 <description>Indian and global market news, IPOs, commodities and explainers from the StockVirtue newsroom.</description>
 <language>en-in</language>
 <atom:link href="${SITE.url}/news/feed.xml" rel="self" type="application/rss+xml"/>
+${hubLinks}
 <lastBuildDate>${new Date(built).toUTCString()}</lastBuildDate>
 ${items.map(item).join('\n')}
 </channel>

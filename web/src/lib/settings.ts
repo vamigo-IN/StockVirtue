@@ -48,6 +48,9 @@ export interface SiteConfig {
     llmsEnabled: boolean;
     llmsSummary: string;
     llmsArticles: number;
+    indexNowEnabled: boolean;
+    indexNowApiKey: string;
+    websubEnabled: boolean;
   };
   analytics: {
     ga4Id: string;
@@ -93,6 +96,9 @@ export const DEFAULT_CONFIG: SiteConfig = {
     llmsEnabled: true,
     llmsSummary: '',
     llmsArticles: 50,
+    indexNowEnabled: false,
+    indexNowApiKey: 'd8e357d1264b43cbbac40cccbef9aca1',
+    websubEnabled: true,
   },
   analytics: { ga4Id: '', gtmId: '', metaPixelId: '', clarityId: '' },
   ads: {

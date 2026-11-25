@@ -289,6 +289,7 @@ export class SiteService {
           .filter(Boolean)
           .join(', '),
         robotsExtra: tidyLines(s.robotsExtra),
+        websubEnabled: s.websubEnabled ?? current.search.websubEnabled,
       } as SiteConfig[G];
     }
     if (group === 'ads') {
