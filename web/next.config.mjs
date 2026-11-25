@@ -19,7 +19,7 @@ const nextConfig = {
       // IndexNow key verification: /{32-char-hex}.txt → /api/indexnow-key
       {
         source: '/:key([a-f0-9]{32}).txt',
-        destination: '/api/indexnow-key?key=:key',
+        destination: '/api/indexnow-key/:key',
       },
     ];
   },
